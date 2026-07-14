@@ -7,6 +7,20 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Documentation
+
+De projectdocumentatie voor Finance Core Platform is in het Nederlands beschikbaar:
+
+- [Projectstatus en werkwijze](docs/PROJECT.md)
+- [Roadmap naar versie 1.0](docs/ROADMAP.md)
+- [Changelog](docs/CHANGELOG.md)
+- [Architectuurdocumentatie](docs/architecture/README.md)
+- [Architecture Decision Records](docs/adr/README.md)
+- [API-documentatie](docs/api/README.md)
+- [Huidige sprint](docs/sprint/sprint-000.md)
+- [Gecontroleerde ontwerpbaseline](docs/DESIGN_COMPLETE_v1.0.md)
+- [AI-projectcontext en instructies](.ai/PROJECT_CONTEXT.md)
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
