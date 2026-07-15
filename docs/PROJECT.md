@@ -1,8 +1,16 @@
 # Finance Core Platform
 
+## Huidige Capability
+
+**Administration**
+
+## Huidige Epic
+
+**Administration**
+
 ## Huidige Story
 
-**S1-002 – Ubiquitous Language**
+**S1-008A – Product Roadmap Foundation**
 
 ## Doel
 
