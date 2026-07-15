@@ -7,11 +7,16 @@ namespace Tests\Unit\Domain\Sales\Entities;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\Order;
+use App\Domain\Sales\Entities\OrderLine;
 use App\Domain\Sales\Enums\OrderStatus;
+use App\Domain\Sales\ValueObjects\LineDescription;
 use App\Domain\Sales\ValueObjects\OrderId;
+use App\Domain\Sales\ValueObjects\OrderLineId;
 use App\Domain\Sales\ValueObjects\OrderNumber;
+use App\Domain\Sales\ValueObjects\Quantity;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
@@ -40,6 +45,56 @@ final class OrderTest extends TestCase
         $order = $this->createOrder(sourceQuotationId: $sourceQuotationId);
 
         self::assertSame($sourceQuotationId, $order->sourceQuotationId());
+    }
+
+    public function test_lines_are_owned_and_managed_by_the_aggregate(): void
+    {
+        $order = $this->createOrder(withLine: false);
+        $first = $this->createLine('550e8400-e29b-41d4-a716-446655440010');
+        $second = $this->createLine('550e8400-e29b-41d4-a716-446655440011');
+
+        $order->addLine($first);
+        $order->addLine($second);
+
+        self::assertSame([$first, $second], $order->lines());
+        self::assertTrue($order->hasLine($first->id()));
+        self::assertSame($first, $order->line($first->id()));
+
+        $order->removeLine($first->id());
+        $order->removeLine($first->id());
+
+        self::assertFalse($order->hasLine($first->id()));
+        self::assertNull($order->line($first->id()));
+    }
+
+    public function test_duplicate_line_identity_is_rejected(): void
+    {
+        $order = $this->createOrder();
+
+        $this->expectException(DomainException::class);
+        $order->addLine($this->createLine());
+    }
+
+    public function test_order_without_lines_cannot_be_confirmed(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->createOrder(withLine: false)->confirm();
+    }
+
+    public function test_lines_cannot_be_changed_after_confirmation(): void
+    {
+        $order = $this->createOrder();
+        $order->confirm();
+
+        try {
+            $order->addLine($this->createLine('550e8400-e29b-41d4-a716-446655440099'));
+            self::fail('Expected adding a line after confirmation to be rejected.');
+        } catch (DomainException) {
+            self::assertCount(1, $order->lines());
+        }
+
+        $this->expectException(DomainException::class);
+        $order->removeLine($order->lines()[0]->id());
     }
 
     /** @param list<string> $transitions */
@@ -141,8 +196,9 @@ final class OrderTest extends TestCase
     private function createOrder(
         ?QuotationId $sourceQuotationId = null,
         OrderStatus $status = OrderStatus::Draft,
+        bool $withLine = true,
     ): Order {
-        return new Order(
+        $order = new Order(
             new OrderId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new OrderNumber('ord-001'),
             new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-446655440001')),
@@ -151,6 +207,22 @@ final class OrderTest extends TestCase
             new DateTimeImmutable('2026-07-15'),
             $sourceQuotationId,
             $status,
+        );
+
+        if ($withLine && $status === OrderStatus::Draft) {
+            $order->addLine($this->createLine());
+        }
+
+        return $order;
+    }
+
+    private function createLine(string $uuid = '550e8400-e29b-41d4-a716-446655440010'): OrderLine
+    {
+        return new OrderLine(
+            new OrderLineId(new Uuid($uuid)),
+            new LineDescription('Product delivery'),
+            new Quantity('2'),
+            new Money('12.50', new Currency('EUR')),
         );
     }
 }
