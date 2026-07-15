@@ -1,31 +1,39 @@
 # Administration Domain
 
-## Doel
+## Aggregate Root
 
-Het Administration Domain vormt de frameworkonafhankelijke kern voor administratieve concepten binnen Finance Core Platform.
+`Administration` is de frameworkonafhankelijke Aggregate Root voor een zelfstandige administratieve eenheid binnen Finance Core Platform. Een Administration is nadrukkelijk geen juridische organisatie.
 
 ## Verantwoordelijkheden
 
-- De identiteit van een Administration representeren.
-- De Administration als domeinentity modelleren.
-- Domeininvarianten bewaken binnen entities en value objects.
+- De onveranderlijke identiteit en code van de administratieve eenheid bewaken.
+- Naam, optionele omschrijving, functionele basisvaluta en status beheren.
+- Toestandswijzigingen uitsluitend via expliciet domeingedrag uitvoeren.
+- Lokale invarianten binnen de Aggregate Root en haar value objects afdwingen.
 
-## Wat niet in het Domain hoort
+## Invarianten
 
-- Framework- en transportcode, zoals controllers en HTTP-afhandeling.
-- Persistentiemechanismen en infrastructurele implementaties.
-- Presentatielogica en configuratie van externe systemen.
+- `AdministrationId` en `AdministrationCode` veranderen niet na constructie.
+- Code en naam zijn uitsluitend geldig via hun eigen value objects.
+- Een basisvaluta is verplicht.
+- Een omschrijving is `null` of een niet-lege waarde zonder omliggende whitespace van maximaal 1000 Unicode-tekens.
+- Status is altijd actief of inactief.
 
-## Afhankelijkheden
+## Domeingedrag
 
-- Alleen PHP en de eigen Administration-domeintypen zijn toegestaan.
-- Het domein is niet afhankelijk van Laravel, Eloquent, HTTP, een database of andere infrastructuur.
+- `rename()` wijzigt de naam.
+- `changeDescription()` wijzigt of verwijdert de omschrijving.
+- `changeBaseCurrency()` wijzigt de functionele basisvaluta.
+- `activate()` en `deactivate()` wijzigen de status idempotent.
 
-## Architectuurregels
+De basisvaluta mag in deze story worden gewijzigd. Beperkingen na het ontstaan van boekhoudkundige transacties worden later buiten dit aggregate afgedwongen.
 
-- Alle PHP-bestanden gebruiken strict types.
-- Entities en value objects blijven frameworkonafhankelijk.
-- Entities zijn niet readonly, zodat hun toestand binnen domeinregels kan evolueren; hun identiteit blijft onveranderlijk.
-- Value objects zijn immutable en bewaken hun eigen geldigheid.
-- Deze laag bevat geen Eloquent Models, migrations of databasecode.
-- Deze skeleton bevat geen repositories, services of events.
+## Buiten het Aggregate
+
+Organisation, klanten, leveranciers, facturen, boekingen, opslag, repositories, controllers, API's en frameworkcode vallen buiten dit aggregate en buiten deze story.
+
+Een Organisation is een optioneel toekomstig concept en maakt nog geen deel uit van S1-006.
+
+## Relatie met gedeelde Value Objects
+
+`AdministrationId` biedt de domeinspecifieke identiteit op basis van de gedeelde `Uuid`. `Currency` representeert de functionele basisvaluta zonder dat Administration valutacodes zelf valideert.
