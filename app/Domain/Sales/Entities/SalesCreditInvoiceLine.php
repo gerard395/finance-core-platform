@@ -5,17 +5,17 @@ declare(strict_types=1);
 namespace App\Domain\Sales\Entities;
 
 use App\Domain\Sales\ValueObjects\LineDescription;
-use App\Domain\Sales\ValueObjects\OrderLineId;
 use App\Domain\Sales\ValueObjects\Quantity;
+use App\Domain\Sales\ValueObjects\SalesCreditInvoiceLineId;
 use App\Domain\Shared\Finance\Money;
 use InvalidArgumentException;
 
-final readonly class OrderLine
+final readonly class SalesCreditInvoiceLine
 {
     private Money $lineTotal;
 
     public function __construct(
-        private OrderLineId $id,
+        private SalesCreditInvoiceLineId $id,
         private LineDescription $description,
         private Quantity $quantity,
         private Money $unitPrice,
@@ -27,7 +27,7 @@ final readonly class OrderLine
         $this->lineTotal = $this->unitPrice->multiply($this->quantity->value());
     }
 
-    public function id(): OrderLineId
+    public function id(): SalesCreditInvoiceLineId
     {
         return $this->id;
     }

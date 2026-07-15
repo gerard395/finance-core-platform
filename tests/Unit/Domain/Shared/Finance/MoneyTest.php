@@ -42,6 +42,51 @@ final class MoneyTest extends TestCase
         self::assertTrue($zero->equals(new Money('-0.000', new Currency('EUR'))));
     }
 
+    public function test_multiply_by_integer_preserves_currency(): void
+    {
+        $currency = new Currency('EUR');
+        $result = (new Money('12.5', $currency))->multiply('3');
+
+        self::assertSame('37.5', $result->amount());
+        self::assertSame($currency, $result->currency());
+    }
+
+    public function test_multiply_by_decimal_is_exact_without_floating_point_deviation(): void
+    {
+        $result = (new Money('0.1', new Currency('EUR')))->multiply('0.2');
+
+        self::assertSame('0.02', $result->amount());
+    }
+
+    public function test_multiply_by_zero_returns_canonical_zero(): void
+    {
+        $result = (new Money('12.5', new Currency('EUR')))->multiply('0');
+
+        self::assertSame('0', $result->amount());
+        self::assertTrue($result->isZero());
+    }
+
+    #[DataProvider('invalidMultipliers')]
+    public function test_invalid_multiplier_is_rejected(string $multiplier): void
+    {
+        $this->expectException(InvalidArgumentException::class);
+
+        (new Money('10', new Currency('EUR')))->multiply($multiplier);
+    }
+
+    /** @return array<string, array{string}> */
+    public static function invalidMultipliers(): array
+    {
+        return [
+            'empty' => [''],
+            'negative' => ['-1'],
+            'leading zero' => ['01.5'],
+            'float notation' => ['1,5'],
+            'scientific notation' => ['1e2'],
+            'more than eight decimals' => ['1.123456789'],
+        ];
+    }
+
     #[DataProvider('invalidAmounts')]
     public function test_invalid_amount_is_rejected(string $amount): void
     {

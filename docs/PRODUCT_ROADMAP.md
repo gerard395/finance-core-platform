@@ -15,7 +15,7 @@ Finance Core Platform biedt een betrouwbare, uitbreidbare financiële kern waarm
 
 ## Capability 01 – Administration
 
-**Status:** In Progress
+**Status:** Completed for first domain iteration
 **Epic:** Administration
 
 ### Stories
@@ -49,9 +49,9 @@ Deze capability omvat gebruikers, administratielidmaatschappen, rollen en explic
 
 ### Capability Sales
 
-Sales beheert het commerciële traject van offerte tot verkoopfactuur. De capability omvat de Aggregate Roots `Quotation`, `Order`, `SalesInvoice` en `SalesCreditInvoice`, elk met eigen regels, statusovergangen en child lines.
+Sales beheert het commerciële traject van offerte tot verkoopfactuur en verkoopcreditfactuur. De capability omvat de Aggregate Roots `Quotation`, `Order`, `SalesInvoice` en `SalesCreditInvoice`, elk met eigen regels, statusovergangen en child lines.
 
-De eerste ontwerpstory is S4-000 – Sales Capability Design. Implementatie volgt in kleine stories per aggregate en workflowstap.
+De eerste domeiniteratie is voltooid in S4-000 tot en met S4-010. Aggregate boundaries, exacte Money-berekeningen en Application-orchestratie zijn vastgelegd in `app/Domain/Sales/README.md`. Btw, Posting Engine, betalingen en openstaande posten blijven bij Tax, Accounting en Banking.
 
 ## Capability 05 – Purchasing
 

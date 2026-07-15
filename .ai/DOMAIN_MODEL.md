@@ -70,9 +70,11 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 Een Quotation doorloopt een van de volgende paden:
 
 ```text
-Draft → Sent → Accepted → OrderCreated
+Draft → Sent → Accepted
 Draft → Sent → Rejected
 ```
+
+Accepted is een eindstatus van Quotation. De Application-laag kan op basis van een geaccepteerde Quotation een Order aanmaken. `OrderCreated` is daarbij een event van het ontstane Order, geen QuotationStatus of Quotation-overgang.
 
 Een Order doorloopt:
 
@@ -86,9 +88,23 @@ Een SalesInvoice doorloopt:
 Draft → Finalized → Posted → Paid
 ```
 
+Een SalesCreditInvoice doorloopt:
+
+```text
+Draft → Finalized → Posted
+Draft → Cancelled
+Finalized → Cancelled
+```
+
+Order kan vanuit Draft of Confirmed worden geannuleerd. SalesInvoice kan vanuit Draft of Finalized worden geannuleerd. De eindstatussen en aanvullende Quotation-paden zijn volledig beschreven in `app/Domain/Sales/README.md`.
+
 #### Businessregels
 
 - Iedere Quotation bevat minimaal één QuotationLine.
+- Iedere Order bevat minimaal één OrderLine voordat deze wordt bevestigd.
+- Iedere SalesInvoice en SalesCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
+- Documentregels zijn eigendom van hun Aggregate Root en kunnen na de relevante definitieve status niet meer worden gewijzigd.
+- Line totals gebruiken centrale exacte Money-vermenigvuldiging met decimale strings en zonder floats.
 - Een Order ontstaat uit een geaccepteerde Quotation of wordt direct aangemaakt.
 - Een SalesInvoice ontstaat uit een Order.
 - SalesInvoice en SalesCreditInvoice krijgen hun definitieve nummer uit NumberSequence.
@@ -112,6 +128,11 @@ Draft → Finalized → Posted → Paid
 - Aggregates wijzigen elkaars status nooit rechtstreeks.
 - Statusovergangen verlopen uitsluitend via domeinmethoden van het betreffende aggregate.
 - Orchestratie tussen aggregates vindt later plaats in de Application-laag.
+- Btw behoort tot Tax; Posting Engine en openstaande posten behoren tot Accounting; betalingen behoren tot Banking.
+- Sales bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+- Shared Finance heeft geen afhankelijkheid op Sales.
+
+**Capabilitystatus:** Completed for first domain iteration.
 
 ## 4. Accounting
 
