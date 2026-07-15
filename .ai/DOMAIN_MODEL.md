@@ -2,6 +2,26 @@
 
 Dit document definieert de eerste ubiquitous language van Finance Core Platform. Het beschrijft uitsluitend zelfstandige domeinconcepten; relaties, opslagmodellen en technische implementaties vallen buiten deze versie.
 
+## Business Invariants
+
+### Administration
+
+- Heeft altijd precies één `AdministrationId`, één `AdministrationCode`, één `AdministrationName` en één `BaseCurrency`.
+- Heeft maximaal één `Organisation`.
+- Identiteit en AdministrationCode veranderen nooit.
+- BaseCurrency mag alleen wijzigen zolang geen boekhoudkundige transacties bestaan.
+- `Active` en `Inactive` zijn de enige geldige statussen.
+- `attachOrganisation()` accepteert maximaal één Organisation en vervangt een bestaande koppeling nooit stilzwijgend.
+- `removeOrganisation()`, `activate()` en `deactivate()` zijn idempotent.
+
+### Organisation
+
+- Bestaat uitsluitend binnen een Administration en is geen Aggregate Root.
+- Heeft altijd precies één `OrganisationId`.
+- DisplayName is verplicht en LegalName is optioneel.
+- Overige juridische gegevens zijn optioneel.
+- `Address`, `ChamberOfCommerceNumber`, `VatNumber`, `Iban` en `Bic` worden in toekomstige stories als afzonderlijke value objects gemodelleerd.
+
 ## 1. Core Concepts
 
 | Naam | Doel | Korte beschrijving |
