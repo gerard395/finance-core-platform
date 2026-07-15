@@ -64,3 +64,13 @@ Klanten, leveranciers, facturen, boekingen, opslag, repositories, controllers, A
 ## Relatie met gedeelde Value Objects
 
 `AdministrationId` biedt de domeinspecifieke identiteit op basis van de gedeelde `Uuid`. `Currency` representeert de functionele basisvaluta zonder dat Administration valutacodes zelf valideert.
+
+## AccountingSettings
+
+`AccountingSettings` groepeert uitsluitend administratiebrede instellingen die invloed hebben op boekhoudkundige verwerking en presentatie: standaardtaal, datumindeling, getalnotatie, decimale precisie en tijdzone.
+
+UI-, dashboard- en persoonlijke gebruikersvoorkeuren horen niet in dit value object. AccountingSettings bevat evenmin een afrondingsengine of Money-implementatie.
+
+De decimale precisie ligt tussen 0 en 8. De productstandaard is 2, maar de aanroeper levert deze waarde altijd expliciet aan; `DecimalPrecision` neemt intern geen standaard aan. Precisie bepaalt hoeveel decimalen worden gebruikt en is niet hetzelfde als afrondingsbeleid.
+
+Beleid voor het wijzigen van AccountingSettings nadat financiële transacties bestaan, wordt in een latere story vastgelegd.
