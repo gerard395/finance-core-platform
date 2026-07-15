@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Relations\Entities;
 
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
@@ -14,6 +15,9 @@ final class Relation
 {
     /** @var array<string, Contact> */
     private array $contacts = [];
+
+    /** @var array<string, Address> */
+    private array $addresses = [];
 
     public function __construct(
         private readonly RelationId $id,
@@ -72,6 +76,38 @@ final class Relation
     public function removeContact(ContactId $contactId): void
     {
         unset($this->contacts[$contactId->toString()]);
+    }
+
+    /** @return list<Address> */
+    public function addresses(): array
+    {
+        return array_values($this->addresses);
+    }
+
+    public function hasAddress(AddressId $addressId): bool
+    {
+        return isset($this->addresses[$addressId->toString()]);
+    }
+
+    public function address(AddressId $addressId): ?Address
+    {
+        return $this->addresses[$addressId->toString()] ?? null;
+    }
+
+    public function addAddress(Address $address): void
+    {
+        $key = $address->id()->toString();
+
+        if (isset($this->addresses[$key])) {
+            throw new DomainException('Relation already contains an Address with this identity.');
+        }
+
+        $this->addresses[$key] = $address;
+    }
+
+    public function removeAddress(AddressId $addressId): void
+    {
+        unset($this->addresses[$addressId->toString()]);
     }
 
     public function rename(DisplayName $displayName): void
