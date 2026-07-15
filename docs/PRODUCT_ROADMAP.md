@@ -35,6 +35,10 @@ Finance Core Platform biedt een betrouwbare, uitbreidbare financiële kern waarm
 
 **Status:** Planned
 
+### Capability Identity & Security
+
+Deze capability omvat gebruikers, administratielidmaatschappen, rollen en expliciete businessautorisaties. De eerste autorisaties per productcapability zijn vastgelegd in het [Permission Catalogue](../.ai/PERMISSION_CATALOGUE.md); rollen en technische handhaving volgen in afzonderlijke stories.
+
 ## Capability 03 – Relations
 
 **Status:** Planned
