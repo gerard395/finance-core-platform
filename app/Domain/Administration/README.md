@@ -74,3 +74,11 @@ UI-, dashboard- en persoonlijke gebruikersvoorkeuren horen niet in dit value obj
 De decimale precisie ligt tussen 0 en 8. De productstandaard is 2, maar de aanroeper levert deze waarde altijd expliciet aan; `DecimalPrecision` neemt intern geen standaard aan. Precisie bepaalt hoeveel decimalen worden gebruikt en is niet hetzelfde als afrondingsbeleid.
 
 Beleid voor het wijzigen van AccountingSettings nadat financiële transacties bestaan, wordt in een latere story vastgelegd.
+
+## NumberSequence
+
+`NumberSequence` is een afzonderlijke Aggregate Root voor opeenvolgende documentnummers. De onveranderlijke `NumberSequenceId` biedt de domeinspecifieke identiteit op basis van de gedeelde `Uuid`.
+
+Een actieve nummerreeks genereert een nummer uit uitsluitend prefix, zero-padding en suffix en verhoogt daarbij de teller. Een inactieve nummerreeks weigert generatie zonder de teller te wijzigen. De volgende tellerwaarde blijft via `peekNextNumber()` ook bij een inactieve reeks uitleesbaar. Activeren en deactiveren zijn idempotent.
+
+Jaartallen, datums, uitvoering van het resetbeleid, opslag en concurrencybeheer vallen buiten deze story.
