@@ -11,13 +11,34 @@
 - Toestandswijzigingen uitsluitend via expliciet domeingedrag uitvoeren.
 - Lokale invarianten binnen de Aggregate Root en haar value objects afdwingen.
 
-## Invarianten
+## Aggregate Invariants
 
-- `AdministrationId` en `AdministrationCode` veranderen niet na constructie.
-- Code en naam zijn uitsluitend geldig via hun eigen value objects.
-- Een basisvaluta is verplicht.
+### Administration
+
+- Een Administration heeft altijd precies één `AdministrationId`.
+- Een Administration heeft altijd precies één `AdministrationCode`.
+- Een Administration heeft altijd precies één `AdministrationName`.
+- Een Administration heeft altijd precies één `BaseCurrency`.
+- Een Administration heeft maximaal één `Organisation`.
+- De identiteit verandert nooit.
+- De AdministrationCode verandert nooit.
+- De BaseCurrency mag alleen wijzigen zolang er geen boekhoudkundige transacties bestaan.
+- `Active` en `Inactive` zijn de enige geldige statussen.
+- `attachOrganisation()` accepteert uitsluitend een Organisation wanneer nog geen Organisation gekoppeld is.
+- `removeOrganisation()` is idempotent.
+- `activate()` is idempotent.
+- `deactivate()` is idempotent.
 - Een omschrijving is `null` of een niet-lege waarde zonder omliggende whitespace van maximaal 1000 Unicode-tekens.
-- Status is altijd actief of inactief.
+
+### Organisation
+
+- Een Organisation bestaat uitsluitend binnen een Administration.
+- Organisation is geen Aggregate Root.
+- Een Organisation heeft altijd precies één `OrganisationId`.
+- DisplayName is verplicht.
+- LegalName is optioneel.
+- De overige juridische gegevens zijn optioneel.
+- Adres, KvK-nummer, btw-nummer, IBAN en BIC worden later door afzonderlijke value objects gemodelleerd.
 
 ## Domeingedrag
 
@@ -26,7 +47,7 @@
 - `changeBaseCurrency()` wijzigt de functionele basisvaluta.
 - `activate()` en `deactivate()` wijzigen de status idempotent.
 
-De basisvaluta mag in deze story worden gewijzigd. Beperkingen na het ontstaan van boekhoudkundige transacties worden later buiten dit aggregate afgedwongen.
+De Aggregate Root staat een verzoek tot wijziging van de basisvaluta toe. De Application- en Accounting-lagen moeten voorkomen dat dit gedrag wordt aangeroepen zodra boekhoudkundige transacties bestaan.
 
 ## Organisation binnen het Aggregate
 
