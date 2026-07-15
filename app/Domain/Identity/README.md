@@ -34,3 +34,9 @@ Een membership is op een moment geldig wanneer het actief is en het moment binne
 `Role` is een zelfstandige Aggregate Root voor een benoemde rol binnen het Identity Domain. De identiteit en code zijn onveranderlijk; de naam kan via expliciet domeingedrag wijzigen. De optionele beschrijving bevat maximaal 1000 Unicode-tekens en gebruikt `null` wanneer zij ontbreekt. Activeren en deactiveren zijn idempotent.
 
 Permissions, gebruikerskoppelingen en wijzigingen aan AdministrationMembership vallen buiten deze story en worden later afzonderlijk gemodelleerd.
+
+## Permission
+
+`Permission` is een zelfstandige Aggregate Root voor een expliciete businessautorisatie. De identiteit en code zijn onveranderlijk; de naam kan via expliciet domeingedrag wijzigen. De optionele beschrijving bevat maximaal 1000 Unicode-tekens en gebruikt `null` wanneer zij ontbreekt. Activeren en deactiveren zijn idempotent.
+
+Permissioncodes bevatten 2 tot en met 64 ASCII-tekens uit letters, cijfers, punten en underscores en worden naar uppercase genormaliseerd. Koppelingen met Role of AdministrationMembership en technische autorisatiehandhaving vallen buiten deze story.
