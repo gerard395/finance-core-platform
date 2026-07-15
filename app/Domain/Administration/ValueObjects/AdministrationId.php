@@ -4,25 +4,31 @@ declare(strict_types=1);
 
 namespace App\Domain\Administration\ValueObjects;
 
-use InvalidArgumentException;
+use App\Domain\Shared\Identity\Uuid;
 
 final readonly class AdministrationId
 {
     public function __construct(
-        public string $value,
-    ) {
-        if (trim($value) === '') {
-            throw new InvalidArgumentException('Administration ID cannot be empty.');
-        }
+        private Uuid $uuid,
+    ) {}
+
+    public function uuid(): Uuid
+    {
+        return $this->uuid;
     }
 
     public function equals(self $other): bool
     {
-        return $this->value === $other->value;
+        return $this->uuid->equals($other->uuid);
+    }
+
+    public function toString(): string
+    {
+        return $this->uuid->toString();
     }
 
     public function __toString(): string
     {
-        return $this->value;
+        return $this->toString();
     }
 }
