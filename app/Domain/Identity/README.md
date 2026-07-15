@@ -22,3 +22,9 @@ Het Identity Domain beheert de domeinidentiteit en levenscyclus van gebruikers b
 ## Afhankelijkheden en grenzen
 
 Het Domain gebruikt uitsluitend native PHP en de gedeelde `Uuid`. Laravel, Illuminate, Eloquent, databaseopslag, repositories en infrastructuur vallen buiten deze laag. Uniekheid van e-mailadressen vereist externe gegevens en wordt daarom niet door `EmailAddress` gecontroleerd.
+
+## AdministrationMembership
+
+`AdministrationMembership` modelleert de relatie tussen een `User` en een `Administration` zonder authenticatie, rollen of rechten toe te voegen. De relatie heeft een onveranderlijke identiteit, UserId, AdministrationId en geldigheidsperiode. Alleen de actieve status kan via expliciet, idempotent domeingedrag wijzigen.
+
+Een membership is op een moment geldig wanneer het actief is en het moment binnen de inclusieve periode van `validFrom` tot en met `validUntil` valt. De einddatum mag niet voor de begindatum liggen. Een eigen DateRange value object volgt eventueel in een latere story.
