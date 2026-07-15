@@ -47,12 +47,71 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 
 | Naam | Doel | Korte beschrijving |
 | --- | --- | --- |
-| Quote | Een commercieel voorstel vastleggen | Een aanbod van goederen of diensten onder bepaalde voorwaarden. |
-| SalesOrder | Een geaccepteerde verkoopopdracht vastleggen | Een opdracht voor te leveren goederen of diensten. |
+| Quotation | Een commercieel voorstel vastleggen | Een aanbod van goederen of diensten onder bepaalde voorwaarden. |
+| Order | Een geaccepteerde verkoopopdracht vastleggen | Een opdracht voor te leveren goederen of diensten. |
 | SalesInvoice | Een verkoopvordering formaliseren | Een financieel document waarmee een geleverd bedrag in rekening wordt gebracht. |
 | PurchaseInvoice | Een inkoopverplichting vastleggen | Een ontvangen financieel document voor geleverde goederen of diensten. |
 | CreditNote | Een eerder gefactureerd bedrag corrigeren | Een commercieel document dat een factuurbedrag geheel of gedeeltelijk vermindert. |
 | Payment | De voldoening van een financieel bedrag representeren | Een verrichte of ontvangen betaling met een eigen status en bedrag. |
+
+### Sales Capability
+
+#### Aggregates en child entities
+
+| Aggregate Root | Child Entity | Verantwoordelijkheid |
+| --- | --- | --- |
+| Quotation | QuotationLine | Een commercieel aanbod en de aangeboden regels beheren. |
+| Order | OrderLine | Een directe of uit een offerte ontstane verkoopopdracht beheren. |
+| SalesInvoice | SalesInvoiceLine | Een verkoopfactuur en haar factureerbare regels beheren. |
+| SalesCreditInvoice | SalesCreditInvoiceLine | Een correctie op eerder gefactureerde verkoop beheren. |
+
+#### Workflows
+
+Een Quotation doorloopt een van de volgende paden:
+
+```text
+Draft → Sent → Accepted → OrderCreated
+Draft → Sent → Rejected
+```
+
+Een Order doorloopt:
+
+```text
+Draft → Confirmed → PartiallyInvoiced → FullyInvoiced
+```
+
+Een SalesInvoice doorloopt:
+
+```text
+Draft → Finalized → Posted → Paid
+```
+
+#### Businessregels
+
+- Iedere Quotation bevat minimaal één QuotationLine.
+- Een Order ontstaat uit een geaccepteerde Quotation of wordt direct aangemaakt.
+- Een SalesInvoice ontstaat uit een Order.
+- SalesInvoice en SalesCreditInvoice krijgen hun definitieve nummer uit NumberSequence.
+- Boekhoudkundige boekingen volgen later via de Posting Engine.
+
+#### Domain Events
+
+- `QuotationCreated`
+- `QuotationSent`
+- `QuotationAccepted`
+- `QuotationRejected`
+- `OrderCreated`
+- `OrderConfirmed`
+- `SalesInvoiceCreated`
+- `SalesInvoiceFinalized`
+- `SalesInvoicePosted`
+- `SalesInvoicePaid`
+
+#### Architectuurregels
+
+- Aggregates wijzigen elkaars status nooit rechtstreeks.
+- Statusovergangen verlopen uitsluitend via domeinmethoden van het betreffende aggregate.
+- Orchestratie tussen aggregates vindt later plaats in de Application-laag.
 
 ## 4. Accounting
 

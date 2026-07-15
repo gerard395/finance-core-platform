@@ -45,7 +45,13 @@ Deze capability omvat gebruikers, administratielidmaatschappen, rollen en explic
 
 ## Capability 04 – Sales
 
-**Status:** Planned
+**Status:** In Progress
+
+### Capability Sales
+
+Sales beheert het commerciële traject van offerte tot verkoopfactuur. De capability omvat de Aggregate Roots `Quotation`, `Order`, `SalesInvoice` en `SalesCreditInvoice`, elk met eigen regels, statusovergangen en child lines.
+
+De eerste ontwerpstory is S4-000 – Sales Capability Design. Implementatie volgt in kleine stories per aggregate en workflowstap.
 
 ## Capability 05 – Purchasing
 
