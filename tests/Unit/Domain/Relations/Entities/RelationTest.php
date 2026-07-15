@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Relations\Entities;
 
 use App\Domain\Relations\Entities\Address;
+use App\Domain\Relations\Entities\BankAccount;
 use App\Domain\Relations\Entities\Contact;
 use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\Enums\BankAccountStatus;
 use App\Domain\Relations\Enums\ContactStatus;
+use App\Domain\Relations\ValueObjects\AccountName;
 use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\BankAccountId;
 use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\ContactName;
 use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\Iban;
 use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
@@ -188,6 +193,35 @@ final class RelationTest extends TestCase
         self::assertSame($id, $relation->id());
     }
 
+    public function test_it_manages_bank_accounts_and_unknown_removal_is_idempotent(): void
+    {
+        $relation = $this->createRelation();
+        $account = $this->createBankAccount();
+
+        self::assertSame([], $relation->bankAccounts());
+        $relation->addBankAccount($account);
+        self::assertTrue($relation->hasBankAccount($account->id()));
+        self::assertSame($account, $relation->bankAccount($account->id()));
+
+        $relation->removeBankAccount($account->id());
+        $relation->removeBankAccount($account->id());
+        self::assertFalse($relation->hasBankAccount($account->id()));
+    }
+
+    public function test_duplicate_bank_account_identity_is_rejected_without_replacement(): void
+    {
+        $relation = $this->createRelation();
+        $account = $this->createBankAccount();
+        $relation->addBankAccount($account);
+
+        try {
+            $relation->addBankAccount($this->createBankAccount($account->id()->toString()));
+            self::fail('Expected duplicate BankAccountId to be rejected.');
+        } catch (DomainException) {
+            self::assertSame($account, $relation->bankAccount($account->id()));
+        }
+    }
+
     private function createRelation(): Relation
     {
         return new Relation(
@@ -222,6 +256,17 @@ final class RelationTest extends TestCase
             new City('Amsterdam'),
             new CountryCode('NL'),
             true,
+        );
+    }
+
+    private function createBankAccount(string $uuid = '550e8400-e29b-41d4-a716-446655440030'): BankAccount
+    {
+        return new BankAccount(
+            new BankAccountId(new Uuid($uuid)),
+            new Iban('NL91ABNA0417164300'),
+            null,
+            new AccountName('Main Account'),
+            BankAccountStatus::Active,
         );
     }
 }

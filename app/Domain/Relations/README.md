@@ -32,6 +32,12 @@ Relation-gegevens en Contacts worden niet in Supplier gedupliceerd. Betalingscon
 
 Address ondersteunt bezoek-, post-, factuur- en afleveradressen. Provincie, GPS, BAG, geocoding en inhoudelijke internationale adresvalidatie vallen buiten deze story.
 
+## BankAccount
+
+`BankAccount` is een child-entity van Relation. Relation bewaakt ownership, unieke BankAccountId-waarden en alle toevoeg- en verwijderhandelingen. De identiteit en IBAN zijn onveranderlijk; de rekeningnaam en actieve status wijzigen via expliciet domeingedrag.
+
+IBAN en BIC krijgen uitsluitend structurele validatie. Saldo, transacties, PSD2, CAMT, SEPA, bankvalidatie en betalingsverwerking vallen buiten deze story.
+
 ## Architectuurgrenzen
 
 Het Domain gebruikt uitsluitend native PHP en gedeelde domein-value-objects. Laravel, databaseopslag, repositories en infrastructuur vallen buiten deze laag. Uniekheid van CustomerNumber en van de Customer-classificatie per Relation vereist externe gegevens en wordt later buiten de entity bewaakt.

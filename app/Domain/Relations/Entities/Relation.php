@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Relations\Entities;
 
 use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\BankAccountId;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
@@ -18,6 +19,9 @@ final class Relation
 
     /** @var array<string, Address> */
     private array $addresses = [];
+
+    /** @var array<string, BankAccount> */
+    private array $bankAccounts = [];
 
     public function __construct(
         private readonly RelationId $id,
@@ -108,6 +112,38 @@ final class Relation
     public function removeAddress(AddressId $addressId): void
     {
         unset($this->addresses[$addressId->toString()]);
+    }
+
+    /** @return list<BankAccount> */
+    public function bankAccounts(): array
+    {
+        return array_values($this->bankAccounts);
+    }
+
+    public function hasBankAccount(BankAccountId $bankAccountId): bool
+    {
+        return isset($this->bankAccounts[$bankAccountId->toString()]);
+    }
+
+    public function bankAccount(BankAccountId $bankAccountId): ?BankAccount
+    {
+        return $this->bankAccounts[$bankAccountId->toString()] ?? null;
+    }
+
+    public function addBankAccount(BankAccount $bankAccount): void
+    {
+        $key = $bankAccount->id()->toString();
+
+        if (isset($this->bankAccounts[$key])) {
+            throw new DomainException('Relation already contains a BankAccount with this identity.');
+        }
+
+        $this->bankAccounts[$key] = $bankAccount;
+    }
+
+    public function removeBankAccount(BankAccountId $bankAccountId): void
+    {
+        unset($this->bankAccounts[$bankAccountId->toString()]);
     }
 
     public function rename(DisplayName $displayName): void
