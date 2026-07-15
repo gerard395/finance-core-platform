@@ -9,6 +9,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
 use App\Domain\Shared\Finance\Currency;
+use DomainException;
 use InvalidArgumentException;
 
 final class Administration
@@ -21,6 +22,8 @@ final class Administration
 
     private AdministrationStatus $status;
 
+    private ?Organisation $organisation;
+
     public function __construct(
         private readonly AdministrationId $id,
         private readonly AdministrationCode $code,
@@ -28,6 +31,7 @@ final class Administration
         ?string $description,
         Currency $baseCurrency,
         AdministrationStatus $status,
+        ?Organisation $organisation = null,
     ) {
         self::assertValidDescription($description);
 
@@ -35,6 +39,7 @@ final class Administration
         $this->description = $description;
         $this->baseCurrency = $baseCurrency;
         $this->status = $status;
+        $this->organisation = $organisation;
     }
 
     public function id(): AdministrationId
@@ -72,6 +77,16 @@ final class Administration
         return $this->status === AdministrationStatus::Active;
     }
 
+    public function organisation(): ?Organisation
+    {
+        return $this->organisation;
+    }
+
+    public function hasOrganisation(): bool
+    {
+        return $this->organisation !== null;
+    }
+
     public function rename(AdministrationName $name): void
     {
         $this->name = $name;
@@ -97,6 +112,20 @@ final class Administration
     public function deactivate(): void
     {
         $this->status = AdministrationStatus::Inactive;
+    }
+
+    public function attachOrganisation(Organisation $organisation): void
+    {
+        if ($this->organisation !== null) {
+            throw new DomainException('Administration already has an Organisation.');
+        }
+
+        $this->organisation = $organisation;
+    }
+
+    public function removeOrganisation(): void
+    {
+        $this->organisation = null;
     }
 
     private static function assertValidDescription(?string $description): void
