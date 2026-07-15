@@ -28,11 +28,17 @@
 
 De basisvaluta mag in deze story worden gewijzigd. Beperkingen na het ontstaan van boekhoudkundige transacties worden later buiten dit aggregate afgedwongen.
 
+## Organisation binnen het Aggregate
+
+Een `Organisation` is een optionele child entity binnen Administration. De Aggregate Root bewaakt technisch de 0..1-relatie: per Administration kan maximaal één Organisation gekoppeld zijn. Organisation is geen Aggregate Root en wordt uitsluitend via de Administration-grens benaderd.
+
+Een Organisation kan bij constructie worden meegegeven of later expliciet worden gekoppeld. Een bestaande koppeling wordt nooit stilzwijgend vervangen; iedere tweede koppelpoging wordt geweigerd. Verwijderen zonder aanwezige Organisation is idempotent.
+
+Organisation bevat juridische en contactgegevens. Adres, KvK-nummer, btw-nummer, IBAN en BIC zijn in deze story nog eenvoudige optionele strings. Afzonderlijke value objects en inhoudelijke validatie volgen in latere stories.
+
 ## Buiten het Aggregate
 
-Organisation, klanten, leveranciers, facturen, boekingen, opslag, repositories, controllers, API's en frameworkcode vallen buiten dit aggregate en buiten deze story.
-
-Een Organisation is een optioneel toekomstig concept en maakt nog geen deel uit van S1-006.
+Klanten, leveranciers, facturen, boekingen, opslag, repositories, controllers, API's en frameworkcode vallen buiten dit aggregate.
 
 ## Relatie met gedeelde Value Objects
 
