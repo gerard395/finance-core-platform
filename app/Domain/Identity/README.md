@@ -40,3 +40,9 @@ Permissions, gebruikerskoppelingen en wijzigingen aan AdministrationMembership v
 `Permission` is een zelfstandige Aggregate Root voor een expliciete businessautorisatie. De identiteit en code zijn onveranderlijk; de naam kan via expliciet domeingedrag wijzigen. De optionele beschrijving bevat maximaal 1000 Unicode-tekens en gebruikt `null` wanneer zij ontbreekt. Activeren en deactiveren zijn idempotent.
 
 Permissioncodes bevatten 2 tot en met 64 ASCII-tekens uit letters, cijfers, punten en underscores en worden naar uppercase genormaliseerd. Koppelingen met Role of AdministrationMembership en technische autorisatiehandhaving vallen buiten deze story.
+
+## RolePermission
+
+`RolePermission` modelleert de expliciete toekenning van één Permission aan één Role. De eigen identiteit, RoleId en PermissionId zijn onveranderlijk. Alleen de actieve status kan via idempotent domeingedrag wijzigen.
+
+Role en Permission worden door deze relatie niet aangepast. Gebruikers-, Membership- en infrastructuurkoppelingen vallen buiten deze story. Uniekheid van de combinatie RoleId en PermissionId vereist externe gegevens en wordt later buiten de entity afgedwongen.
