@@ -28,3 +28,9 @@ Het Domain gebruikt uitsluitend native PHP en de gedeelde `Uuid`. Laravel, Illum
 `AdministrationMembership` modelleert de relatie tussen een `User` en een `Administration` zonder authenticatie, rollen of rechten toe te voegen. De relatie heeft een onveranderlijke identiteit, UserId, AdministrationId en geldigheidsperiode. Alleen de actieve status kan via expliciet, idempotent domeingedrag wijzigen.
 
 Een membership is op een moment geldig wanneer het actief is en het moment binnen de inclusieve periode van `validFrom` tot en met `validUntil` valt. De einddatum mag niet voor de begindatum liggen. Een eigen DateRange value object volgt eventueel in een latere story.
+
+## Role
+
+`Role` is een zelfstandige Aggregate Root voor een benoemde rol binnen het Identity Domain. De identiteit en code zijn onveranderlijk; de naam kan via expliciet domeingedrag wijzigen. De optionele beschrijving bevat maximaal 1000 Unicode-tekens en gebruikt `null` wanneer zij ontbreekt. Activeren en deactiveren zijn idempotent.
+
+Permissions, gebruikerskoppelingen en wijzigingen aan AdministrationMembership vallen buiten deze story en worden later afzonderlijk gemodelleerd.
