@@ -8,6 +8,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
+use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
 use App\Domain\Shared\Finance\Currency;
 use DateTimeImmutable;
@@ -16,6 +17,9 @@ use InvalidArgumentException;
 
 final class Quotation
 {
+    /** @var array<string, QuotationLine> */
+    private array $lines = [];
+
     public function __construct(
         private readonly QuotationId $id,
         private readonly QuotationNumber $number,
@@ -71,8 +75,46 @@ final class Quotation
         return $this->expiryDate;
     }
 
+    /** @return list<QuotationLine> */
+    public function lines(): array
+    {
+        return array_values($this->lines);
+    }
+
+    public function hasLine(QuotationLineId $lineId): bool
+    {
+        return isset($this->lines[$lineId->toString()]);
+    }
+
+    public function line(QuotationLineId $lineId): ?QuotationLine
+    {
+        return $this->lines[$lineId->toString()] ?? null;
+    }
+
+    public function addLine(QuotationLine $line): void
+    {
+        $this->assertDraftForLineChanges();
+        $key = $line->id()->toString();
+
+        if (isset($this->lines[$key])) {
+            throw new DomainException('Quotation already contains a line with this identity.');
+        }
+
+        $this->lines[$key] = $line;
+    }
+
+    public function removeLine(QuotationLineId $lineId): void
+    {
+        $this->assertDraftForLineChanges();
+        unset($this->lines[$lineId->toString()]);
+    }
+
     public function send(): void
     {
+        if ($this->status === QuotationStatus::Draft && $this->lines === []) {
+            throw new DomainException('Quotation must contain at least one line before it can be sent.');
+        }
+
         $this->transition(QuotationStatus::Draft, QuotationStatus::Sent);
     }
 
@@ -110,5 +152,12 @@ final class Quotation
         }
 
         $this->status = $to;
+    }
+
+    private function assertDraftForLineChanges(): void
+    {
+        if ($this->status !== QuotationStatus::Draft) {
+            throw new DomainException('Quotation lines can only be changed while the quotation is in draft.');
+        }
     }
 }
