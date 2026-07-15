@@ -26,6 +26,12 @@ Customer en toekomstige Supplier-classificaties beheren geen eigen Contacts en d
 
 Relation-gegevens en Contacts worden niet in Supplier gedupliceerd. Betalingscondities, IBAN, btw-nummer, KvK-nummer, adres, contactpersoon en bankrekening vallen buiten deze story. Uniekheid van SupplierNumber en van de Supplier-classificatie per Relation vereist externe gegevens en wordt later buiten de entity bewaakt.
 
+## Address
+
+`Address` is een child-entity van Relation en geen Aggregate Root. Relation bewaakt ownership, unieke AddressId-waarden en alle toevoeg- en verwijderhandelingen. Een bestaande Address wordt niet stilzwijgend vervangen; verwijderen van een onbekende AddressId is idempotent.
+
+Address ondersteunt bezoek-, post-, factuur- en afleveradressen. Provincie, GPS, BAG, geocoding en inhoudelijke internationale adresvalidatie vallen buiten deze story.
+
 ## Architectuurgrenzen
 
 Het Domain gebruikt uitsluitend native PHP en gedeelde domein-value-objects. Laravel, databaseopslag, repositories en infrastructuur vallen buiten deze laag. Uniekheid van CustomerNumber en van de Customer-classificatie per Relation vereist externe gegevens en wordt later buiten de entity bewaakt.

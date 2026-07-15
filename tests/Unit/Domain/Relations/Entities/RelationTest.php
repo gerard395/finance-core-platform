@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Relations\Entities;
 
+use App\Domain\Relations\Entities\Address;
 use App\Domain\Relations\Entities\Contact;
 use App\Domain\Relations\Entities\Relation;
+use App\Domain\Relations\Enums\AddressType;
 use App\Domain\Relations\Enums\ContactStatus;
+use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\ContactName;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Identity\Uuid;
@@ -142,6 +149,45 @@ final class RelationTest extends TestCase
         self::assertSame($id, $relation->id());
     }
 
+    public function test_it_starts_without_addresses_and_can_add_and_remove_one(): void
+    {
+        $relation = $this->createRelation();
+        $address = $this->createAddress();
+
+        self::assertSame([], $relation->addresses());
+        $relation->addAddress($address);
+        self::assertTrue($relation->hasAddress($address->id()));
+        self::assertSame($address, $relation->address($address->id()));
+
+        $relation->removeAddress($address->id());
+        $relation->removeAddress($address->id());
+        self::assertFalse($relation->hasAddress($address->id()));
+    }
+
+    public function test_duplicate_address_identity_is_rejected_without_replacement(): void
+    {
+        $relation = $this->createRelation();
+        $address = $this->createAddress();
+        $duplicate = $this->createAddress($address->id()->toString());
+        $relation->addAddress($address);
+
+        try {
+            $relation->addAddress($duplicate);
+            self::fail('Expected duplicate AddressId to be rejected.');
+        } catch (DomainException) {
+            self::assertSame($address, $relation->address($address->id()));
+        }
+    }
+
+    public function test_address_ownership_does_not_change_relation_identity(): void
+    {
+        $relation = $this->createRelation();
+        $id = $relation->id();
+        $relation->addAddress($this->createAddress());
+
+        self::assertSame($id, $relation->id());
+    }
+
     private function createRelation(): Relation
     {
         return new Relation(
@@ -162,6 +208,20 @@ final class RelationTest extends TestCase
             null,
             null,
             ContactStatus::Active,
+        );
+    }
+
+    private function createAddress(string $uuid = '550e8400-e29b-41d4-a716-446655440020'): Address
+    {
+        return new Address(
+            new AddressId(new Uuid($uuid)),
+            AddressType::Visiting,
+            new AddressLine('Finance Street 1'),
+            null,
+            new PostalCode('1234 AB'),
+            new City('Amsterdam'),
+            new CountryCode('NL'),
+            true,
         );
     }
 }
