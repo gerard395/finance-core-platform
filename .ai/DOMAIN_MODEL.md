@@ -70,9 +70,11 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 Een Quotation doorloopt een van de volgende paden:
 
 ```text
-Draft → Sent → Accepted → OrderCreated
+Draft → Sent → Accepted
 Draft → Sent → Rejected
 ```
+
+Accepted is een eindstatus van Quotation. De Application-laag kan op basis van een geaccepteerde Quotation een Order aanmaken. `OrderCreated` is daarbij een event van het ontstane Order, geen QuotationStatus of Quotation-overgang.
 
 Een Order doorloopt:
 
