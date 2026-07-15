@@ -46,3 +46,9 @@ Permissioncodes bevatten 2 tot en met 64 ASCII-tekens uit letters, cijfers, punt
 `RolePermission` modelleert de expliciete toekenning van één Permission aan één Role. De eigen identiteit, RoleId en PermissionId zijn onveranderlijk. Alleen de actieve status kan via idempotent domeingedrag wijzigen.
 
 Role en Permission worden door deze relatie niet aangepast. Gebruikers-, Membership- en infrastructuurkoppelingen vallen buiten deze story. Uniekheid van de combinatie RoleId en PermissionId vereist externe gegevens en wordt later buiten de entity afgedwongen.
+
+## MembershipRole
+
+`MembershipRole` modelleert de expliciete toekenning van één Role aan één AdministrationMembership. De eigen identiteit, AdministrationMembershipId en RoleId zijn onveranderlijk. Alleen de actieve status kan via idempotent domeingedrag wijzigen.
+
+User, AdministrationMembership, Role en Permission worden door deze relatie niet aangepast. Authenticatie en infrastructuur vallen buiten deze story. Uniekheid van de combinatie AdministrationMembershipId en RoleId vereist externe gegevens en wordt later buiten de entity afgedwongen.
