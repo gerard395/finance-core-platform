@@ -20,6 +20,12 @@ Relation-gegevens zoals naam, adres en contactpersonen worden niet in Customer g
 
 Customer en toekomstige Supplier-classificaties beheren geen eigen Contacts en dupliceren geen contactgegevens. Beleid voor dubbele e-mailadressen en telefoonnummers volgt in een latere story.
 
+## Supplier
+
+`Supplier` classificeert een bestaande Relation als leverancier. De classificatie bevat uitsluitend een eigen onveranderlijke identiteit, de onveranderlijke RelationId, een onveranderlijk SupplierNumber en een idempotent wijzigbare actieve status.
+
+Relation-gegevens en Contacts worden niet in Supplier gedupliceerd. Betalingscondities, IBAN, btw-nummer, KvK-nummer, adres, contactpersoon en bankrekening vallen buiten deze story. Uniekheid van SupplierNumber en van de Supplier-classificatie per Relation vereist externe gegevens en wordt later buiten de entity bewaakt.
+
 ## Architectuurgrenzen
 
 Het Domain gebruikt uitsluitend native PHP en gedeelde domein-value-objects. Laravel, databaseopslag, repositories en infrastructuur vallen buiten deze laag. Uniekheid van CustomerNumber en van de Customer-classificatie per Relation vereist externe gegevens en wordt later buiten de entity bewaakt.
