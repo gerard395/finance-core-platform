@@ -7,11 +7,16 @@ namespace Tests\Unit\Domain\Sales\Entities;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\SalesCreditInvoice;
+use App\Domain\Sales\Entities\SalesCreditInvoiceLine;
 use App\Domain\Sales\Enums\SalesCreditInvoiceStatus;
+use App\Domain\Sales\ValueObjects\LineDescription;
+use App\Domain\Sales\ValueObjects\Quantity;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceId;
+use App\Domain\Sales\ValueObjects\SalesCreditInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceNumber;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
@@ -40,6 +45,65 @@ final class SalesCreditInvoiceTest extends TestCase
         $creditInvoice = $this->createCreditInvoice(sourceInvoiceId: $sourceInvoiceId);
 
         self::assertSame($sourceInvoiceId, $creditInvoice->sourceInvoiceId());
+    }
+
+    public function test_lines_are_owned_and_managed_by_the_aggregate(): void
+    {
+        $creditInvoice = $this->createCreditInvoice(withLine: false);
+        $first = $this->createLine('550e8400-e29b-41d4-a716-446655440010');
+        $second = $this->createLine('550e8400-e29b-41d4-a716-446655440011');
+
+        $creditInvoice->addLine($first);
+        $creditInvoice->addLine($second);
+
+        self::assertSame([$first, $second], $creditInvoice->lines());
+        self::assertTrue($creditInvoice->hasLine($first->id()));
+        self::assertSame($first, $creditInvoice->line($first->id()));
+
+        $creditInvoice->removeLine($first->id());
+        $creditInvoice->removeLine($first->id());
+
+        self::assertFalse($creditInvoice->hasLine($first->id()));
+        self::assertNull($creditInvoice->line($first->id()));
+    }
+
+    public function test_duplicate_line_identity_is_rejected(): void
+    {
+        $creditInvoice = $this->createCreditInvoice();
+
+        $this->expectException(DomainException::class);
+        $creditInvoice->addLine($this->createLine());
+    }
+
+    public function test_credit_invoice_without_lines_cannot_be_finalized(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->createCreditInvoice(withLine: false)->finalize();
+    }
+
+    public function test_credit_invoice_with_a_line_can_be_finalized(): void
+    {
+        $creditInvoice = $this->createCreditInvoice();
+
+        $creditInvoice->finalize();
+
+        self::assertSame(SalesCreditInvoiceStatus::Finalized, $creditInvoice->status());
+    }
+
+    public function test_lines_cannot_be_changed_after_finalization(): void
+    {
+        $creditInvoice = $this->createCreditInvoice();
+        $creditInvoice->finalize();
+
+        try {
+            $creditInvoice->addLine($this->createLine('550e8400-e29b-41d4-a716-446655440099'));
+            self::fail('Expected adding a line after finalization to be rejected.');
+        } catch (DomainException) {
+            self::assertCount(1, $creditInvoice->lines());
+        }
+
+        $this->expectException(DomainException::class);
+        $creditInvoice->removeLine($creditInvoice->lines()[0]->id());
     }
 
     /** @param list<string> $transitions */
@@ -136,8 +200,9 @@ final class SalesCreditInvoiceTest extends TestCase
     private function createCreditInvoice(
         ?SalesInvoiceId $sourceInvoiceId = null,
         SalesCreditInvoiceStatus $status = SalesCreditInvoiceStatus::Draft,
+        bool $withLine = true,
     ): SalesCreditInvoice {
-        return new SalesCreditInvoice(
+        $creditInvoice = new SalesCreditInvoice(
             new SalesCreditInvoiceId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new SalesCreditInvoiceNumber('crd-001'),
             new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-446655440001')),
@@ -146,6 +211,22 @@ final class SalesCreditInvoiceTest extends TestCase
             new DateTimeImmutable('2026-07-15'),
             $sourceInvoiceId,
             $status,
+        );
+
+        if ($withLine && $status === SalesCreditInvoiceStatus::Draft) {
+            $creditInvoice->addLine($this->createLine());
+        }
+
+        return $creditInvoice;
+    }
+
+    private function createLine(string $uuid = '550e8400-e29b-41d4-a716-446655440010'): SalesCreditInvoiceLine
+    {
+        return new SalesCreditInvoiceLine(
+            new SalesCreditInvoiceLineId(new Uuid($uuid)),
+            new LineDescription('Product delivery'),
+            new Quantity('2'),
+            new Money('12.50', new Currency('EUR')),
         );
     }
 }
