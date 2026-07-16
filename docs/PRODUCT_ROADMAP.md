@@ -91,7 +91,17 @@ Iedere TaxCode heeft precies één actief TaxRate. Fiscal maakt geen JournalEntr
 
 ## Capability 08 – Banking
 
-**Status:** Planned
+**Status:** Completed for first domain iteration
+
+### Capability Banking
+
+Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `BankTransaction` is de Aggregate Root en primaire financiële gebeurtenis; het aggregate beheert nul, één of meerdere `Payment` child entities. Iedere Payment verwijst naar precies één `OpenItem` uit Accounting.
+
+De frameworkonafhankelijke domain service `Matching` telt bestaande Payment-allocaties exact op met `Money` en vergelijkt die som met het absolute BankTransaction-bedrag. Alleen een Imported transactie met minimaal één volledig passende allocatie wordt Matched. Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
+
+De eerste Banking-domeiniteratie is voltooid in B1-000 tot en met B1-004. Banking is niet afhankelijk van Sales of Purchasing en mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations. Iedere BankTransaction hoort bij precies één Administration en legt zowel de immutable AdministrationId als de immutable BankAccountId vast. Consistentie tussen beide identifiers wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn.
+
+OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluitend `PostingEngine` maakt JournalEntries. UI, bankimport, reconciliation, PSD2, Laravel, databases en infrastructuur vallen buiten de Banking Foundation.
 
 ## Capability 09 – Documents
 

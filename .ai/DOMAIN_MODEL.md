@@ -309,7 +309,46 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | BankAccount | Een financiële rekening identificeren | Een rekening voor het ontvangen, bewaren en uitbetalen van geld. |
 | BankStatement | Een aangeleverd rekeningoverzicht representeren | Een overzicht van bankmutaties over een bepaald tijdvak. |
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
-| PaymentAllocation | Een betaling administratief verdelen | De vastlegging van de bestemming van een betaald of ontvangen bedrag. |
+| Payment | Een bankmutatie aan een OpenItem alloceren | Een positief Money-bedrag dat als child entity binnen één BankTransaction naar precies één OpenItem verwijst. |
+
+### Banking Capability
+
+#### Aggregate en child entity
+
+| Aggregate Root | Child Entity | Verantwoordelijkheid |
+| --- | --- | --- |
+| BankTransaction | Payment | Een bankmutatie als primaire financiële gebeurtenis vastleggen en haar betalingen beheren. |
+
+Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een child entity en wordt uitsluitend via de BankTransaction Aggregate Root beheerd.
+
+#### Domain Service
+
+`Matching` koppelt BankTransactions aan `OpenItem` aggregates uit Accounting. De service ondersteunt de domeinbeslissing welke openstaande post door een bankmutatie wordt voldaan, maar maakt geen JournalEntries en muteert geen OpenItems rechtstreeks.
+
+#### Businessregels
+
+- BankTransaction is binnen Banking de primaire financiële gebeurtenis.
+- Een BankTransaction kan nul, één of meerdere Payments bevatten.
+- Iedere Payment behoort altijd tot precies één OpenItem.
+- Payment-bedragen zijn strikt positief, gebruiken dezelfde Currency als de BankTransaction en zijn alleen wijzigbaar zolang de transactie Imported is.
+- De BankTransaction-context is immutable; alleen status en de eigen Payment-collectie wijzigen via domeingedrag.
+- Matching vereist minimaal één Payment en vergelijkt de exacte Money-som met het absolute BankTransaction-bedrag.
+- Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
+- Matching maakt geen Payments, JournalEntries of PostingRequests.
+- Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
+- Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
+
+#### Architectuurregels
+
+- Banking is onafhankelijk van Sales en Purchasing.
+- Banking mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations.
+- Iedere BankTransaction hoort bij precies één Administration; AdministrationId en BankAccountId worden beide immutable in het aggregate vastgelegd.
+- Consistentie tussen BankAccountId en AdministrationId wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn.
+- OpenItem blijft een Accounting Aggregate Root; Banking neemt geen ownership over.
+- Banking maakt geen JournalEntries en bevat geen `PostingEngine`-implementatie.
+- Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+**Capabilitystatus:** Banking Foundation first domain iteration completed.
 
 ## 7. Documents
 
