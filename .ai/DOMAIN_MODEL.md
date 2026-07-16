@@ -141,10 +141,67 @@ Order kan vanuit Draft of Confirmed worden geannuleerd. SalesInvoice kan vanuit 
 | LedgerAccount | Financiële waarden classificeren | Een grootboekrekening waarop boekhoudkundige mutaties worden geclassificeerd. |
 | Journal | Boekingen naar aard groeperen | Een dagboek voor een herkenbare categorie financiële gebeurtenissen. |
 | JournalEntry | Een boekhoudkundige gebeurtenis vastleggen | Een gebalanceerde boeking met een datum, omschrijving en status. |
-| JournalLine | Eén boekingsregel representeren | Een debet- of creditbedrag binnen een journaalpost. |
+| JournalEntryLine | Eén boekingsregel representeren | Een debet- of creditbedrag binnen een journaalpost. |
 | FiscalYear | Een financieel verslagjaar afbakenen | De periode waarover de financiële administratie formeel rapporteert. |
 | AccountingPeriod | Een boekingsperiode beheersen | Een afgebakend tijdvak met een eigen open- of geslotenstatus. |
 | OpenItem | Een nog te vereffenen bedrag bewaken | Een financieel bedrag dat nog geheel of gedeeltelijk openstaat. |
+
+### Accounting Capability
+
+#### Aggregates en child entities
+
+| Aggregate Root | Child Entity | Verantwoordelijkheid |
+| --- | --- | --- |
+| LedgerAccount | — | De classificatie van boekingsregels binnen het grootboek beheren. |
+| Journal | — | Journaalposten naar de aard van hun financiële gebeurtenis groeperen. |
+| JournalEntry | JournalEntryLine | Een gebalanceerde financiële mutatie en haar debet- en creditregels beheren. |
+| OpenItem | — | Een uit een verkoop- of inkoopfactuur ontstaan openstaand bedrag en de afsluiting daarvan beheren. |
+
+#### Shared Value Objects
+
+- `Money` representeert een bedrag in een valuta.
+- `Currency` representeert de valuta van een bedrag.
+- Accounting gebruikt deze gedeelde value objects en definieert er geen capabilityspecifieke varianten van.
+
+#### Domain Service
+
+`PostingEngine` verwerkt alle financiële mutaties. De service valideert een aangeleverde postingopdracht, maakt als enige component een `JournalEntry` aan en post deze uitsluitend wanneer de journaalpost in balans is.
+
+#### Application Services
+
+- `PostingRequest` beschrijft de door een factuur, betaling of banktransactie aangeleverde opdracht aan de `PostingEngine`.
+- `PostingResult` beschrijft de uitkomst van de verwerking door de `PostingEngine`.
+
+`PostingRequest` en `PostingResult` zijn in deze ontwerpstory uitsluitend gedocumenteerd en worden niet geïmplementeerd.
+
+#### Businessregels
+
+- Iedere JournalEntry bevat minimaal twee JournalEntryLines.
+- Het totale debetbedrag van een JournalEntry is gelijk aan het totale creditbedrag.
+- Een JournalEntry kan alleen worden gepost wanneer deze in balans is.
+- Geposte JournalEntries zijn onveranderlijk.
+- Correcties op geposte JournalEntries gebeuren via tegenboekingen, nooit door de oorspronkelijke boeking te wijzigen.
+- OpenItems ontstaan uit verkoop- en inkoopfacturen.
+- Betalingen sluiten OpenItems af.
+- Grootboeksaldi worden berekend uit geposte JournalEntries en niet afzonderlijk opgeslagen.
+
+#### Domain Events
+
+- `JournalEntryCreated`
+- `JournalEntryValidated`
+- `JournalEntryPosted`
+- `OpenItemCreated`
+- `OpenItemClosed`
+
+#### Architectuurregels
+
+- Alle financiële mutaties verlopen via de `PostingEngine`.
+- Geen Aggregate maakt zelf JournalEntries.
+- Facturen, betalingen en banktransacties leveren `PostingRequest`-objecten aan.
+- De `PostingEngine` is de enige component die JournalEntries mag aanmaken.
+- Accounting bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
+
+**Capabilitystatus:** Designed; implementation starts with A5-001.
 
 ## 5. Tax
 

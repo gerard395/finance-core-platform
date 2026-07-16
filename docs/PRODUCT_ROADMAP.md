@@ -61,6 +61,14 @@ De eerste domeiniteratie is voltooid in S4-000 tot en met S4-010. Aggregate boun
 
 **Status:** Planned
 
+### Capability Accounting
+
+Accounting beheert grootboekrekeningen, dagboeken, journaalposten en openstaande posten. De capability omvat de Aggregate Roots `LedgerAccount`, `Journal`, `JournalEntry` en `OpenItem`, met `JournalEntryLine` als child entity van `JournalEntry`.
+
+Alle financiële mutaties verlopen via de `PostingEngine`. Facturen, betalingen en banktransacties leveren daarvoor een `PostingRequest` aan en ontvangen een `PostingResult`; deze application-servicecontracten worden in deze ontwerpstory uitsluitend gedocumenteerd. De `PostingEngine` is de enige component die `JournalEntry`-aggregates mag aanmaken.
+
+De eerste implementatiestories starten bij A5-001. Het Accounting-domein blijft frameworkonafhankelijk en krijgt geen Laravel-, database- of infrastructuurafhankelijkheden.
+
 ## Capability 07 – Tax
 
 **Status:** Planned
