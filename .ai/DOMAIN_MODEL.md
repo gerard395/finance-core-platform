@@ -251,7 +251,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - De `PostingEngine` is de enige component die JournalEntries mag aanmaken.
 - Accounting bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Designed; implementation starts with A5-001.
+**Capabilitystatus:** Completed for first domain iteration.
 
 ## 5. Fiscal
 
@@ -402,15 +402,25 @@ OpenItem Closed
 - `JournalId`, `PostingDate`, `JournalEntryReference`, `JournalEntryLineId` en `LedgerAccountId` dragen de boekingsopdracht.
 - `BankAccountId`, `BankTransactionReference` en `TransactionDescription` dragen de banktransactiecontext.
 
-#### Ontbrekende application-koppelingen
+#### Bewezen application-koppelingen
 
-- Er bestaat nog geen application-orchestratie die een SalesInvoice vertaalt naar een PostingRequest, inclusief keuze van JournalId, LedgerAccountIds en JournalEntryLineIds.
-- Er bestaat nog geen application-orchestratie die na een geposte JournalEntry het bijbehorende OpenItem construeert.
-- Er bestaat nog geen application-orchestratie die een BankTransaction met Payments voor bestaande OpenItemIds opbouwt.
-- MatchingResult sluit geen OpenItem; application-orchestratie moet de Payment-bedragen per OpenItem via `settle()` verwerken en bij openAmount nul `close()` aanroepen.
-- De financiële boeking van de BankTransaction vereist afzonderlijk een PostingRequest aan dezelfde PostingEngine; Matching vervangt deze boekingsroute niet.
+- `CreateSalesInvoicePostingRequest` vertaalt Finalized, Posted en Paid SalesInvoices naar een expliciete Accounting PostingRequest; Draft en Cancelled worden geweigerd.
+- `CreatePurchaseInvoicePostingRequest` doet hetzelfde voor PurchaseInvoice zonder een Purchasing→Accounting-dependency in Domain te introduceren.
+- `CreateBankTransactionPostingRequest` vertaalt uitsluitend een Matched BankTransaction met Payments naar een bankboeking; Imported en Posted worden geweigerd.
+- De Application-laag kiest JournalId, LedgerAccountIds, JournalEntryLineIds, PostingDate en JournalEntryReference en bevat daarmee de capability-overstijgende orchestration.
+- PostingValidation accepteert de gebalanceerde requests en uitsluitend PostingEngine maakt de geposte JournalEntries.
+- De end-to-endtest construeert na de factuurboeking een OpenItem uit expliciete factuur- en boekingscontext, koppelt een Payment via OpenItemId en past een succesvol MatchingResult toe via `settle()` en daarna `close()`.
+- Matching sluit geen OpenItem en maakt geen boeking; een BankTransaction gebruikt een afzonderlijke PostingRequest via dezelfde PostingEngine.
 
-Deze ontbrekende koppelingen zijn geen nieuwe domeinverantwoordelijkheden en wijzigen geen aggregategrenzen. Zij vormen de aanbevolen application-integratiescope voor I1-001.
+#### Acceptance en resterende grenzen
+
+- De succesketen en foutpaden voor ongeldige statussen, ongebalanceerde allocaties, te lage en te hoge settlements en voortijdig sluiten zijn met echte domeinobjecten bewezen.
+- Money-totalisatie en -vergelijking gebruiken exacte decimale strings zonder floats.
+- De drie PostingRequest-use-cases dupliceren beperkt orchestrationpatroon voor totalisatie, beschrijving en twee boekingsregels. Dit is zichtbare technische schuld, maar abstraheren vóór extra stabiele varianten zou de capabilitytaal verbergen.
+- De exclusiviteit van PostingEngine als JournalEntry-factory is in productiecode en architectuurregels aantoonbaar, maar nog niet technisch afgedwongen door modulevisibility.
+- Auditmetadata, tegenboekingsorchestration, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. Reporting kan veilig starten door een readmodel over geposte JournalEntries en OpenItems te ontwerpen zonder de bewezen write-side aggregategrenzen te wijzigen.
+
+**Milestonestatus M5:** Integrated Financial Flow accepted; Reporting kan starten zonder fundamentele architectuurwijziging.
 
 ## 7. Documents
 

@@ -69,7 +69,7 @@ De eerste Purchasing-domeiniteratie is voltooid in P1-000 tot en met P1-005. Fin
 
 ## Capability 06 – Accounting
 
-**Status:** Planned
+**Status:** Completed for first domain iteration
 
 ### Capability Accounting
 
@@ -77,7 +77,7 @@ Accounting beheert grootboekrekeningen, dagboeken, journaalposten en openstaande
 
 Alle financiële mutaties verlopen via de `PostingEngine`. Facturen, betalingen en banktransacties leveren daarvoor een `PostingRequest` aan en ontvangen een `PostingResult`. De `PostingEngine` is de enige component die `JournalEntry`-aggregates mag aanmaken.
 
-De eerste implementatiestories starten bij A5-001. Het Accounting-domein blijft frameworkonafhankelijk en krijgt geen Laravel-, database- of infrastructuurafhankelijkheden.
+De eerste Accounting-domeiniteratie is geïmplementeerd. Het Accounting-domein blijft frameworkonafhankelijk en bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
 
 ## Capability 07 – Fiscal
 
@@ -121,7 +121,7 @@ OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluit
 
 ## Milestone M5 – Integrated Financial Flow
 
-**Status:** Designed
+**Status:** Completed
 
 ### Epic I1 – Prove the System
 
@@ -145,7 +145,9 @@ OpenItem settle() → close()
 
 Sales blijft verantwoordelijk tot en met de gefinaliseerde SalesInvoice. Accounting neemt de boekingsopdracht over bij PostingRequest; uitsluitend PostingEngine maakt de geposte JournalEntry. OpenItem blijft een Accounting Aggregate Root. Banking beheert BankTransaction en Payment en Matching valideert uitsluitend de allocaties. Na succesvolle matching moet application-orchestratie het gekoppelde OpenItem vereffenen en sluiten.
 
-De huidige domeinobjecten bevatten nog geen application-koppelingen voor SalesInvoice → PostingRequest, JournalEntry → OpenItem, de opbouw van Payments binnen BankTransaction en MatchingResult → OpenItem settlement. Ook de financiële boeking van een BankTransaction vereist een eigen PostingRequest via dezelfde PostingEngine. Deze koppelingen vormen de implementatiescope voor I1-001; de domeinverantwoordelijkheden blijven ongewijzigd.
+I1-001 tot en met I1-004 bewijzen de application-koppelingen voor SalesInvoice, PurchaseInvoice en BankTransaction naar PostingRequest en de volledige verkoopfactuur-tot-afwikkelingketen. De Application-laag kiest expliciet JournalId, LedgerAccountIds, regelidentiteiten, boekingsdatum en referentie. PostingValidation bewaakt de boekingsopdracht en uitsluitend PostingEngine maakt JournalEntries. Matching valideert Payment-allocaties zonder OpenItems te muteren; application-orchestratie past een succesvol MatchingResult toe via `OpenItem::settle()` en `close()`.
+
+De acceptance review in I1-005 bevestigt dat geen fundamentele architectuurwijziging nodig is voordat Reporting start. Reporting moet nog een expliciet read-/projectiemodel, periode- en administratieafbakening en audit-/correctietrace ontwerpen. Dit is vervolgscope, geen blocker voor het starten van de Reporting-milestone. De exclusiviteit van PostingEngine wordt momenteel door architectuurregels en productiecode bewaakt en nog niet door een technische modulegrens afgedwongen.
 
 ## Releases
 
