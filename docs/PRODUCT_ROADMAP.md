@@ -99,7 +99,7 @@ Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `Ba
 
 De frameworkonafhankelijke domain service `Matching` koppelt BankTransactions aan OpenItems. Matching maakt geen JournalEntries: alle financiële boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en `PostingEngine`.
 
-Banking is niet afhankelijk van Sales of Purchasing en mag uitsluitend afhankelijk zijn van Shared, Accounting en Relations. UI, bankimport, PSD2, Laravel, databases en infrastructuur vallen buiten de Banking-kern.
+Banking is niet afhankelijk van Sales of Purchasing en mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations. Iedere BankTransaction hoort bij precies één Administration en legt zowel de immutable AdministrationId als de immutable BankAccountId vast. Consistentie tussen beide identifiers wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn. UI, bankimport, PSD2, Laravel, databases en infrastructuur vallen buiten de Banking-kern.
 
 ## Capability 09 – Documents
 

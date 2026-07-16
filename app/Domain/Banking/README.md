@@ -8,6 +8,8 @@ Banking beheert bankmutaties als zelfstandige, frameworkonafhankelijke aggregate
 
 BankTransaction bevat immutable identiteit, BankAccountId, AdministrationId, BookingDate, ValueDate, Money-bedrag, referentie en omschrijving. Het aggregate beheert zijn Payment child entities; daarnaast wijzigt alleen de status via expliciet domeingedrag.
 
+Iedere BankTransaction hoort bij precies één Administration. AdministrationId en BankAccountId worden beide immutable en expliciet vastgelegd. De consistentie tussen deze identifiers wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn.
+
 ```text
 Imported → Matched → Posted
 ```
@@ -26,7 +28,7 @@ De frameworkonafhankelijke domain service Matching telt bestaande Payment-alloca
 
 - Geldbedragen gebruiken het gedeelde `Money` value object en geen floats.
 - Banking heeft geen dependency op Sales of Purchasing.
-- Banking mag uitsluitend afhankelijk zijn van Shared, Accounting en Relations.
+- Banking mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations.
 - BankTransaction maakt geen JournalEntries; financiële boekingen blijven de verantwoordelijkheid van Accounting en PostingEngine.
 - Matching maakt geen Payments, JournalEntries of PostingRequests en muteert geen allocaties.
 - Settlement, CAMT053, MT940, PSD2, CSV-import, PostingRequest en PostingEngine vallen buiten B1-003.

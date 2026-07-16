@@ -338,7 +338,9 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 #### Architectuurregels
 
 - Banking is onafhankelijk van Sales en Purchasing.
-- Banking mag uitsluitend afhankelijk zijn van Shared, Accounting en Relations.
+- Banking mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations.
+- Iedere BankTransaction hoort bij precies één Administration; AdministrationId en BankAccountId worden beide immutable in het aggregate vastgelegd.
+- Consistentie tussen BankAccountId en AdministrationId wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn.
 - OpenItem blijft een Accounting Aggregate Root; Banking neemt geen ownership over.
 - Banking maakt geen JournalEntries en bevat geen `PostingEngine`-implementatie.
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
