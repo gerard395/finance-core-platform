@@ -2,11 +2,13 @@
 
 ## Doel
 
-Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Core Platform. Deze eerste implementatiestory introduceert `LedgerAccount` als Aggregate Root voor de classificatie van financiële mutaties.
+Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Core Platform. De foundation bevat `LedgerAccount` voor de classificatie van financiële mutaties en `Journal` voor de groepering van journaalposten naar hun aard.
 
 ## Verantwoordelijkheden
 
 `LedgerAccount` beheert de identiteit, rekeningcode, naam, het rekeningtype en de actieve of inactieve status van een grootboekrekening. De Aggregate Root ondersteunt hernoemen, activeren en deactiveren.
+
+`Journal` beheert de identiteit, code, naam, het type en de actieve of inactieve status van een dagboek. De Aggregate Root ondersteunt hernoemen, activeren en deactiveren, maar bevat zelf geen journaalposten.
 
 ## Invarianten
 
@@ -16,6 +18,10 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 - De rekeningcode bevat 2 tot en met 16 ASCII-letters of cijfers en wordt genormaliseerd naar uppercase.
 - Activeren en deactiveren zijn idempotent.
 - Aparte debiteur-, crediteur- en btw-rekeningtypen vallen buiten A5-001.
+- De identiteit, code en het type van een Journal zijn onveranderlijk.
+- De Journal-naam is wijzigbaar en bevat 2 tot en met 255 Unicode-tekens zonder leading of trailing whitespace.
+- De Journal-code bevat 2 tot en met 16 ASCII-letters of cijfers en wordt genormaliseerd naar uppercase.
+- Journal activeren en deactiveren zijn idempotent.
 
 ## Geen opgeslagen saldo
 
@@ -29,5 +35,7 @@ De Aggregate Root kan uitsluitend zijn eigen toestand bewaken en kent andere Led
 
 - `Journal` groepeert journaalposten en is geen onderdeel van LedgerAccount.
 - `JournalEntry` legt gebalanceerde financiële mutaties vast en is geen child entity van LedgerAccount.
+- Journal bevat geen JournalEntries; JournalEntry verwijst later uitsluitend naar het relevante dagboek.
+- Journal kent geen `NumberSequence`; nummerreeksen en hun koppeling aan dagboeken vallen buiten A5-002.
 - De toekomstige `PostingEngine` verwerkt financiële mutaties en mag LedgerAccount niet verantwoordelijk maken voor boekingsregels.
-- A5-001 bevat geen PostingEngine, boekingsregels, btw-logica, repositories, database- of Laravel-afhankelijkheden.
+- De huidige foundation bevat geen PostingEngine, boekingen, nummerreeksen, saldi, btw-logica, periodes, repositories, database- of Laravel-afhankelijkheden.
