@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+
+[[ $# -eq 1 ]] || fail 'Usage: bin/validate-batch <Domain>'
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail 'Not inside a Git repository.'
+root="$(git rev-parse --show-toplevel)"
+[[ "$(pwd -P)" == "$(cd "$root" && pwd -P)" ]] || fail "Run from repository root: $root"
+
+bin/check-environment
+git diff --cached --quiet || fail 'Staged changes detected. Commit or unstage them before batch validation.'
+bin/validate-domain "$1"
+
+printf '\nGit status:\n'
+git status --short
+printf '\nRecent commits:\n'
+git log --oneline -8
+printf 'Batch validation: passed\n'

@@ -41,6 +41,12 @@ php artisan boost:install
 
 Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
 
+## Finance Core Development
+
+- [Development Workflow](docs/DEVELOPMENT_WORKFLOW.md)
+- [Codex Execution Rules](.ai/CODEX_EXECUTION_RULES.md)
+- [Architecture Guard](.ai/ARCHITECTURE_GUARD.md)
+
 ## Contributing
 
 Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
