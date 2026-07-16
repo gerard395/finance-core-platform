@@ -2,7 +2,7 @@
 
 ## Doel
 
-Fiscal biedt capabilityneutrale fiscale classificatie en berekening zonder framework- of infrastructuurafhankelijkheden. F1-001 introduceert `TaxCode` als Aggregate Root.
+Fiscal biedt capabilityneutrale fiscale classificatie en berekening zonder framework- of infrastructuurafhankelijkheden. `TaxCode` beheert classificatie en `TaxCalculation` berekent fiscale Money-bedragen.
 
 ## TaxCode
 
@@ -20,6 +20,8 @@ TaxCode beheert een immutable identiteit en code, een wijzigbare naam, precies Ã
 
 - Fiscal bevat geen landcodes, land-specifieke fiscale regels of btw-aangiftegedrag.
 - Fiscal is onafhankelijk van Sales en Purchasing.
-- TaxCalculation en Money-gebaseerde berekening volgen in een afzonderlijke Story.
+- TaxCalculation accepteert uitsluitend een actieve TaxCode en retourneert immutable net-, tax- en gross-bedragen met dezelfde Currency.
+- TaxAmount wordt exact berekend als NetAmount Ã— TaxRate; GrossAmount is NetAmount + TaxAmount.
+- Er wordt niet afgerond. Een uitkomst die niet exact binnen de Money-precisie past, wordt geweigerd; afrondingsbeleid volgt later expliciet.
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten F1-001.
