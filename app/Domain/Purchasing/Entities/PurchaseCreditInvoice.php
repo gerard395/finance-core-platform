@@ -7,6 +7,7 @@ namespace App\Domain\Purchasing\Entities;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceId;
+use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceNumber;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
 use App\Domain\Relations\ValueObjects\SupplierId;
@@ -16,6 +17,9 @@ use DomainException;
 
 final class PurchaseCreditInvoice
 {
+    /** @var array<string, PurchaseCreditInvoiceLine> */
+    private array $lines = [];
+
     public function __construct(
         private readonly PurchaseCreditInvoiceId $id,
         private readonly PurchaseCreditInvoiceNumber $number,
@@ -67,8 +71,46 @@ final class PurchaseCreditInvoice
         return $this->status;
     }
 
+    /** @return list<PurchaseCreditInvoiceLine> */
+    public function lines(): array
+    {
+        return array_values($this->lines);
+    }
+
+    public function line(PurchaseCreditInvoiceLineId $lineId): ?PurchaseCreditInvoiceLine
+    {
+        return $this->lines[$lineId->toString()] ?? null;
+    }
+
+    public function hasLine(PurchaseCreditInvoiceLineId $lineId): bool
+    {
+        return isset($this->lines[$lineId->toString()]);
+    }
+
+    public function addLine(PurchaseCreditInvoiceLine $line): void
+    {
+        $this->assertDraftForLineChanges();
+        $key = $line->id()->toString();
+
+        if (isset($this->lines[$key])) {
+            throw new DomainException('Purchase credit invoice already contains a line with this identity.');
+        }
+
+        $this->lines[$key] = $line;
+    }
+
+    public function removeLine(PurchaseCreditInvoiceLineId $lineId): void
+    {
+        $this->assertDraftForLineChanges();
+        unset($this->lines[$lineId->toString()]);
+    }
+
     public function finalize(): void
     {
+        if ($this->status === PurchaseCreditInvoiceStatus::Draft && $this->lines === []) {
+            throw new DomainException('Purchase credit invoice must contain at least one line before it can be finalized.');
+        }
+
         $this->transitionTo(PurchaseCreditInvoiceStatus::Finalized, [PurchaseCreditInvoiceStatus::Draft]);
     }
 
@@ -97,5 +139,12 @@ final class PurchaseCreditInvoice
         }
 
         $this->status = $target;
+    }
+
+    private function assertDraftForLineChanges(): void
+    {
+        if ($this->status !== PurchaseCreditInvoiceStatus::Draft) {
+            throw new DomainException('Purchase credit invoice lines can only be changed while the purchase credit invoice is in draft.');
+        }
     }
 }
