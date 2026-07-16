@@ -8,6 +8,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Banking\Enums\BankTransactionStatus;
 use App\Domain\Banking\ValueObjects\BankTransactionId;
 use App\Domain\Banking\ValueObjects\BankTransactionReference;
+use App\Domain\Banking\ValueObjects\PaymentId;
 use App\Domain\Banking\ValueObjects\TransactionDescription;
 use App\Domain\Relations\ValueObjects\BankAccountId;
 use App\Domain\Shared\Finance\Money;
@@ -16,6 +17,9 @@ use DomainException;
 
 final class BankTransaction
 {
+    /** @var array<string, Payment> */
+    private array $payments = [];
+
     public function __construct(
         private readonly BankTransactionId $id,
         private readonly BankAccountId $bankAccountId,
@@ -73,6 +77,45 @@ final class BankTransaction
         return $this->status;
     }
 
+    /** @return list<Payment> */
+    public function payments(): array
+    {
+        return array_values($this->payments);
+    }
+
+    public function payment(PaymentId $paymentId): ?Payment
+    {
+        return $this->payments[$paymentId->toString()] ?? null;
+    }
+
+    public function hasPayment(PaymentId $paymentId): bool
+    {
+        return isset($this->payments[$paymentId->toString()]);
+    }
+
+    public function addPayment(Payment $payment): void
+    {
+        $this->assertImportedForPaymentChanges();
+
+        if (! $this->amount->currency()->equals($payment->amount()->currency())) {
+            throw new DomainException('Payment currency must match the bank transaction currency.');
+        }
+
+        $key = $payment->id()->toString();
+
+        if (isset($this->payments[$key])) {
+            throw new DomainException('Bank transaction already contains a payment with this identity.');
+        }
+
+        $this->payments[$key] = $payment;
+    }
+
+    public function removePayment(PaymentId $paymentId): void
+    {
+        $this->assertImportedForPaymentChanges();
+        unset($this->payments[$paymentId->toString()]);
+    }
+
     public function match(): void
     {
         $this->transitionTo(BankTransactionStatus::Matched, [BankTransactionStatus::Imported]);
@@ -95,5 +138,12 @@ final class BankTransaction
         }
 
         $this->status = $target;
+    }
+
+    private function assertImportedForPaymentChanges(): void
+    {
+        if ($this->status !== BankTransactionStatus::Imported) {
+            throw new DomainException('Payments can only be changed while the bank transaction is imported.');
+        }
     }
 }
