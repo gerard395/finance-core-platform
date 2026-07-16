@@ -77,9 +77,15 @@ Alle financiële mutaties verlopen via de `PostingEngine`. Facturen, betalingen 
 
 De eerste implementatiestories starten bij A5-001. Het Accounting-domein blijft frameworkonafhankelijk en krijgt geen Laravel-, database- of infrastructuurafhankelijkheden.
 
-## Capability 07 – Tax
+## Capability 07 – Fiscal
 
 **Status:** Planned
+
+### Capability Fiscal
+
+Fiscal beheert capabilityneutrale fiscale classificatie en berekening. De eerste Aggregate Root is `TaxCode`, met de immutable value objects `TaxRate`, `TaxCodeCode` en `TaxCodeName`; de frameworkonafhankelijke domain service `TaxCalculation` berekent fiscale bedragen met `Money`.
+
+Iedere TaxCode heeft precies één actief TaxRate. Fiscal maakt geen JournalEntries: Sales en Purchasing gebruiken Fiscal voor berekening, waarna alle financiële mutaties en boekingen uitsluitend via Accounting en `PostingEngine` verlopen. Land-specifieke fiscale regimes en aangifteregels behoren niet tot de kern.
 
 ## Capability 08 – Banking
 
@@ -109,7 +115,7 @@ De eerste implementatiestories starten bij A5-001. Het Accounting-domein blijft 
 - **v0.4 – Sales Capability**
 - **v0.5 – Purchasing Capability**
 - **v0.6 – Accounting Capability**
-- **v0.7 – Banking + Tax**
+- **v0.7 – Banking + Fiscal**
 - **v0.8 – Reporting**
 - **v0.9 – Workflow**
 - **v1.0 – Production Ready**

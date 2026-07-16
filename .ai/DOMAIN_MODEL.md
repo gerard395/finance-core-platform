@@ -248,14 +248,54 @@ Statusovergangen verlopen uitsluitend via domeinmethoden van PurchaseInvoice.
 
 **Capabilitystatus:** Designed; implementation starts with A5-001.
 
-## 5. Tax
+## 5. Fiscal
 
 | Naam | Doel | Korte beschrijving |
 | --- | --- | --- |
 | TaxCode | Fiscale behandeling classificeren | Een code die een herkenbare fiscale toepassing benoemt. |
 | TaxRate | Een belastingpercentage vastleggen | Een percentage dat binnen een fiscale berekening wordt toegepast. |
+| TaxCodeCode | Een TaxCode herkenbaar identificeren | De immutable functionele code van een fiscale classificatie. |
+| TaxCodeName | Een TaxCode benoemen | De immutable leesbare naam van een fiscale classificatie. |
+| TaxCalculation | Fiscale bedragen berekenen | Een frameworkonafhankelijke domain service die met Money een fiscaal bedrag afleidt. |
 | TaxPeriod | Een fiscaal aangiftetijdvak afbakenen | De periode waarvoor fiscale bedragen worden vastgesteld. |
 | TaxReturn | Een fiscale aangifte representeren | De formele rapportage van verschuldigde en verrekenbare belasting over een tijdvak. |
+
+### Fiscal Capability
+
+#### Aggregate
+
+| Aggregate Root | Verantwoordelijkheid |
+| --- | --- |
+| TaxCode | Een fiscale classificatie met precies één actief TaxRate beheren. |
+
+#### Value Objects
+
+- `TaxRate` representeert een immutable fiscaal tarief.
+- `TaxCodeCode` representeert de immutable functionele code van een TaxCode.
+- `TaxCodeName` representeert de immutable naam van een TaxCode.
+
+#### Domain Service
+
+`TaxCalculation` berekent fiscale bedragen met het gedeelde `Money` value object. De service classificeert of boekt geen financiële mutaties en maakt geen JournalEntries.
+
+#### Businessregels
+
+- Iedere TaxCode heeft precies één actief TaxRate.
+- TaxRate is immutable.
+- TaxCalculation gebruikt Money en geen floats of primitieve geldbedragen.
+- TaxCalculation maakt geen JournalEntries.
+- `PostingEngine` blijft als enige verantwoordelijk voor het maken en posten van JournalEntries.
+- De Fiscal-kern bevat geen land-specifieke fiscale regels; zulke regels worden later buiten de kern gemodelleerd.
+
+#### Architectuurregels
+
+- Fiscal is onafhankelijk van Sales en Purchasing.
+- Sales en Purchasing mogen Fiscal gebruiken voor fiscale classificatie en berekening.
+- Fiscal muteert geen Sales-, Purchasing- of Accounting-aggregates.
+- Financiële gevolgen lopen uitsluitend via Accounting en `PostingEngine`.
+- Fiscal bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+**Capabilitystatus:** Designed; implementation starts with F1-001.
 
 ## 6. Banking
 
