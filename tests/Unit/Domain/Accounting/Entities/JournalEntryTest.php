@@ -5,13 +5,19 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Entities\JournalEntry;
+use App\Domain\Accounting\Entities\JournalEntryLine;
 use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
+use DomainException;
 use PHPUnit\Framework\TestCase;
 
 final class JournalEntryTest extends TestCase
@@ -64,10 +70,62 @@ final class JournalEntryTest extends TestCase
         self::assertFalse(method_exists(JournalEntry::class, 'unpost'));
     }
 
-    public function test_it_has_no_lines_or_balance_api(): void
+    public function test_it_owns_lines_and_exposes_them_by_identity(): void
     {
-        self::assertFalse(method_exists(JournalEntry::class, 'lines'));
-        self::assertFalse(method_exists(JournalEntry::class, 'addLine'));
+        $entry = $this->createEntry();
+        $line = $this->createLine();
+
+        $entry->addLine($line);
+
+        self::assertSame([$line], $entry->lines());
+        self::assertSame($line, $entry->line($line->id()));
+        self::assertTrue($entry->hasLine($line->id()));
+        self::assertNull($entry->line($this->unknownLineId()));
+        self::assertFalse($entry->hasLine($this->unknownLineId()));
+    }
+
+    public function test_it_rejects_a_duplicate_line_identity(): void
+    {
+        $entry = $this->createEntry();
+        $entry->addLine($this->createLine());
+
+        $this->expectException(DomainException::class);
+
+        $entry->addLine($this->createLine());
+    }
+
+    public function test_removing_a_line_is_idempotent(): void
+    {
+        $entry = $this->createEntry();
+        $line = $this->createLine();
+        $entry->addLine($line);
+
+        $entry->removeLine($line->id());
+        $entry->removeLine($line->id());
+        $entry->removeLine($this->unknownLineId());
+
+        self::assertSame([], $entry->lines());
+        self::assertFalse($entry->hasLine($line->id()));
+    }
+
+    public function test_posted_entry_lines_cannot_be_changed(): void
+    {
+        $entry = $this->createEntry();
+        $entry->post();
+
+        try {
+            $entry->addLine($this->createLine());
+            self::fail('Expected adding a line to a posted entry to fail.');
+        } catch (DomainException) {
+            self::assertSame([], $entry->lines());
+        }
+
+        $this->expectException(DomainException::class);
+        $entry->removeLine($this->unknownLineId());
+    }
+
+    public function test_it_still_has_no_balance_api(): void
+    {
         self::assertFalse(method_exists(JournalEntry::class, 'balance'));
         self::assertFalse(method_exists(JournalEntry::class, 'isBalanced'));
     }
@@ -81,5 +139,21 @@ final class JournalEntryTest extends TestCase
             new JournalEntryReference('Opening entry'),
             JournalEntryStatus::Draft,
         );
+    }
+
+    private function createLine(): JournalEntryLine
+    {
+        return new JournalEntryLine(
+            new JournalEntryLineId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
+            new LedgerAccountId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+            new Money('100', new Currency('EUR')),
+            null,
+            'Opening balance',
+        );
+    }
+
+    private function unknownLineId(): JournalEntryLineId
+    {
+        return new JournalEntryLineId(new Uuid('6ba7b811-9dad-41d1-80b4-00c04fd430c8'));
     }
 }
