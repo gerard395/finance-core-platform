@@ -55,15 +55,17 @@ De eerste domeiniteratie is voltooid in S4-000 tot en met S4-010. Aggregate boun
 
 ## Capability 05 – Purchasing
 
-**Status:** Planned
+**Status:** Completed for first domain iteration
 
 ### Capability Purchasing
 
 Purchasing beheert ontvangen inkoopfacturen en inkoopcreditfacturen. De capability omvat de Aggregate Roots `PurchaseInvoice` en `PurchaseCreditInvoice`, met respectievelijk `PurchaseInvoiceLine` en `PurchaseCreditInvoiceLine` als child entities.
 
-Purchasing modelleert eigen aggregategrenzen en statusgedrag en erft niet van SalesInvoice. Neutrale financiële en regelconcepten worden hergebruikt zonder ze binnen Purchasing te dupliceren: `Money`, `Currency`, `Quantity` en `LineDescription`. Omdat `Quantity` en `LineDescription` momenteel technisch onder Sales staan, worden deze vóór Purchasing-implementatie naar een gedeelde, capabilityneutrale locatie gepromoveerd; Purchasing krijgt geen afhankelijkheid op Sales.
+Purchasing modelleert eigen aggregategrenzen en statusgedrag en erft niet van Sales. Neutrale financiële en regelconcepten worden hergebruikt zonder ze binnen Purchasing te dupliceren: `Money` en `Currency` uit Shared Finance en `Quantity` en `LineDescription` uit Shared Commerce. Purchasing heeft geen afhankelijkheid op Sales.
 
-Een PurchaseInvoice doorloopt `Draft → Finalized → Posted → Paid`. Alle financiële mutaties verlopen via Accounting: Purchasing levert een `PostingRequest` aan, `PostingValidation` valideert deze en uitsluitend `PostingEngine` maakt de JournalEntry. Na posten ontstaat via Accounting een OpenItem; PurchaseInvoice maakt nooit zelf JournalEntries of OpenItems.
+Een PurchaseInvoice doorloopt `Draft → Finalized → Posted → Paid`; een PurchaseCreditInvoice doorloopt `Draft → Finalized → Posted`. Beide kunnen vanuit Draft of Finalized worden geannuleerd. Minimaal één eigen regel is vereist vóór finalisatie en regelmutaties zijn daarna geblokkeerd.
+
+De eerste Purchasing-domeiniteratie is voltooid in P1-000 tot en met P1-005. Financiële integratiecontracten blijven eigendom van Accounting: `PostingRequest` en `PostingEngine` staan buiten Purchasing. Purchasing maakt nooit zelf JournalEntries of OpenItems.
 
 ## Capability 06 – Accounting
 

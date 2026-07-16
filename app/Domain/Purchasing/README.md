@@ -2,7 +2,7 @@
 
 ## Doel
 
-Purchasing beheert ontvangen inkoopdocumenten als zelfstandige, frameworkonafhankelijke aggregates. `PurchaseInvoice` gebruikt geen inheritance of runtime-afhankelijkheid op Sales en beheert zijn eigen `PurchaseInvoiceLine` child entities.
+Purchasing beheert ontvangen inkoopdocumenten als zelfstandige, frameworkonafhankelijke aggregates. `PurchaseInvoice` en `PurchaseCreditInvoice` gebruiken geen inheritance of runtime-afhankelijkheid op Sales en beheren hun eigen child entities.
 
 ## PurchaseInvoice
 
@@ -34,14 +34,14 @@ Posted en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent
 - Identiteit, nummer, AdministrationId, SupplierId, Currency en datums zijn immutable.
 - SupplierReference is optioneel en immutable en bevat geen lege waarde of omliggende whitespace.
 - Status wijzigt uitsluitend via `finalize()`, `post()`, `markAsPaid()` en `cancel()`.
-- Iedere PurchaseInvoice bevat minimaal één PurchaseInvoiceLine voordat deze wordt gefinaliseerd.
-- Regels hebben een unieke immutable identiteit en kunnen alleen worden toegevoegd of verwijderd zolang de factuur Draft is.
+- Iedere PurchaseInvoice en PurchaseCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
+- Regels hebben binnen hun aggregate een unieke immutable identiteit en kunnen alleen worden toegevoegd of verwijderd zolang het document Draft is.
 - Line totals worden zonder floats exact afgeleid via gedeelde `Money`, `Quantity` en `LineDescription` value objects.
 - De context van een PurchaseCreditInvoice is immutable en de status wijzigt uitsluitend via `finalize()`, `post()` en `cancel()`.
 
 ## Grenzen
 
 - Btw behoort tot Tax.
-- Financiële mutaties en JournalEntries lopen later uitsluitend via Accounting en PostingEngine.
-- Betalingen, OpenItems, repositories, persistence, Laravel en infrastructuur vallen buiten P1-001.
-- Regels, btw, boekingen, betalingen en OpenItems voor PurchaseCreditInvoice vallen buiten P1-003.
+- Financiële mutaties en JournalEntries lopen uitsluitend via Accounting; `PostingRequest` en `PostingEngine` behoren tot Accounting en blijven buiten Purchasing.
+- Btw, boekingen, betalingen en OpenItems worden niet door Purchasing beheerd.
+- Purchasing bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.

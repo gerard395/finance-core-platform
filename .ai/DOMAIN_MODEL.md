@@ -151,7 +151,13 @@ Een PurchaseInvoice doorloopt:
 Draft → Finalized → Posted → Paid
 ```
 
-Statusovergangen verlopen uitsluitend via domeinmethoden van PurchaseInvoice.
+Een PurchaseCreditInvoice doorloopt:
+
+```text
+Draft → Finalized → Posted
+```
+
+Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusovergangen verlopen uitsluitend via domeinmethoden van het betreffende aggregate.
 
 #### Businessregels
 
@@ -164,9 +170,8 @@ Statusovergangen verlopen uitsluitend via domeinmethoden van PurchaseInvoice.
 #### Hergebruik
 
 - `Money` en `Currency` worden uit Shared Finance hergebruikt.
-- `PostingRequest`, `PostingValidation` en `PostingEngine` worden uit Accounting hergebruikt voor financiële verwerking.
-- `Quantity` en `LineDescription` worden semantisch hergebruikt en niet in Purchasing gedupliceerd.
-- Omdat `Quantity` en `LineDescription` momenteel technisch onder Sales staan, moeten zij vóór Purchasing-implementatie naar een capabilityneutrale gedeelde locatie worden verplaatst. Purchasing mag niet afhankelijk worden van Sales.
+- `Quantity` en `LineDescription` worden uit Shared Commerce hergebruikt en niet in Purchasing gedupliceerd.
+- `PostingRequest`, `PostingValidation` en `PostingEngine` blijven eigendom van Accounting en staan buiten Purchasing.
 
 #### Architectuurregels
 
@@ -174,10 +179,10 @@ Statusovergangen verlopen uitsluitend via domeinmethoden van PurchaseInvoice.
 - PurchaseInvoice erft niet van SalesInvoice; PurchaseCreditInvoice erft niet van SalesCreditInvoice.
 - Purchasing beheert eigen aggregates en child entities met eigen ubiquitous language.
 - Child entities worden uitsluitend via hun eigen Purchasing Aggregate Root beheerd.
-- Financiële gevolgen lopen uitsluitend via de Accounting-contracten en `PostingEngine`.
+- Financiële gevolgen lopen uitsluitend via Accounting; Purchasing bevat zelf geen `PostingRequest` of `PostingEngine`.
 - Purchasing bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Designed; implementation starts after shared promotion of Quantity and LineDescription.
+**Capabilitystatus:** Completed for first domain iteration.
 
 ## 4. Accounting
 
