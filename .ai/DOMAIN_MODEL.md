@@ -222,7 +222,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - `PostingRequest` beschrijft de door een factuur, betaling of banktransactie aangeleverde opdracht aan de `PostingEngine`.
 - `PostingResult` beschrijft de uitkomst van de verwerking door de `PostingEngine`.
 
-`PostingRequest` en `PostingResult` zijn in deze ontwerpstory uitsluitend gedocumenteerd en worden niet geïmplementeerd.
+`PostingRequest` en `PostingResult` vormen de bestaande frameworkonafhankelijke input- en outputcontracten van PostingEngine.
 
 #### Businessregels
 
@@ -349,6 +349,68 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
 **Capabilitystatus:** Banking Foundation first domain iteration completed.
+
+### Integrated Financial Flow – I1
+
+#### Flow
+
+```text
+SalesInvoice
+        ↓
+PostingRequest
+        ↓
+PostingValidation
+        ↓
+PostingEngine
+        ↓
+JournalEntry
+        ↓
+OpenItem
+        ↓
+Payment
+        ↓
+BankTransaction
+        ↓
+Matching
+        ↓
+OpenItem Closed
+```
+
+`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. De laatste stap bestaat uit de bestaande `OpenItem::settle()`- en `OpenItem::close()`-methoden; Matching muteert het OpenItem niet rechtstreeks.
+
+#### Verantwoordelijkheden en hand-offs
+
+| Stap | Verantwoordelijke | Bestaande service | Hand-off |
+| --- | --- | --- | --- |
+| SalesInvoice | SalesInvoice Aggregate Root | — | Sales eindigt bij een geldige, gefinaliseerde factuurcontext. |
+| PostingRequest | Accounting request-object | — | Draagt JournalId, PostingDate, JournalEntryReference en JournalEntryLines naar Accounting. |
+| PostingValidation | Accounting | PostingValidation | Valideert minimaal twee regels, Currency, unieke regelidentiteiten en debet = credit. |
+| PostingEngine | Accounting | PostingEngine | Is als enige verantwoordelijk voor het maken en posten van JournalEntry. |
+| JournalEntry | JournalEntry Aggregate Root | — | Bewaart de immutable geposte boeking; maakt zelf geen OpenItem. |
+| OpenItem | OpenItem Aggregate Root | — | Bewaakt originalAmount, openAmount en vereffening; verwijst naar JournalEntryId. |
+| Payment | Child entity van BankTransaction | — | Verwijst met OpenItemId naar precies één OpenItem en draagt een positief Money-bedrag. |
+| BankTransaction | BankTransaction Aggregate Root | — | Bewaakt Payment-ownership, Currency en de Imported → Matched → Posted-statusmachine. |
+| Matching | Banking | Matching | Valideert de exacte Payment-som en zet alleen een geldige Imported transactie op Matched. |
+| OpenItem Closed | OpenItem Aggregate Root | — | Application-orchestratie roept settle(Money) en daarna close() aan; Banking muteert Accounting niet rechtstreeks. |
+
+#### Dragende Value Objects
+
+- `Money` en `Currency` dragen alle bedragen en exacte berekeningen door de volledige flow.
+- `AdministrationId` bewaakt de expliciete administratiescheiding in Sales, Accounting en Banking.
+- `SalesInvoiceId`, `JournalEntryId`, `OpenItemId`, `PaymentId` en `BankTransactionId` dragen identiteit binnen hun eigen aggregategrens.
+- `CustomerId` en `RelationId` verbinden de debiteurcontext zonder aggregate-ownership over te nemen.
+- `JournalId`, `PostingDate`, `JournalEntryReference`, `JournalEntryLineId` en `LedgerAccountId` dragen de boekingsopdracht.
+- `BankAccountId`, `BankTransactionReference` en `TransactionDescription` dragen de banktransactiecontext.
+
+#### Ontbrekende application-koppelingen
+
+- Er bestaat nog geen application-orchestratie die een SalesInvoice vertaalt naar een PostingRequest, inclusief keuze van JournalId, LedgerAccountIds en JournalEntryLineIds.
+- Er bestaat nog geen application-orchestratie die na een geposte JournalEntry het bijbehorende OpenItem construeert.
+- Er bestaat nog geen application-orchestratie die een BankTransaction met Payments voor bestaande OpenItemIds opbouwt.
+- MatchingResult sluit geen OpenItem; application-orchestratie moet de Payment-bedragen per OpenItem via `settle()` verwerken en bij openAmount nul `close()` aanroepen.
+- De financiële boeking van de BankTransaction vereist afzonderlijk een PostingRequest aan dezelfde PostingEngine; Matching vervangt deze boekingsroute niet.
+
+Deze ontbrekende koppelingen zijn geen nieuwe domeinverantwoordelijkheden en wijzigen geen aggregategrenzen. Zij vormen de aanbevolen application-integratiescope voor I1-001.
 
 ## 7. Documents
 

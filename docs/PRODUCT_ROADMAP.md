@@ -75,7 +75,7 @@ De eerste Purchasing-domeiniteratie is voltooid in P1-000 tot en met P1-005. Fin
 
 Accounting beheert grootboekrekeningen, dagboeken, journaalposten en openstaande posten. De capability omvat de Aggregate Roots `LedgerAccount`, `Journal`, `JournalEntry` en `OpenItem`, met `JournalEntryLine` als child entity van `JournalEntry`.
 
-Alle financiële mutaties verlopen via de `PostingEngine`. Facturen, betalingen en banktransacties leveren daarvoor een `PostingRequest` aan en ontvangen een `PostingResult`; deze application-servicecontracten worden in deze ontwerpstory uitsluitend gedocumenteerd. De `PostingEngine` is de enige component die `JournalEntry`-aggregates mag aanmaken.
+Alle financiële mutaties verlopen via de `PostingEngine`. Facturen, betalingen en banktransacties leveren daarvoor een `PostingRequest` aan en ontvangen een `PostingResult`. De `PostingEngine` is de enige component die `JournalEntry`-aggregates mag aanmaken.
 
 De eerste implementatiestories starten bij A5-001. Het Accounting-domein blijft frameworkonafhankelijk en krijgt geen Laravel-, database- of infrastructuurafhankelijkheden.
 
@@ -118,6 +118,34 @@ OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluit
 ## Capability 12 – Platform
 
 **Status:** Planned
+
+## Milestone M5 – Integrated Financial Flow
+
+**Status:** Designed
+
+### Epic I1 – Prove the System
+
+I1 bewijst dat de bestaande Sales-, Accounting- en Banking-componenten samen één financiële keten kunnen vormen, zonder nieuwe domeinaggregates of financiële boekingsroutes te introduceren.
+
+```text
+SalesInvoice
+    ↓
+PostingRequest → PostingValidation → PostingEngine
+    ↓
+JournalEntry
+    ↓
+OpenItem
+    ↓
+Payment binnen BankTransaction
+    ↓
+Matching
+    ↓
+OpenItem settle() → close()
+```
+
+Sales blijft verantwoordelijk tot en met de gefinaliseerde SalesInvoice. Accounting neemt de boekingsopdracht over bij PostingRequest; uitsluitend PostingEngine maakt de geposte JournalEntry. OpenItem blijft een Accounting Aggregate Root. Banking beheert BankTransaction en Payment en Matching valideert uitsluitend de allocaties. Na succesvolle matching moet application-orchestratie het gekoppelde OpenItem vereffenen en sluiten.
+
+De huidige domeinobjecten bevatten nog geen application-koppelingen voor SalesInvoice → PostingRequest, JournalEntry → OpenItem, de opbouw van Payments binnen BankTransaction en MatchingResult → OpenItem settlement. Ook de financiële boeking van een BankTransaction vereist een eigen PostingRequest via dezelfde PostingEngine. Deze koppelingen vormen de implementatiescope voor I1-001; de domeinverantwoordelijkheden blijven ongewijzigd.
 
 ## Releases
 
