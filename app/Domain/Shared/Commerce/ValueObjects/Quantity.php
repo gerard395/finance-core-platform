@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Sales\ValueObjects;
+namespace App\Domain\Shared\Commerce\ValueObjects;
 
 use InvalidArgumentException;
 

@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Sales\Entities;
 
 use App\Domain\Sales\Entities\OrderLine;
-use App\Domain\Sales\ValueObjects\LineDescription;
 use App\Domain\Sales\ValueObjects\OrderLineId;
-use App\Domain\Sales\ValueObjects\Quantity;
+use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
+use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;

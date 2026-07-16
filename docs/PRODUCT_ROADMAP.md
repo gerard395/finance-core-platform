@@ -57,6 +57,14 @@ De eerste domeiniteratie is voltooid in S4-000 tot en met S4-010. Aggregate boun
 
 **Status:** Planned
 
+### Capability Purchasing
+
+Purchasing beheert ontvangen inkoopfacturen en inkoopcreditfacturen. De capability omvat de Aggregate Roots `PurchaseInvoice` en `PurchaseCreditInvoice`, met respectievelijk `PurchaseInvoiceLine` en `PurchaseCreditInvoiceLine` als child entities.
+
+Purchasing modelleert eigen aggregategrenzen en statusgedrag en erft niet van SalesInvoice. Neutrale financiële en regelconcepten worden hergebruikt zonder ze binnen Purchasing te dupliceren: `Money`, `Currency`, `Quantity` en `LineDescription`. Omdat `Quantity` en `LineDescription` momenteel technisch onder Sales staan, worden deze vóór Purchasing-implementatie naar een gedeelde, capabilityneutrale locatie gepromoveerd; Purchasing krijgt geen afhankelijkheid op Sales.
+
+Een PurchaseInvoice doorloopt `Draft → Finalized → Posted → Paid`. Alle financiële mutaties verlopen via Accounting: Purchasing levert een `PostingRequest` aan, `PostingValidation` valideert deze en uitsluitend `PostingEngine` maakt de JournalEntry. Na posten ontstaat via Accounting een OpenItem; PurchaseInvoice maakt nooit zelf JournalEntries of OpenItems.
+
 ## Capability 06 – Accounting
 
 **Status:** Planned

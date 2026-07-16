@@ -45,7 +45,7 @@ Statusovergangen verlopen uitsluitend via domeinmethoden. Herhaling van dezelfde
 
 ## Shared value objects en bedragen
 
-Sales gebruikt gedeelde `Money` en `Currency` value objects en de Sales-value objects `Quantity` en `LineDescription`. Line totals worden afgeleid met `Money::multiply(string $multiplier)`:
+Sales gebruikt de gedeelde `Money` en `Currency` value objects uit Shared Finance en de capabilityneutrale `Quantity` en `LineDescription` value objects uit Shared Commerce. Line totals worden afgeleid met `Money::multiply(string $multiplier)`:
 
 - bedragen en aantallen worden als gevalideerde decimale strings verwerkt;
 - floating-point-berekeningen zijn uitgesloten;

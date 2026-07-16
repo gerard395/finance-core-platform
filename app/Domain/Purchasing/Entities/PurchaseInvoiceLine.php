@@ -2,20 +2,20 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Sales\Entities;
+namespace App\Domain\Purchasing\Entities;
 
-use App\Domain\Sales\ValueObjects\OrderLineId;
+use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Money;
 use InvalidArgumentException;
 
-final readonly class OrderLine
+final readonly class PurchaseInvoiceLine
 {
     private Money $lineTotal;
 
     public function __construct(
-        private OrderLineId $id,
+        private PurchaseInvoiceLineId $id,
         private LineDescription $description,
         private Quantity $quantity,
         private Money $unitPrice,
@@ -27,7 +27,7 @@ final readonly class OrderLine
         $this->lineTotal = $this->unitPrice->multiply($this->quantity->value());
     }
 
-    public function id(): OrderLineId
+    public function id(): PurchaseInvoiceLineId
     {
         return $this->id;
     }

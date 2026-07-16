@@ -134,6 +134,51 @@ Order kan vanuit Draft of Confirmed worden geannuleerd. SalesInvoice kan vanuit 
 
 **Capabilitystatus:** Completed for first domain iteration.
 
+### Purchasing Capability
+
+#### Aggregates en child entities
+
+| Aggregate Root | Child Entity | Verantwoordelijkheid |
+| --- | --- | --- |
+| PurchaseInvoice | PurchaseInvoiceLine | Een ontvangen leveranciersfactuur en haar inkoopregels beheren. |
+| PurchaseCreditInvoice | PurchaseCreditInvoiceLine | Een ontvangen leverancierscreditfactuur en haar correctieregels beheren. |
+
+#### Workflow
+
+Een PurchaseInvoice doorloopt:
+
+```text
+Draft → Finalized → Posted → Paid
+```
+
+Statusovergangen verlopen uitsluitend via domeinmethoden van PurchaseInvoice.
+
+#### Businessregels
+
+- Iedere PurchaseInvoice en PurchaseCreditInvoice heeft een leverancier.
+- Iedere PurchaseInvoice en PurchaseCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
+- `PostingEngine` verwerkt alle financiële mutaties.
+- PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
+- Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert dit OpenItem niet rechtstreeks.
+
+#### Hergebruik
+
+- `Money` en `Currency` worden uit Shared Finance hergebruikt.
+- `PostingRequest`, `PostingValidation` en `PostingEngine` worden uit Accounting hergebruikt voor financiële verwerking.
+- `Quantity` en `LineDescription` worden semantisch hergebruikt en niet in Purchasing gedupliceerd.
+- Omdat `Quantity` en `LineDescription` momenteel technisch onder Sales staan, moeten zij vóór Purchasing-implementatie naar een capabilityneutrale gedeelde locatie worden verplaatst. Purchasing mag niet afhankelijk worden van Sales.
+
+#### Architectuurregels
+
+- Purchasing dupliceert geen Sales-aggregates of Sales-gedrag.
+- PurchaseInvoice erft niet van SalesInvoice; PurchaseCreditInvoice erft niet van SalesCreditInvoice.
+- Purchasing beheert eigen aggregates en child entities met eigen ubiquitous language.
+- Child entities worden uitsluitend via hun eigen Purchasing Aggregate Root beheerd.
+- Financiële gevolgen lopen uitsluitend via de Accounting-contracten en `PostingEngine`.
+- Purchasing bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+**Capabilitystatus:** Designed; implementation starts after shared promotion of Quantity and LineDescription.
+
 ## 4. Accounting
 
 | Naam | Doel | Korte beschrijving |
