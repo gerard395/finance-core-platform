@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Sales\Entities;
 
-use App\Domain\Sales\ValueObjects\LineDescription;
 use App\Domain\Sales\ValueObjects\OrderLineId;
-use App\Domain\Sales\ValueObjects\Quantity;
+use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
+use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Money;
 use InvalidArgumentException;
 
