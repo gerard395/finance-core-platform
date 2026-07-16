@@ -1,0 +1,81 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+usage() { printf 'Usage: bin/finish-batch --domain <Domain> --base <branch> --title <title> --body-file <path> [--no-merge]\n'; }
+
+domain=''; base=''; title=''; body_file=''; no_merge=false
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --domain|--base|--title|--body-file)
+            [[ $# -ge 2 ]] || fail "Missing value for $1."
+            case "$1" in
+                --domain) domain="$2" ;;
+                --base) base="$2" ;;
+                --title) title="$2" ;;
+                --body-file) body_file="$2" ;;
+            esac
+            shift 2
+            ;;
+        --no-merge) no_merge=true; shift ;;
+        --help|-h) usage; exit 0 ;;
+        *) fail "Unknown argument: $1" ;;
+    esac
+done
+
+[[ -n "$domain" ]] || fail '--domain is required.'
+[[ "$domain" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || fail 'Invalid domain name.'
+[[ -n "$base" ]] || fail '--base is required.'
+[[ -n "$title" ]] || fail '--title is required.'
+[[ -n "$body_file" ]] || fail '--body-file is required.'
+[[ -f "$body_file" ]] || fail "PR body file does not exist: $body_file"
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail 'Not inside a Git repository.'
+root="$(git rev-parse --show-toplevel)"
+[[ "$(pwd -P)" == "$(cd "$root" && pwd -P)" ]] || fail "Run from repository root: $root"
+command -v gh >/dev/null 2>&1 || fail 'GitHub CLI (`gh`) is missing.'
+branch="$(git branch --show-current)"
+[[ -n "$branch" ]] || fail 'Git is in detached HEAD state.'
+[[ "$branch" != main ]] || fail 'Refusing to run on main.'
+[[ -z "$(git status --porcelain)" ]] || fail 'Working tree must be clean.'
+
+bin/validate-batch "$domain"
+git push --set-upstream origin "$branch"
+
+pr_url="$(gh pr list --head "$branch" --base "$base" --state open --json url --jq '.[0].url // empty')"
+if [[ -z "$pr_url" ]]; then
+    pr_url="$(gh pr create --base "$base" --head "$branch" --title "$title" --body-file "$body_file")"
+else
+    printf 'Using existing pull request: %s\n' "$pr_url"
+fi
+printf 'Pull request: %s\n' "$pr_url"
+
+if [[ "$no_merge" == true ]]; then
+    printf 'Merge skipped because --no-merge was supplied.\n'
+    exit 0
+fi
+
+merge_output=''
+if merge_output="$(gh pr merge "$pr_url" --merge --delete-branch 2>&1)"; then
+    [[ -z "$merge_output" ]] || printf '%s\n' "$merge_output"
+else
+    printf '%s\n' "$merge_output" >&2
+    checks_json=''
+    if checks_json="$(gh pr checks "$pr_url" --json state 2>/dev/null)" \
+        && [[ "$checks_json" =~ \"state\":\"(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED)\" ]]; then
+        printf 'GitHub reports pending checks; attempting to enable auto-merge...\n'
+        gh pr merge "$pr_url" --auto --merge --delete-branch || fail 'Auto-merge could not be enabled.'
+    else
+        fail 'Normal merge failed and GitHub reports no pending checks. Resolve the PR blocker manually.'
+    fi
+fi
+
+state="$(gh pr view "$pr_url" --json state --jq '.state')"
+if [[ "$state" == MERGED ]]; then
+    git switch "$base"
+    git pull --ff-only origin "$base"
+    printf 'Merge status: merged\n'
+else
+    printf 'Merge status: auto-merge enabled; PR state is %s\n' "$state"
+fi
