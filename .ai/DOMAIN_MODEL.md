@@ -311,6 +311,40 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
 | PaymentAllocation | Een betaling administratief verdelen | De vastlegging van de bestemming van een betaald of ontvangen bedrag. |
 
+### Banking Capability
+
+#### Aggregate en child entity
+
+| Aggregate Root | Child Entity | Verantwoordelijkheid |
+| --- | --- | --- |
+| BankTransaction | Payment | Een bankmutatie als primaire financiële gebeurtenis vastleggen en haar betalingen beheren. |
+
+Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een child entity en wordt uitsluitend via de BankTransaction Aggregate Root beheerd.
+
+#### Domain Service
+
+`Matching` koppelt BankTransactions aan `OpenItem` aggregates uit Accounting. De service ondersteunt de domeinbeslissing welke openstaande post door een bankmutatie wordt voldaan, maar maakt geen JournalEntries en muteert geen OpenItems rechtstreeks.
+
+#### Businessregels
+
+- BankTransaction is binnen Banking de primaire financiële gebeurtenis.
+- Een BankTransaction kan nul, één of meerdere Payments bevatten.
+- Iedere Payment behoort altijd tot precies één OpenItem.
+- Matching koppelt BankTransactions aan OpenItems.
+- Matching maakt geen JournalEntries.
+- Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
+- Banking bevat geen UI-, import- of PSD2-logica.
+
+#### Architectuurregels
+
+- Banking is onafhankelijk van Sales en Purchasing.
+- Banking mag uitsluitend afhankelijk zijn van Shared, Accounting en Relations.
+- OpenItem blijft een Accounting Aggregate Root; Banking neemt geen ownership over.
+- Banking maakt geen JournalEntries en bevat geen `PostingEngine`-implementatie.
+- Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+**Capabilitystatus:** Designed; implementation starts with B1-001.
+
 ## 7. Documents
 
 | Naam | Doel | Korte beschrijving |
