@@ -2,7 +2,7 @@
 
 ## Doel
 
-Purchasing beheert ontvangen inkoopdocumenten als zelfstandige, frameworkonafhankelijke aggregates. P1-001 introduceert `PurchaseInvoice` zonder inheritance of runtime-afhankelijkheid op Sales.
+Purchasing beheert ontvangen inkoopdocumenten als zelfstandige, frameworkonafhankelijke aggregates. `PurchaseInvoice` gebruikt geen inheritance of runtime-afhankelijkheid op Sales en beheert zijn eigen `PurchaseInvoiceLine` child entities.
 
 ## PurchaseInvoice
 
@@ -22,10 +22,12 @@ Paid en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; 
 - Identiteit, nummer, AdministrationId, SupplierId, Currency en datums zijn immutable.
 - SupplierReference is optioneel en immutable en bevat geen lege waarde of omliggende whitespace.
 - Status wijzigt uitsluitend via `finalize()`, `post()`, `markAsPaid()` en `cancel()`.
+- Iedere PurchaseInvoice bevat minimaal één PurchaseInvoiceLine voordat deze wordt gefinaliseerd.
+- Regels hebben een unieke immutable identiteit en kunnen alleen worden toegevoegd of verwijderd zolang de factuur Draft is.
+- Line totals worden zonder floats exact afgeleid via gedeelde `Money`, `Quantity` en `LineDescription` value objects.
 
 ## Grenzen
 
-- P1-001 bevat nog geen PurchaseInvoiceLines; de minimumregelcontrole vóór finaliseren volgt samen met die child entity.
 - Btw behoort tot Tax.
 - Financiële mutaties en JournalEntries lopen later uitsluitend via Accounting en PostingEngine.
 - Betalingen, OpenItems, repositories, persistence, Laravel en infrastructuur vallen buiten P1-001.

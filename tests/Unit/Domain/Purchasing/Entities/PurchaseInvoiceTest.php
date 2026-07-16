@@ -6,12 +6,17 @@ namespace Tests\Unit\Domain\Purchasing\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Purchasing\Entities\PurchaseInvoice;
+use App\Domain\Purchasing\Entities\PurchaseInvoiceLine;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
+use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceNumber;
 use App\Domain\Purchasing\ValueObjects\SupplierReference;
 use App\Domain\Relations\ValueObjects\SupplierId;
+use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
+use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
@@ -55,6 +60,65 @@ final class PurchaseInvoiceTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         $this->createInvoice(dueDate: new DateTimeImmutable('2026-07-14'));
+    }
+
+    public function test_lines_are_owned_and_managed_by_the_aggregate(): void
+    {
+        $invoice = $this->createInvoice(withLine: false);
+        $first = $this->createLine('550e8400-e29b-41d4-a716-446655440010');
+        $second = $this->createLine('550e8400-e29b-41d4-a716-446655440011');
+
+        $invoice->addLine($first);
+        $invoice->addLine($second);
+
+        self::assertSame([$first, $second], $invoice->lines());
+        self::assertTrue($invoice->hasLine($first->id()));
+        self::assertSame($first, $invoice->line($first->id()));
+
+        $invoice->removeLine($first->id());
+        $invoice->removeLine($first->id());
+
+        self::assertFalse($invoice->hasLine($first->id()));
+        self::assertNull($invoice->line($first->id()));
+    }
+
+    public function test_duplicate_line_identity_is_rejected(): void
+    {
+        $invoice = $this->createInvoice();
+
+        $this->expectException(DomainException::class);
+        $invoice->addLine($this->createLine());
+    }
+
+    public function test_invoice_without_lines_cannot_be_finalized(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->createInvoice(withLine: false)->finalize();
+    }
+
+    public function test_invoice_with_a_line_can_be_finalized(): void
+    {
+        $invoice = $this->createInvoice();
+
+        $invoice->finalize();
+
+        self::assertSame(PurchaseInvoiceStatus::Finalized, $invoice->status());
+    }
+
+    public function test_lines_cannot_be_changed_after_finalization(): void
+    {
+        $invoice = $this->createInvoice();
+        $invoice->finalize();
+
+        try {
+            $invoice->addLine($this->createLine('550e8400-e29b-41d4-a716-446655440099'));
+            self::fail('Expected adding a line after finalization to be rejected.');
+        } catch (DomainException) {
+            self::assertCount(1, $invoice->lines());
+        }
+
+        $this->expectException(DomainException::class);
+        $invoice->removeLine($invoice->lines()[0]->id());
     }
 
     /** @param list<string> $transitions */
@@ -153,7 +217,6 @@ final class PurchaseInvoiceTest extends TestCase
             $invoice->dueDate(),
             $invoice->supplierReference(),
         ]);
-        self::assertFalse(method_exists(PurchaseInvoice::class, 'lines'));
     }
 
     private function createInvoice(
@@ -161,8 +224,9 @@ final class PurchaseInvoiceTest extends TestCase
         ?SupplierReference $supplierReference = null,
         ?DateTimeImmutable $invoiceDate = null,
         ?DateTimeImmutable $dueDate = null,
+        bool $withLine = true,
     ): PurchaseInvoice {
-        return new PurchaseInvoice(
+        $invoice = new PurchaseInvoice(
             new PurchaseInvoiceId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new PurchaseInvoiceNumber('pinv-001'),
             new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-446655440001')),
@@ -172,6 +236,22 @@ final class PurchaseInvoiceTest extends TestCase
             $dueDate ?? new DateTimeImmutable('2026-08-14'),
             $supplierReference,
             $status,
+        );
+
+        if ($withLine && $status === PurchaseInvoiceStatus::Draft) {
+            $invoice->addLine($this->createLine());
+        }
+
+        return $invoice;
+    }
+
+    private function createLine(string $uuid = '550e8400-e29b-41d4-a716-446655440010'): PurchaseInvoiceLine
+    {
+        return new PurchaseInvoiceLine(
+            new PurchaseInvoiceLineId(new Uuid($uuid)),
+            new LineDescription('Purchased goods'),
+            new Quantity('2'),
+            new Money('12.50', new Currency('EUR')),
         );
     }
 }
