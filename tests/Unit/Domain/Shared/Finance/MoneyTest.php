@@ -6,6 +6,7 @@ namespace Tests\Unit\Domain\Shared\Finance;
 
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
+use DomainException;
 use InvalidArgumentException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -64,6 +65,69 @@ final class MoneyTest extends TestCase
 
         self::assertSame('0', $result->amount());
         self::assertTrue($result->isZero());
+    }
+
+    #[DataProvider('additions')]
+    public function test_add_is_exact_for_signed_decimal_amounts(string $left, string $right, string $expected): void
+    {
+        $result = (new Money($left, new Currency('EUR')))->add(new Money($right, new Currency('EUR')));
+
+        self::assertSame($expected, $result->amount());
+        self::assertSame('EUR', $result->currency()->code());
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function additions(): array
+    {
+        return [
+            'positive amounts' => ['12.5', '7.25', '19.75'],
+            'negative amounts' => ['-12.5', '-7.25', '-19.75'],
+            'positive and smaller negative' => ['12.5', '-7.25', '5.25'],
+            'positive and larger negative' => ['7.25', '-12.5', '-5.25'],
+            'exact decimals' => ['0.1', '0.2', '0.3'],
+            'maximum precision' => ['0.00000001', '0.00000002', '0.00000003'],
+            'zero' => ['12.5', '0', '12.5'],
+            'canonical zero' => ['12.5', '-12.5', '0'],
+            'arbitrary size' => ['999999999999999999.99', '0.01', '1000000000000000000'],
+        ];
+    }
+
+    public function test_add_rejects_different_currencies(): void
+    {
+        $this->expectException(DomainException::class);
+
+        (new Money('10', new Currency('EUR')))->add(new Money('10', new Currency('USD')));
+    }
+
+    #[DataProvider('absoluteAmounts')]
+    public function test_absolute_preserves_currency_and_returns_canonical_amount(string $amount, string $expected): void
+    {
+        $currency = new Currency('EUR');
+        $result = (new Money($amount, $currency))->absolute();
+
+        self::assertSame($expected, $result->amount());
+        self::assertSame($currency, $result->currency());
+    }
+
+    /** @return array<string, array{string, string}> */
+    public static function absoluteAmounts(): array
+    {
+        return [
+            'positive' => ['12.5', '12.5'],
+            'negative' => ['-12.5', '12.5'],
+            'zero' => ['-0.000', '0'],
+        ];
+    }
+
+    public function test_add_and_absolute_are_immutable(): void
+    {
+        $money = new Money('-10', new Currency('EUR'));
+        $other = new Money('2.5', new Currency('EUR'));
+
+        self::assertSame('-7.5', $money->add($other)->amount());
+        self::assertSame('10', $money->absolute()->amount());
+        self::assertSame('-10', $money->amount());
+        self::assertSame('2.5', $other->amount());
     }
 
     #[DataProvider('invalidMultipliers')]

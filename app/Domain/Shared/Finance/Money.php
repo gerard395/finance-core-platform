@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Domain\Shared\Finance;
 
+use DomainException;
 use InvalidArgumentException;
 
 final readonly class Money
@@ -79,6 +80,43 @@ final readonly class Money
         return new self($negative ? '-'.$normalized : $normalized, $this->currency);
     }
 
+    public function add(self $other): self
+    {
+        if (! $this->currency->equals($other->currency)) {
+            throw new DomainException('Money amounts must use the same currency.');
+        }
+
+        $leftNegative = str_starts_with($this->amount, '-');
+        $rightNegative = str_starts_with($other->amount, '-');
+        $left = self::scaledAmount($this->amount);
+        $right = self::scaledAmount($other->amount);
+
+        if ($leftNegative === $rightNegative) {
+            $amount = self::addDigits($left, $right);
+            $negative = $leftNegative;
+        } else {
+            $comparison = self::compareUnsigned($left, $right);
+
+            if ($comparison === 0) {
+                return self::zero($this->currency);
+            }
+
+            $amount = $comparison > 0
+                ? self::subtractDigits($left, $right)
+                : self::subtractDigits($right, $left);
+            $negative = $comparison > 0 ? $leftNegative : $rightNegative;
+        }
+
+        $decimal = self::decimalAmount($amount);
+
+        return new self($negative ? '-'.$decimal : $decimal, $this->currency);
+    }
+
+    public function absolute(): self
+    {
+        return new self(str_starts_with($this->amount, '-') ? substr($this->amount, 1) : $this->amount, $this->currency);
+    }
+
     public function equals(self $other): bool
     {
         return $this->amount === $other->amount
@@ -107,5 +145,66 @@ final readonly class Money
         }
 
         return ltrim(implode('', $result), '0') ?: '0';
+    }
+
+    private static function scaledAmount(string $amount): string
+    {
+        $unsigned = str_starts_with($amount, '-') ? substr($amount, 1) : $amount;
+        [$whole, $fraction] = array_pad(explode('.', $unsigned, 2), 2, '');
+
+        return ltrim($whole.str_pad($fraction, 8, '0'), '0') ?: '0';
+    }
+
+    private static function addDigits(string $left, string $right): string
+    {
+        $length = max(strlen($left), strlen($right));
+        $left = str_pad($left, $length, '0', STR_PAD_LEFT);
+        $right = str_pad($right, $length, '0', STR_PAD_LEFT);
+        $carry = 0;
+        $result = '';
+
+        for ($index = $length - 1; $index >= 0; $index--) {
+            $sum = (int) $left[$index] + (int) $right[$index] + $carry;
+            $result = ($sum % 10).$result;
+            $carry = intdiv($sum, 10);
+        }
+
+        return ($carry > 0 ? $carry : '').$result;
+    }
+
+    private static function compareUnsigned(string $left, string $right): int
+    {
+        $left = ltrim($left, '0') ?: '0';
+        $right = ltrim($right, '0') ?: '0';
+
+        if (strlen($left) !== strlen($right)) {
+            return strlen($left) <=> strlen($right);
+        }
+
+        return $left <=> $right;
+    }
+
+    private static function subtractDigits(string $left, string $right): string
+    {
+        $right = str_pad($right, strlen($left), '0', STR_PAD_LEFT);
+        $borrow = 0;
+        $result = '';
+
+        for ($index = strlen($left) - 1; $index >= 0; $index--) {
+            $digit = (int) $left[$index] - (int) $right[$index] - $borrow;
+            $borrow = $digit < 0 ? 1 : 0;
+            $result = ($digit < 0 ? $digit + 10 : $digit).$result;
+        }
+
+        return ltrim($result, '0') ?: '0';
+    }
+
+    private static function decimalAmount(string $scaledAmount): string
+    {
+        $digits = str_pad($scaledAmount, 9, '0', STR_PAD_LEFT);
+        $whole = substr($digits, 0, -8);
+        $fraction = rtrim(substr($digits, -8), '0');
+
+        return $fraction === '' ? $whole : $whole.'.'.$fraction;
     }
 }
