@@ -16,6 +16,18 @@ Finalized → Cancelled
 
 Paid en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; iedere andere overgang resulteert in een `DomainException`. Posted kan niet worden geannuleerd.
 
+## PurchaseCreditInvoice
+
+PurchaseCreditInvoice is een zelfstandig Aggregate Root met immutable identiteit, creditfactuurnummer, AdministrationId, SupplierId, Currency, creditfactuurdatum en een optionele verwijzing naar de bron-PurchaseInvoice.
+
+```text
+Draft → Finalized → Posted
+Draft → Cancelled
+Finalized → Cancelled
+```
+
+Posted en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; iedere andere overgang resulteert in een `DomainException`.
+
 ## Invarianten
 
 - DueDate ligt op of na InvoiceDate.
@@ -25,9 +37,11 @@ Paid en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; 
 - Iedere PurchaseInvoice bevat minimaal één PurchaseInvoiceLine voordat deze wordt gefinaliseerd.
 - Regels hebben een unieke immutable identiteit en kunnen alleen worden toegevoegd of verwijderd zolang de factuur Draft is.
 - Line totals worden zonder floats exact afgeleid via gedeelde `Money`, `Quantity` en `LineDescription` value objects.
+- De context van een PurchaseCreditInvoice is immutable en de status wijzigt uitsluitend via `finalize()`, `post()` en `cancel()`.
 
 ## Grenzen
 
 - Btw behoort tot Tax.
 - Financiële mutaties en JournalEntries lopen later uitsluitend via Accounting en PostingEngine.
 - Betalingen, OpenItems, repositories, persistence, Laravel en infrastructuur vallen buiten P1-001.
+- Regels, btw, boekingen, betalingen en OpenItems voor PurchaseCreditInvoice vallen buiten P1-003.
