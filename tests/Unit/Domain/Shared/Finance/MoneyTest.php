@@ -43,6 +43,41 @@ final class MoneyTest extends TestCase
         self::assertTrue($zero->equals(new Money('-0.000', new Currency('EUR'))));
     }
 
+    #[DataProvider('signedAmounts')]
+    public function test_sign_queries_use_the_canonical_amount(
+        string $amount,
+        string $expectedAmount,
+        bool $isPositive,
+        bool $isNegative,
+    ): void {
+        $money = new Money($amount, new Currency('EUR'));
+
+        self::assertSame($expectedAmount, $money->amount());
+        self::assertSame($isPositive, $money->isPositive());
+        self::assertSame($isNegative, $money->isNegative());
+    }
+
+    /** @return array<string, array{string, string, bool, bool}> */
+    public static function signedAmounts(): array
+    {
+        return [
+            'positive amount' => ['10', '10', true, false],
+            'negative amount' => ['-10', '-10', false, true],
+            'canonical zero' => ['-0.000', '0', false, false],
+            'normalized positive decimal' => ['12.5000', '12.5', true, false],
+            'normalized negative decimal' => ['-12.5000', '-12.5', false, true],
+        ];
+    }
+
+    public function test_sign_queries_do_not_mutate_money(): void
+    {
+        $money = new Money('-12.5000', new Currency('EUR'));
+
+        self::assertFalse($money->isPositive());
+        self::assertTrue($money->isNegative());
+        self::assertSame('-12.5', $money->amount());
+    }
+
     public function test_multiply_by_integer_preserves_currency(): void
     {
         $currency = new Currency('EUR');
