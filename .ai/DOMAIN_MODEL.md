@@ -222,7 +222,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - `PostingRequest` beschrijft de door een factuur, betaling of banktransactie aangeleverde opdracht aan de `PostingEngine`.
 - `PostingResult` beschrijft de uitkomst van de verwerking door de `PostingEngine`.
 
-`PostingRequest` en `PostingResult` zijn in deze ontwerpstory uitsluitend gedocumenteerd en worden niet geïmplementeerd.
+`PostingRequest` en `PostingResult` vormen de bestaande frameworkonafhankelijke input- en outputcontracten van PostingEngine.
 
 #### Businessregels
 
@@ -251,7 +251,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - De `PostingEngine` is de enige component die JournalEntries mag aanmaken.
 - Accounting bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Designed; implementation starts with A5-001.
+**Capabilitystatus:** Completed for first domain iteration.
 
 ## 5. Fiscal
 
@@ -349,6 +349,78 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
 **Capabilitystatus:** Banking Foundation first domain iteration completed.
+
+### Integrated Financial Flow – I1
+
+#### Flow
+
+```text
+SalesInvoice
+        ↓
+PostingRequest
+        ↓
+PostingValidation
+        ↓
+PostingEngine
+        ↓
+JournalEntry
+        ↓
+OpenItem
+        ↓
+Payment
+        ↓
+BankTransaction
+        ↓
+Matching
+        ↓
+OpenItem Closed
+```
+
+`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. De laatste stap bestaat uit de bestaande `OpenItem::settle()`- en `OpenItem::close()`-methoden; Matching muteert het OpenItem niet rechtstreeks.
+
+#### Verantwoordelijkheden en hand-offs
+
+| Stap | Verantwoordelijke | Bestaande service | Hand-off |
+| --- | --- | --- | --- |
+| SalesInvoice | SalesInvoice Aggregate Root | — | Sales eindigt bij een geldige, gefinaliseerde factuurcontext. |
+| PostingRequest | Accounting request-object | — | Draagt JournalId, PostingDate, JournalEntryReference en JournalEntryLines naar Accounting. |
+| PostingValidation | Accounting | PostingValidation | Valideert minimaal twee regels, Currency, unieke regelidentiteiten en debet = credit. |
+| PostingEngine | Accounting | PostingEngine | Is als enige verantwoordelijk voor het maken en posten van JournalEntry. |
+| JournalEntry | JournalEntry Aggregate Root | — | Bewaart de immutable geposte boeking; maakt zelf geen OpenItem. |
+| OpenItem | OpenItem Aggregate Root | — | Bewaakt originalAmount, openAmount en vereffening; verwijst naar JournalEntryId. |
+| Payment | Child entity van BankTransaction | — | Verwijst met OpenItemId naar precies één OpenItem en draagt een positief Money-bedrag. |
+| BankTransaction | BankTransaction Aggregate Root | — | Bewaakt Payment-ownership, Currency en de Imported → Matched → Posted-statusmachine. |
+| Matching | Banking | Matching | Valideert de exacte Payment-som en zet alleen een geldige Imported transactie op Matched. |
+| OpenItem Closed | OpenItem Aggregate Root | — | Application-orchestratie roept settle(Money) en daarna close() aan; Banking muteert Accounting niet rechtstreeks. |
+
+#### Dragende Value Objects
+
+- `Money` en `Currency` dragen alle bedragen en exacte berekeningen door de volledige flow.
+- `AdministrationId` bewaakt de expliciete administratiescheiding in Sales, Accounting en Banking.
+- `SalesInvoiceId`, `JournalEntryId`, `OpenItemId`, `PaymentId` en `BankTransactionId` dragen identiteit binnen hun eigen aggregategrens.
+- `CustomerId` en `RelationId` verbinden de debiteurcontext zonder aggregate-ownership over te nemen.
+- `JournalId`, `PostingDate`, `JournalEntryReference`, `JournalEntryLineId` en `LedgerAccountId` dragen de boekingsopdracht.
+- `BankAccountId`, `BankTransactionReference` en `TransactionDescription` dragen de banktransactiecontext.
+
+#### Bewezen application-koppelingen
+
+- `CreateSalesInvoicePostingRequest` vertaalt Finalized, Posted en Paid SalesInvoices naar een expliciete Accounting PostingRequest; Draft en Cancelled worden geweigerd.
+- `CreatePurchaseInvoicePostingRequest` doet hetzelfde voor PurchaseInvoice zonder een Purchasing→Accounting-dependency in Domain te introduceren.
+- `CreateBankTransactionPostingRequest` vertaalt uitsluitend een Matched BankTransaction met Payments naar een bankboeking; Imported en Posted worden geweigerd.
+- De Application-laag kiest JournalId, LedgerAccountIds, JournalEntryLineIds, PostingDate en JournalEntryReference en bevat daarmee de capability-overstijgende orchestration.
+- PostingValidation accepteert de gebalanceerde requests en uitsluitend PostingEngine maakt de geposte JournalEntries.
+- De end-to-endtest construeert na de factuurboeking een OpenItem uit expliciete factuur- en boekingscontext, koppelt een Payment via OpenItemId en past een succesvol MatchingResult toe via `settle()` en daarna `close()`.
+- Matching sluit geen OpenItem en maakt geen boeking; een BankTransaction gebruikt een afzonderlijke PostingRequest via dezelfde PostingEngine.
+
+#### Acceptance en resterende grenzen
+
+- De succesketen en foutpaden voor ongeldige statussen, ongebalanceerde allocaties, te lage en te hoge settlements en voortijdig sluiten zijn met echte domeinobjecten bewezen.
+- Money-totalisatie en -vergelijking gebruiken exacte decimale strings zonder floats.
+- De drie PostingRequest-use-cases dupliceren beperkt orchestrationpatroon voor totalisatie, beschrijving en twee boekingsregels. Dit is zichtbare technische schuld, maar abstraheren vóór extra stabiele varianten zou de capabilitytaal verbergen.
+- De exclusiviteit van PostingEngine als JournalEntry-factory is in productiecode en architectuurregels aantoonbaar, maar nog niet technisch afgedwongen door modulevisibility.
+- Auditmetadata, tegenboekingsorchestration, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. Reporting kan veilig starten door een readmodel over geposte JournalEntries en OpenItems te ontwerpen zonder de bewezen write-side aggregategrenzen te wijzigen.
+
+**Milestonestatus M5:** Integrated Financial Flow accepted; Reporting kan starten zonder fundamentele architectuurwijziging.
 
 ## 7. Documents
 

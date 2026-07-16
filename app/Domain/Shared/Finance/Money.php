@@ -44,6 +44,16 @@ final readonly class Money
         return $this->amount === '0';
     }
 
+    public function isPositive(): bool
+    {
+        return ! $this->isZero() && ! $this->isNegative();
+    }
+
+    public function isNegative(): bool
+    {
+        return str_starts_with($this->amount, '-');
+    }
+
     public function multiply(string $multiplier): self
     {
         if (preg_match('/\A(?:0|[1-9][0-9]*)(?:\.[0-9]{1,8})?\z/', $multiplier) !== 1) {
