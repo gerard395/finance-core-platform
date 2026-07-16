@@ -309,7 +309,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | BankAccount | Een financiële rekening identificeren | Een rekening voor het ontvangen, bewaren en uitbetalen van geld. |
 | BankStatement | Een aangeleverd rekeningoverzicht representeren | Een overzicht van bankmutaties over een bepaald tijdvak. |
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
-| PaymentAllocation | Een betaling administratief verdelen | De vastlegging van de bestemming van een betaald of ontvangen bedrag. |
+| Payment | Een bankmutatie aan een OpenItem alloceren | Een positief Money-bedrag dat als child entity binnen één BankTransaction naar precies één OpenItem verwijst. |
 
 ### Banking Capability
 
@@ -330,10 +330,13 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 - BankTransaction is binnen Banking de primaire financiële gebeurtenis.
 - Een BankTransaction kan nul, één of meerdere Payments bevatten.
 - Iedere Payment behoort altijd tot precies één OpenItem.
-- Matching koppelt BankTransactions aan OpenItems.
-- Matching maakt geen JournalEntries.
+- Payment-bedragen zijn strikt positief, gebruiken dezelfde Currency als de BankTransaction en zijn alleen wijzigbaar zolang de transactie Imported is.
+- De BankTransaction-context is immutable; alleen status en de eigen Payment-collectie wijzigen via domeingedrag.
+- Matching vereist minimaal één Payment en vergelijkt de exacte Money-som met het absolute BankTransaction-bedrag.
+- Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
+- Matching maakt geen Payments, JournalEntries of PostingRequests.
 - Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
-- Banking bevat geen UI-, import- of PSD2-logica.
+- Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
 
 #### Architectuurregels
 
@@ -345,7 +348,7 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 - Banking maakt geen JournalEntries en bevat geen `PostingEngine`-implementatie.
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Designed; implementation starts with B1-001.
+**Capabilitystatus:** Banking Foundation first domain iteration completed.
 
 ## 7. Documents
 

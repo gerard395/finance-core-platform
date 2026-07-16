@@ -31,5 +31,11 @@ De frameworkonafhankelijke domain service Matching telt bestaande Payment-alloca
 - Banking mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations.
 - BankTransaction maakt geen JournalEntries; financiële boekingen blijven de verantwoordelijkheid van Accounting en PostingEngine.
 - Matching maakt geen Payments, JournalEntries of PostingRequests en muteert geen allocaties.
-- Settlement, CAMT053, MT940, PSD2, CSV-import, PostingRequest en PostingEngine vallen buiten B1-003.
+- Import en importformaten zoals CAMT053, MT940 en CSV vallen buiten de Banking Foundation.
+- Reconciliation, settlement en PSD2 vallen buiten de Banking Foundation.
+- PostingRequest en PostingEngine zijn Accounting-verantwoordelijkheden en vallen buiten Banking.
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+## Capabilitystatus
+
+Banking Foundation first domain iteration completed.
