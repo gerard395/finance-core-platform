@@ -45,6 +45,7 @@ final class CreateSalesInvoicePostingRequest
         $description = 'Sales invoice '.$invoice->number()->value();
 
         return new PostingRequest(
+            $invoice->administrationId(),
             $salesJournalId,
             $postingDate,
             $reference,

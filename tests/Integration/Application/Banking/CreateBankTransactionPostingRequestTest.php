@@ -53,6 +53,7 @@ final class CreateBankTransactionPostingRequestTest extends TestCase
             $reference,
         );
 
+        self::assertSame($transaction->administrationId(), $request->administrationId());
         self::assertSame($journalId, $request->journalId());
         self::assertSame($postingDate, $request->postingDate());
         self::assertSame($reference, $request->reference());
@@ -169,6 +170,7 @@ final class CreateBankTransactionPostingRequestTest extends TestCase
 
         self::assertTrue($result->isSuccess());
         self::assertNotNull($result->journalEntry());
+        self::assertSame($request->administrationId(), $result->journalEntry()->administrationId());
         self::assertTrue($result->journalEntry()->isPosted());
         self::assertCount(2, $result->journalEntry()->lines());
     }

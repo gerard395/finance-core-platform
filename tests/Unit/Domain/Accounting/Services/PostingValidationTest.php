@@ -13,6 +13,7 @@ use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Accounting\ValueObjects\ValidationResult;
+use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
@@ -94,6 +95,7 @@ final class PostingValidationTest extends TestCase
     private function validate(array $lines): ValidationResult
     {
         $request = new PostingRequest(
+            new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174001')),
             new JournalId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new PostingDate(new DateTimeImmutable('2026-07-16')),
             new JournalEntryReference('Validation test'),

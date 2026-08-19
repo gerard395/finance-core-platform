@@ -13,6 +13,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
@@ -25,12 +26,14 @@ final class JournalEntryTest extends TestCase
     public function test_it_is_constructed_with_all_values_exposed_and_starts_as_draft(): void
     {
         $id = new JournalEntryId(new Uuid('550e8400-e29b-41d4-a716-446655440000'));
+        $administrationId = new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174001'));
         $journalId = new JournalId(new Uuid('123e4567-e89b-42d3-a456-426614174000'));
         $postingDate = new PostingDate(new DateTimeImmutable('2026-07-16'));
         $reference = new JournalEntryReference('Opening entry');
-        $entry = new JournalEntry($id, $journalId, $postingDate, $reference, JournalEntryStatus::Draft);
+        $entry = new JournalEntry($id, $administrationId, $journalId, $postingDate, $reference, JournalEntryStatus::Draft);
 
         self::assertSame($id, $entry->id());
+        self::assertSame($administrationId, $entry->administrationId());
         self::assertSame($journalId, $entry->journalId());
         self::assertSame($postingDate, $entry->postingDate());
         self::assertSame($reference, $entry->reference());
@@ -43,6 +46,7 @@ final class JournalEntryTest extends TestCase
     {
         $entry = $this->createEntry();
         $id = $entry->id();
+        $administrationId = $entry->administrationId();
         $journalId = $entry->journalId();
         $postingDate = $entry->postingDate();
         $reference = $entry->reference();
@@ -53,6 +57,7 @@ final class JournalEntryTest extends TestCase
         self::assertFalse($entry->isDraft());
         self::assertTrue($entry->isPosted());
         self::assertSame($id, $entry->id());
+        self::assertSame($administrationId, $entry->administrationId());
         self::assertSame($journalId, $entry->journalId());
         self::assertSame($postingDate, $entry->postingDate());
         self::assertSame($reference, $entry->reference());
@@ -134,6 +139,7 @@ final class JournalEntryTest extends TestCase
     {
         return new JournalEntry(
             new JournalEntryId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
+            new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174001')),
             new JournalId(new Uuid('123e4567-e89b-42d3-a456-426614174000')),
             new PostingDate(new DateTimeImmutable('2026-07-16')),
             new JournalEntryReference('Opening entry'),

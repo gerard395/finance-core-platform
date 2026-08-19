@@ -45,6 +45,7 @@ final class CreatePurchaseInvoicePostingRequest
         $description = 'Purchase invoice '.$invoice->number()->value();
 
         return new PostingRequest(
+            $invoice->administrationId(),
             $purchaseJournalId,
             $postingDate,
             $reference,

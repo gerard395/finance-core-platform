@@ -8,6 +8,7 @@ use App\Domain\Accounting\Entities\JournalEntryLine;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Administration\ValueObjects\AdministrationId;
 
 final readonly class PostingRequest
 {
@@ -16,12 +17,18 @@ final readonly class PostingRequest
 
     /** @param list<JournalEntryLine> $lines */
     public function __construct(
+        private AdministrationId $administrationId,
         private JournalId $journalId,
         private PostingDate $postingDate,
         private JournalEntryReference $reference,
         array $lines,
     ) {
         $this->lines = array_values($lines);
+    }
+
+    public function administrationId(): AdministrationId
+    {
+        return $this->administrationId;
     }
 
     public function journalId(): JournalId

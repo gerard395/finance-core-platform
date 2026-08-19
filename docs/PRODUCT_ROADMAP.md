@@ -109,7 +109,15 @@ OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluit
 
 ## Capability 10 – Reporting
 
-**Status:** Planned
+**Status:** Reporting Foundation completed
+
+### Capability Reporting
+
+Reporting is een read-only capability ten opzichte van de financiële domeinwaarheid. Zij leidt rapportages af uit uitsluitend geposte `JournalEntry`-aggregates en hun `JournalEntryLine`-regels, aangevuld met `LedgerAccount`, `OpenItem` en fiscale gegevens waar het rapport dat vereist. Draft JournalEntries tellen nooit mee. Iedere rapportvraag bevat een expliciet `Administration`-filter en een expliciete datum- of periodeafbakening.
+
+De eerste rapportages Trial Balance, Balance Sheet en Profit & Loss zijn frameworkonafhankelijk geïmplementeerd. Trial Balance gebruikt exact `balance = debit - credit`; Balance Sheet normaliseert uitsluitend Liability en Equity met `absolute()`, terwijl Profit & Loss uitsluitend Revenue normaliseert. Balance Sheet vergelijkt `totalAssets = totalLiabilities + totalEquity` en Profit & Loss berekent `netResult = totalRevenue - totalExpenses`. AdministrationId, periode en Currency blijven expliciet en immutable behouden.
+
+General Ledger Card, Open Items Report en VAT Overview volgen later. Reporting maakt geen JournalEntries en wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates. Grootboeksaldi blijven berekende uitkomsten en worden niet als domeinwaarheid opgeslagen. Latere read models en projecties mogen in Application/Infrastructure worden toegevoegd, maar vormen geen nieuwe financiële waarheid.
 
 ## Capability 11 – Workflow
 
@@ -148,6 +156,18 @@ Sales blijft verantwoordelijk tot en met de gefinaliseerde SalesInvoice. Account
 I1-001 tot en met I1-004 bewijzen de application-koppelingen voor SalesInvoice, PurchaseInvoice en BankTransaction naar PostingRequest en de volledige verkoopfactuur-tot-afwikkelingketen. De Application-laag kiest expliciet JournalId, LedgerAccountIds, regelidentiteiten, boekingsdatum en referentie. PostingValidation bewaakt de boekingsopdracht en uitsluitend PostingEngine maakt JournalEntries. Matching valideert Payment-allocaties zonder OpenItems te muteren; application-orchestratie past een succesvol MatchingResult toe via `OpenItem::settle()` en `close()`.
 
 De acceptance review in I1-005 bevestigt dat geen fundamentele architectuurwijziging nodig is voordat Reporting start. Reporting moet nog een expliciet read-/projectiemodel, periode- en administratieafbakening en audit-/correctietrace ontwerpen. Dit is vervolgscope, geen blocker voor het starten van de Reporting-milestone. De exclusiviteit van PostingEngine wordt momenteel door architectuurregels en productiecode bewaakt en nog niet door een technische modulegrens afgedwongen.
+
+## Milestone M6 – Financial Insight
+
+**Status:** In Progress
+
+### Batch R1 – Reporting Foundation
+
+**Status:** Completed
+
+R1 levert een frameworkonafhankelijke Trial Balance, Balance Sheet en Profit & Loss als read-only afleiding van financiële domeinwaarheid. Alleen Posted JournalEntries voeden de Trial Balance; Balance Sheet en Profit & Loss hergebruiken uitsluitend `TrialBalanceResult`. Money-rekenkunde blijft exact en capability-neutraal in Shared Finance. De review in R1-004 bevestigt de architectuurgrenzen, contextovername, tekenconventies en testdekking.
+
+Niet-blokkerend vervolg omvat Application/Infrastructure-projecties voor schaalbare selectie, expliciete boekjaaropening en resultaatbestemming, General Ledger Card, Open Items/Aging Report, VAT Overview en audit-drill-down. Deze uitbreidingen mogen geen nieuwe financiële waarheid introduceren.
 
 ## Releases
 

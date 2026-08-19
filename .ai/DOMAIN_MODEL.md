@@ -450,3 +450,61 @@ OpenItem Closed
 | TrialBalance | Grootboeksaldi controleren | Een overzicht van debet- en creditsaldi per grootboekrekening. |
 | AgingReport | Openstaande bedragen naar ouderdom analyseren | Een overzicht dat nog te ontvangen of te betalen bedragen in ouderdomscategorieën toont. |
 | DashboardMetric | Een kernwaarde compact presenteren | Een berekende indicator voor operationeel of financieel inzicht. |
+
+### Reporting Capability
+
+Reporting is read-only ten opzichte van de financiële domeinwaarheid. De capability observeert bestaande gegevens, berekent rapportuitkomsten en muteert geen aggregates. Een rapportuitkomst of latere projectie is een reproduceerbare afleiding en geen nieuwe financiële waarheid.
+
+#### Bronnen en selectiegrenzen
+
+- `JournalEntry` en `JournalEntryLine` zijn de boekingsbron voor grootboekrapportages.
+- `LedgerAccount` levert de rekeningidentiteit en classificatie die nodig zijn om regels te groeperen en rapportsecties te selecteren.
+- `OpenItem` is een aanvullende bron voor latere openstaande-postenrapportages.
+- Fiscal-data is alleen een aanvullende bron waar een fiscaal rapport dat vereist, zoals een latere VAT Overview.
+- Alleen JournalEntries met status `Posted` worden opgenomen; Draft JournalEntries tellen niet mee.
+- Iedere rapportage vereist een expliciet `Administration`-filter.
+- Iedere rapportage vereist een expliciete datum, balansdatum of periode van/tot, passend bij het rapport.
+- Tegenboekingen worden als eigen geposte JournalEntries verwerkt en werken daardoor via dezelfde selectie door in de berekende uitkomst.
+
+#### Eerste rapportages
+
+**Trial Balance**
+
+De Trial Balance groepeert de geselecteerde JournalEntryLines per LedgerAccount en levert minimaal:
+
+- `totalDebit`: de som van de debetbedragen binnen Administration en datum/periode;
+- `totalCredit`: de som van de creditbedragen binnen Administration en datum/periode;
+- `balance`: het berekende saldo op basis van totalDebit en totalCredit.
+
+Over het volledige rapport bepalen exacte Money-totalen of debit en credit gelijk zijn. De selectie bevat uitsluitend Posted JournalEntries en gebruikt inclusieve periodegrenzen. `balance` is exact `totalDebit - totalCredit`: een normaal debetsaldo is positief en een normaal creditsaldo negatief.
+
+**Balance Sheet**
+
+De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Asset, Liability of Equity en rapporteert op een expliciete balansdatum die gelijk is aan de Trial Balance-einddatum. Asset gebruikt het Trial Balance-saldo direct; Liability en Equity worden uitsluitend voor presentatie met `Money::absolute()` genormaliseerd. Zij introduceert geen zelfstandig opgeslagen saldi en vergelijkt exact `totalAssets = totalLiabilities + totalEquity`.
+
+**Profit & Loss**
+
+De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over de overgenomen expliciete periode van/tot. Revenue wordt uitsluitend voor presentatie met `Money::absolute()` genormaliseerd; Expense behoudt het Trial Balance-saldo. `netResult` is exact `totalRevenue - totalExpenses`. Zij introduceert geen zelfstandig opgeslagen resultaat.
+
+#### Latere rapportages
+
+- General Ledger Card: detail en verloop van geposte boekingsregels per LedgerAccount.
+- Open Items Report: openstaande bedragen afgeleid met `OpenItem` als aanvullende bron.
+- VAT Overview: fiscaal overzicht afgeleid uit geposte boekingen en relevante Fiscal-data.
+
+#### Architectuurregels
+
+- Reporting maakt of post geen JournalEntries.
+- Reporting wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates.
+- Grootboeksaldi worden berekend uit geposte JournalEntries en niet als domeinwaarheid opgeslagen.
+- Reporting bevat geen Laravel-, database-, repository-, infrastructuur- of UI-logica.
+- Read models en projecties mogen later in Application/Infrastructure worden geïntroduceerd voor selectie en performance, maar zijn herbouwbare afleidingen en geen nieuwe financiële waarheid.
+
+#### Bekende niet-blokkerende beperkingen en vervolg
+
+- De huidige calculators werken op volledig aangeleverde in-memory domeinobjecten; schaalbare selectie en projecties volgen in Application/Infrastructure.
+- Balance Sheet veronderstelt dat de Trial Balance de benodigde openings- en historische saldi bevat; boekjaaropening, carry-forward en resultaatbestemming vragen expliciet vervolgontwerp.
+- De presentatie-normalisatie signaleert afwijkende debet-/creditsaldi nog niet als aparte waarschuwing.
+- General Ledger Card, Open Items/Aging Report, VAT Overview, audit-drill-down en exportcontracten zijn aanbevolen vervolgstories.
+
+**Capabilitystatus:** Reporting Foundation completed (R1-004).

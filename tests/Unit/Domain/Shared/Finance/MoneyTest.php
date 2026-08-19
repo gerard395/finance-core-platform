@@ -134,6 +134,51 @@ final class MoneyTest extends TestCase
         (new Money('10', new Currency('EUR')))->add(new Money('10', new Currency('USD')));
     }
 
+    #[DataProvider('subtractions')]
+    public function test_subtract_is_exact_for_signed_decimal_amounts(string $left, string $right, string $expected): void
+    {
+        $currency = new Currency('EUR');
+        $result = (new Money($left, $currency))->subtract(new Money($right, $currency));
+
+        self::assertSame($expected, $result->amount());
+        self::assertSame($currency, $result->currency());
+    }
+
+    /** @return array<string, array{string, string, string}> */
+    public static function subtractions(): array
+    {
+        return [
+            'positive minus positive' => ['12.5', '7.25', '5.25'],
+            'positive minus larger positive' => ['7.25', '12.5', '-5.25'],
+            'negative minus positive' => ['-7.25', '12.5', '-19.75'],
+            'negative minus negative' => ['-7.25', '-12.5', '5.25'],
+            'amount minus zero' => ['12.5', '0', '12.5'],
+            'amount minus itself is canonical zero' => ['12.5', '12.5', '0'],
+            'exact decimals' => ['0.3', '0.2', '0.1'],
+            'maximum precision' => ['0.00000003', '0.00000002', '0.00000001'],
+        ];
+    }
+
+    public function test_subtract_rejects_different_currencies(): void
+    {
+        $this->expectException(DomainException::class);
+
+        (new Money('10', new Currency('EUR')))->subtract(new Money('2', new Currency('USD')));
+    }
+
+    public function test_subtract_is_immutable(): void
+    {
+        $money = new Money('10', new Currency('EUR'));
+        $other = new Money('2.5', new Currency('EUR'));
+
+        $result = $money->subtract($other);
+
+        self::assertNotSame($money, $result);
+        self::assertSame('7.5', $result->amount());
+        self::assertSame('10', $money->amount());
+        self::assertSame('2.5', $other->amount());
+    }
+
     #[DataProvider('absoluteAmounts')]
     public function test_absolute_preserves_currency_and_returns_canonical_amount(string $amount, string $expected): void
     {
