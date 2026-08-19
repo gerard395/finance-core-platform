@@ -293,7 +293,9 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - TaxCalculation gebruikt Money en geen floats of primitieve geldbedragen.
 - TaxCalculation maakt geen JournalEntries.
 - TaxPosting bewaart de gebruikte TaxRate, taxable base en taxAmount als transactiesnapshot; de actuele TaxCode-rate is nooit historische rapportagewaarheid.
-- TaxPostings zijn immutable en append-only. Correcties verwijderen geen feiten maar gebruiken een Reversal met verwijzing naar het oorspronkelijke Applied feit en een geposte Accounting-tegenboeking.
+- TaxPostings zijn immutable en append-only. Het definitieve correctiemodel gebruikt een expliciet type `Original` of `Reversal`; bedragen blijven positief en Input/Output-direction blijft gelijk aan het origineel.
+- Een Reversal verwijst naar precies één Original, neemt TaxCode/rate/base/tax/Currency/direction exact over en is in v1 altijd volledig. Een Original mag maximaal eenmaal worden gereversed en een Reversal kan niet zelf reversal-target zijn.
+- Correcties verwijderen geen feiten. Application laat de financiële tegenboeking door PostingEngine maken en creëert pas daarna het Reversal-TaxPosting met de werkelijke correctie-JournalEntry/Line-identiteiten.
 - `PostingEngine` blijft als enige verantwoordelijk voor het maken en posten van JournalEntries.
 - De Fiscal-kern bevat geen land-specifieke fiscale regels; zulke regels worden later buiten de kern gemodelleerd.
 
@@ -542,10 +544,11 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 - Beoogde bronnen: Fiscal-classificatie en uitsluitend geposte financiële gegevens met duurzame fiscale trace.
 - Vereiste context: AdministrationId, inclusieve periode en Currency; aanvullende jurisdictie-/aangiftecontext volgt pas uit fiscaal ontwerp.
 - Huidige Fiscal-objecten (`TaxCode`, `TaxCalculationResult`) zijn niet gekoppeld aan Sales/Purchasing-documentregels of `JournalEntryLine`; invoiceposting bevat nog geen afzonderlijke btw-regels.
-- R2-003A realiseert een immutable Fiscal-owned `TaxPosting` naast Accounting: TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en verplichte IDs voor zowel geboekte base-line als tax-line.
+- R2-003A realiseert een immutable Fiscal-owned `TaxPosting` naast Accounting: TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en IDs voor de geboekte base-line en, uitsluitend bij positieve tax, tax-line.
 - PostingRequest en JournalEntryLine blijven generiek. Application bouwt netto/VAT/bruto-regels, laat uitsluitend PostingEngine posten en finaliseert daarna TaxPostings met de werkelijk geposte IDs.
-- Correcties zijn append-only fiscale Reversals gekoppeld aan geposte Accounting-tegenboekingen; oorspronkelijke feiten blijven intact.
-- Implementatiegat: TaxPosting bestaat, maar de fiscale Sales-/Purchasing-postingorchestration en append-only history/reversalvalidatie nog niet. Tot die prerequisites gereed zijn, is VAT Overview niet betrouwbaar implementeerbaar en mag Reporting niets afleiden uit LedgerAccount, description of actuele TaxCode-rate.
+- R2-003B en R2-003C realiseren de fiscale Sales-/Purchasing-original-postingorchestratie.
+- R2-003D kiest voor correcties `TaxPostingType::Original/Reversal`, positieve bedragen en onveranderde Input/Output-direction. Reversals zijn v1 volledig, gebruiken het creditdocument als nieuwe bron, verwijzen naar één Original en vallen via hun eigen PostingDate in de correctieperiode.
+- Implementatiegat: TaxPosting mist nog het expliciete type, creditdocumenttypen, historyguard en fiscale credit-orchestraties. Tot die prerequisites gereed zijn, is VAT Overview niet betrouwbaar implementeerbaar voor correcties en mag Reporting niets afleiden uit LedgerAccount, description of actuele TaxCode-rate.
 
 #### Aanbevolen implementatievolgorde
 
