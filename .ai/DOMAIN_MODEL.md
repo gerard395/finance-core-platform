@@ -542,10 +542,10 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 - Beoogde bronnen: Fiscal-classificatie en uitsluitend geposte financiële gegevens met duurzame fiscale trace.
 - Vereiste context: AdministrationId, inclusieve periode en Currency; aanvullende jurisdictie-/aangiftecontext volgt pas uit fiscaal ontwerp.
 - Huidige Fiscal-objecten (`TaxCode`, `TaxCalculationResult`) zijn niet gekoppeld aan Sales/Purchasing-documentregels of `JournalEntryLine`; invoiceposting bevat nog geen afzonderlijke btw-regels.
-- R2-003 kiest een immutable Fiscal-owned `TaxPosting` naast Accounting: TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate, verplichte geboekte base-line en bij positieve btw de exacte tax-line.
+- R2-003A realiseert een immutable Fiscal-owned `TaxPosting` naast Accounting: TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en verplichte IDs voor zowel geboekte base-line als tax-line.
 - PostingRequest en JournalEntryLine blijven generiek. Application bouwt netto/VAT/bruto-regels, laat uitsluitend PostingEngine posten en finaliseert daarna TaxPostings met de werkelijk geposte IDs.
 - Correcties zijn append-only fiscale Reversals gekoppeld aan geposte Accounting-tegenboekingen; oorspronkelijke feiten blijven intact.
-- Implementatiegat: TaxPosting en de fiscale Sales-/Purchasing-postingorchestration bestaan nog niet. Tot die prerequisites gereed zijn, is VAT Overview niet betrouwbaar implementeerbaar en mag Reporting niets afleiden uit LedgerAccount, description of actuele TaxCode-rate.
+- Implementatiegat: TaxPosting bestaat, maar de fiscale Sales-/Purchasing-postingorchestration en append-only history/reversalvalidatie nog niet. Tot die prerequisites gereed zijn, is VAT Overview niet betrouwbaar implementeerbaar en mag Reporting niets afleiden uit LedgerAccount, description of actuele TaxCode-rate.
 
 #### Aanbevolen implementatievolgorde
 
