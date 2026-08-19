@@ -10,6 +10,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Administration\ValueObjects\AdministrationId;
 use DomainException;
 
 final class JournalEntry
@@ -19,6 +20,7 @@ final class JournalEntry
 
     public function __construct(
         private readonly JournalEntryId $id,
+        private readonly AdministrationId $administrationId,
         private readonly JournalId $journalId,
         private readonly PostingDate $postingDate,
         private readonly JournalEntryReference $reference,
@@ -28,6 +30,11 @@ final class JournalEntry
     public function id(): JournalEntryId
     {
         return $this->id;
+    }
+
+    public function administrationId(): AdministrationId
+    {
+        return $this->administrationId;
     }
 
     public function journalId(): JournalId

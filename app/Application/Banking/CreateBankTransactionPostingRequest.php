@@ -52,6 +52,7 @@ final class CreateBankTransactionPostingRequest
         }
 
         return new PostingRequest(
+            $transaction->administrationId(),
             $bankJournalId,
             $postingDate,
             $reference,

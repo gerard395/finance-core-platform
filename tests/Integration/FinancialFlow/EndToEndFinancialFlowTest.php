@@ -81,6 +81,8 @@ final class EndToEndFinancialFlowTest extends TestCase
         self::assertTrue($invoiceResult->isSuccess());
         $invoiceEntry = $invoiceResult->journalEntry();
         self::assertNotNull($invoiceEntry);
+        self::assertSame($administrationId, $invoiceRequest->administrationId());
+        self::assertSame($administrationId, $invoiceEntry->administrationId());
         self::assertTrue($invoiceEntry->isPosted());
         $this->assertBalanced($invoiceRequest, new Money('125', $currency));
 
@@ -123,6 +125,8 @@ final class EndToEndFinancialFlowTest extends TestCase
         $bankResult = $this->postingEngine($validation, '00000000-0000-4000-8000-000000000025')->post($bankRequest);
         self::assertTrue($bankResult->isSuccess());
         self::assertNotNull($bankResult->journalEntry());
+        self::assertSame($administrationId, $bankRequest->administrationId());
+        self::assertSame($administrationId, $bankResult->journalEntry()->administrationId());
         self::assertTrue($bankResult->journalEntry()->isPosted());
         $this->assertBalanced($bankRequest, $invoiceAmount);
 

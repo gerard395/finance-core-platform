@@ -14,6 +14,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
@@ -36,6 +37,7 @@ final class PostingEngineTest extends TestCase
         self::assertSame([], $result->validationErrors());
         self::assertNotNull($entry);
         self::assertSame($journalEntryId, $entry->id());
+        self::assertSame($request->administrationId(), $entry->administrationId());
         self::assertSame($request->journalId(), $entry->journalId());
         self::assertSame($request->postingDate(), $entry->postingDate());
         self::assertSame($request->reference(), $entry->reference());
@@ -78,6 +80,7 @@ final class PostingEngineTest extends TestCase
     private function request(array $lines): PostingRequest
     {
         return new PostingRequest(
+            new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174001')),
             new JournalId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
             new PostingDate(new DateTimeImmutable('2026-07-16')),
             new JournalEntryReference('Posting engine test'),

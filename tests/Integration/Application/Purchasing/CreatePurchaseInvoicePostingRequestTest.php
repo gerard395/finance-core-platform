@@ -57,6 +57,7 @@ final class CreatePurchaseInvoicePostingRequestTest extends TestCase
             $reference,
         );
 
+        self::assertSame($invoice->administrationId(), $request->administrationId());
         self::assertSame($journalId, $request->journalId());
         self::assertSame($postingDate, $request->postingDate());
         self::assertSame($reference, $request->reference());
@@ -84,6 +85,7 @@ final class CreatePurchaseInvoicePostingRequestTest extends TestCase
 
         self::assertTrue($result->isSuccess());
         self::assertNotNull($result->journalEntry());
+        self::assertSame($invoice->administrationId(), $result->journalEntry()->administrationId());
         self::assertTrue($result->journalEntry()->isPosted());
         self::assertCount(2, $result->journalEntry()->lines());
     }

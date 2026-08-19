@@ -29,6 +29,7 @@ final readonly class PostingEngine
 
         $journalEntry = new JournalEntry(
             ($this->journalEntryIdFactory)(),
+            $request->administrationId(),
             $request->journalId(),
             $request->postingDate(),
             $request->reference(),
