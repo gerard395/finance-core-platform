@@ -4,7 +4,10 @@ declare(strict_types=1);
 
 namespace App\Domain\Reporting;
 
+use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
+use DateTimeImmutable;
 use DomainException;
 
 final readonly class TrialBalanceResult
@@ -16,17 +19,24 @@ final readonly class TrialBalanceResult
         private array $lines,
         private Money $totalDebit,
         private Money $totalCredit,
+        private AdministrationId $administrationId,
+        private DateTimeImmutable $startDate,
+        private DateTimeImmutable $endDate,
+        private Currency $currency,
     ) {
-        $currency = $this->totalDebit->currency();
+        if ($this->startDate > $this->endDate) {
+            throw new DomainException('Trial balance result start date cannot be after end date.');
+        }
 
-        if (! $currency->equals($this->totalCredit->currency())) {
+        if (! $this->currency->equals($this->totalDebit->currency())
+            || ! $this->currency->equals($this->totalCredit->currency())) {
             throw new DomainException('A trial balance result must use one currency.');
         }
 
         foreach ($this->lines as $line) {
-            if (! $currency->equals($line->totalDebit()->currency())
-                || ! $currency->equals($line->totalCredit()->currency())
-                || ! $currency->equals($line->balance()->currency())) {
+            if (! $this->currency->equals($line->totalDebit()->currency())
+                || ! $this->currency->equals($line->totalCredit()->currency())
+                || ! $this->currency->equals($line->balance()->currency())) {
                 throw new DomainException('A trial balance result must use one currency.');
             }
         }
@@ -51,5 +61,25 @@ final readonly class TrialBalanceResult
     public function isBalanced(): bool
     {
         return $this->totalDebit->equals($this->totalCredit);
+    }
+
+    public function administrationId(): AdministrationId
+    {
+        return $this->administrationId;
+    }
+
+    public function startDate(): DateTimeImmutable
+    {
+        return $this->startDate;
+    }
+
+    public function endDate(): DateTimeImmutable
+    {
+        return $this->endDate;
+    }
+
+    public function currency(): Currency
+    {
+        return $this->currency;
     }
 }

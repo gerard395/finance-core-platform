@@ -76,7 +76,15 @@ final readonly class TrialBalance
             $totalCredit = $totalCredit->add($credit);
         }
 
-        return new TrialBalanceResult($lines, $totalDebit, $totalCredit);
+        return new TrialBalanceResult(
+            $lines,
+            $totalDebit,
+            $totalCredit,
+            $administrationId,
+            $from->value(),
+            $to->value(),
+            $currency,
+        );
     }
 
     private function isIncluded(

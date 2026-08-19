@@ -33,6 +33,8 @@ final readonly class TrialBalanceLine
 
     public function balance(): Money
     {
+        // Trial Balance truth remains debit minus credit. Balance Sheet presentation
+        // normalizes Liability and Equity balances with Money::absolute().
         return $this->balance;
     }
 }

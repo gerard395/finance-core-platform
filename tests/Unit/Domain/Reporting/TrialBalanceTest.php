@@ -54,6 +54,48 @@ final class TrialBalanceTest extends TestCase
         self::assertTrue($result->totalDebit()->currency()->equals($currency));
     }
 
+    public function test_reporting_context_is_passed_through_unchanged(): void
+    {
+        $administrationId = $this->administrationId(self::ADMINISTRATION_ID);
+        $startDate = new DateTimeImmutable('2026-07-01');
+        $endDate = new DateTimeImmutable('2026-07-31');
+        $from = new PostingDate($startDate);
+        $to = new PostingDate($endDate);
+        $currency = new Currency('EUR');
+
+        $result = $this->calculate(
+            [],
+            [],
+            administrationId: $administrationId,
+            from: $from,
+            to: $to,
+            currency: $currency,
+        );
+
+        self::assertSame($administrationId, $result->administrationId());
+        self::assertSame($startDate, $result->startDate());
+        self::assertSame($endDate, $result->endDate());
+        self::assertSame($currency, $result->currency());
+    }
+
+    public function test_result_rejects_an_invalid_reporting_period(): void
+    {
+        $currency = new Currency('EUR');
+
+        $this->expectException(DomainException::class);
+        $this->expectExceptionMessage('Trial balance result start date cannot be after end date.');
+
+        new TrialBalanceResult(
+            [],
+            Money::zero($currency),
+            Money::zero($currency),
+            $this->administrationId(self::ADMINISTRATION_ID),
+            new DateTimeImmutable('2026-08-01'),
+            new DateTimeImmutable('2026-07-31'),
+            $currency,
+        );
+    }
+
     public function test_one_balanced_posted_entry_is_totalled_per_ledger_account(): void
     {
         $currency = new Currency('EUR');
