@@ -169,6 +169,16 @@ R1 levert een frameworkonafhankelijke Trial Balance, Balance Sheet en Profit & L
 
 Niet-blokkerend vervolg omvat Application/Infrastructure-projecties voor schaalbare selectie, expliciete boekjaaropening en resultaatbestemming, General Ledger Card, Open Items/Aging Report, VAT Overview en audit-drill-down. Deze uitbreidingen mogen geen nieuwe financiële waarheid introduceren.
 
+### Batch R2 – Operational Reporting
+
+**Status:** Designed; implementation starts with R2-001
+
+R2 ontwerpt dagelijkse boekhoudkundige rapportages bovenop de read-only grenzen van R1. De General Ledger Report/Grootboekkaart is met de huidige geposte JournalEntry-bron uitvoerbaar en wordt als R2-001 als eerste aanbevolen. Het rapport selecteert expliciet op Administration, inclusieve periode, Currency en optioneel LedgerAccountId en ordent deterministisch op boekingsdatum, JournalEntryId en JournalEntryLineId. De running balance is een berekende `debit - credit`-periodebeweging en wordt niet opgeslagen.
+
+Een huidig Open Items-overzicht kan de actuele OpenItem-toestand tonen, maar een betrouwbaar historisch rapport op een willekeurige peildatum is nog niet mogelijk: OpenItem bevat geen ontstaans-/boekingsdatum en geen gedateerde settlementhistorie. Een prerequisite-story moet eerst minimale temporele bronwaarheid ontwerpen; Reporting mag die historie niet reconstrueren of settlement-logica overnemen.
+
+VAT Overview is eveneens geblokkeerd als implementatiestory. Fiscal kent TaxCode en losse TaxCalculationResult-waarden, maar Sales/Purchasing-documentregels en geposte JournalEntryLines bevatten geen duurzame TaxCodeId, historische TaxRate, fiscale grondslag, taxAmount of trace naar de fiscale bronregel. De huidige invoice-posting maakt bovendien geen fiscaal geclassificeerde btw-regels. R2-003 volgt pas nadat deze fiscale traceerbaarheid capability-eigen en immutable is ontworpen en door de posting chain behouden blijft.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

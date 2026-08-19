@@ -508,3 +508,40 @@ De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 - General Ledger Card, Open Items/Aging Report, VAT Overview, audit-drill-down en exportcontracten zijn aanbevolen vervolgstories.
 
 **Capabilitystatus:** Reporting Foundation completed (R1-004).
+
+### Operational Reporting (R2 design)
+
+Operational Reporting blijft een read-only afleiding en sluit aan op de R1-context en tekenconventie: Administration is verplicht, datum/periode en Currency zijn expliciet, Money blijft de geldrepresentatie en geen rapportuitkomst wordt teruggeschreven.
+
+#### General Ledger Report / Grootboekkaart
+
+- Bronnen: `JournalEntry`, `JournalEntryLine` en `LedgerAccount`.
+- Context: AdministrationId, inclusieve startDate/endDate, Currency en optioneel LedgerAccountId.
+- Alleen Posted JournalEntries binnen Administration en periode worden opgenomen.
+- Iedere regel bevat minimaal postingDate, JournalEntryId, JournalId, reference, LedgerAccountId, debit, credit en running balance; JournalEntryLineId wordt als stabiele trace/tie-breaker aanbevolen.
+- Volgorde is postingDate, JournalEntryId en JournalEntryLineId, alle oplopend op canonieke waarde.
+- Running balance is exact de cumulatieve periodebeweging `vorige balance + debit - credit`, start in de eerste iteratie op Money-zero en wordt niet opgeslagen. Een boekhoudkundig openingssaldo vóór startDate vraagt later expliciete openingsbalansinput of een voorafgaande Trial Balance.
+
+#### Open Items Report / Openstaande posten
+
+- Bron: `OpenItem` met AdministrationId, RelationId, JournalEntryId, originalAmount, openAmount en status.
+- Context: AdministrationId, peildatum, Currency en optioneel RelationId.
+- Closed wordt standaard uitgesloten; open en partially settled worden read-only gerapporteerd.
+- `openAmount` is Accounting-domeinwaarheid; Reporting berekent geen settlements en muteert OpenItem niet.
+- Systeemgat: OpenItem bevat geen ontstaans-/boekings-/vervaldatum en geen gedateerde settlementhistorie. De huidige status en openAmount representeren alleen de actuele toestand. Een betrouwbaar historisch peildatumrapport vereist eerst capability-eigen temporele broninformatie of een herbouwbare, gedateerde projectie uit brongebeurtenissen.
+
+#### VAT Overview / BTW-overzicht
+
+- Beoogde bronnen: Fiscal-classificatie en uitsluitend geposte financiële gegevens met duurzame fiscale trace.
+- Vereiste context: AdministrationId, inclusieve periode en Currency; aanvullende jurisdictie-/aangiftecontext volgt pas uit fiscaal ontwerp.
+- Huidige Fiscal-objecten (`TaxCode`, `TaxCalculationResult`) zijn niet gekoppeld aan Sales/Purchasing-documentregels of `JournalEntryLine`.
+- Systeemgat: geposte regels missen minimaal TaxCodeId, historische TaxRate/effectieve classificatie, taxable base, taxAmount, verkoop-/inkooprichting en trace naar de fiscale brondocumentregel. De huidige invoice-posting bevat geen afzonderlijk fiscaal geclassificeerde btw-regels.
+- Conclusie: R2-003 is met de huidige domeinwaarheid niet betrouwbaar implementeerbaar. Reporting mag geen TaxCode-koppeling afleiden uit LedgerAccount, description of actuele TaxCode-rate.
+
+#### Aanbevolen implementatievolgorde
+
+1. R2-001 General Ledger Report, omdat alle minimale immutable bronvelden beschikbaar zijn.
+2. Prerequisite voor Open Items: temporele OpenItem-bronwaarheid en peildatumsemantiek ontwerpen; daarna Open Items Report.
+3. Prerequisite voor VAT: fiscale classificatie en bedragen immutable door document- en posting chain traceerbaar maken; pas daarna R2-003 VAT Overview.
+
+**R2-status:** Operational Reporting designed; General Ledger is implementation-ready, Open Items en VAT hebben expliciete prerequisites.
