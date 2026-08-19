@@ -122,6 +122,15 @@ final readonly class Money
         return new self($negative ? '-'.$decimal : $decimal, $this->currency);
     }
 
+    public function subtract(self $other): self
+    {
+        $subtrahend = $other->isNegative()
+            ? substr($other->amount, 1)
+            : ($other->isZero() ? '0' : '-'.$other->amount);
+
+        return $this->add(new self($subtrahend, $other->currency));
+    }
+
     public function absolute(): self
     {
         return new self(str_starts_with($this->amount, '-') ? substr($this->amount, 1) : $this->amount, $this->currency);
