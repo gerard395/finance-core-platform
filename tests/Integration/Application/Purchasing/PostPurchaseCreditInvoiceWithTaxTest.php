@@ -19,6 +19,7 @@ use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
@@ -108,6 +109,16 @@ final class PostPurchaseCreditInvoiceWithTaxTest extends TestCase
         $this->execute($invoice, [$this->input($invoice->lines()[0], $original)], [$original, $existing]);
     }
 
+    public function test_duplicate_reversal_identity_in_request_is_rejected(): void
+    {
+        $invoice = $this->creditInvoice([['100'], ['50']]);
+        $first = $this->original('100', '21', '21');
+        $second = $this->original('50', '4.5', '9');
+        $id = new TaxPostingId($this->uuid('6'));
+        $this->expectException(DomainException::class);
+        $this->execute($invoice, [$this->input($invoice->lines()[0], $first, reversalId: $id), $this->input($invoice->lines()[1], $second, reversalId: $id)], [$first, $second]);
+    }
+
     public function test_input_target_and_context_are_validated(): void
     {
         $invoice = $this->creditInvoice([['100']]);
@@ -137,7 +148,7 @@ final class PostPurchaseCreditInvoiceWithTaxTest extends TestCase
 
     private function execute(PurchaseCreditInvoice $invoice, array $inputs, array $history, ?JournalEntryLineId $creditorLine = null)
     {
-        return (new PostPurchaseCreditInvoiceWithTax(new TaxPostingReversalPolicy, new PostingEngine(new PostingValidation, fn () => new JournalEntryId($this->uuid('a')))))->execute(
+        return (new PostPurchaseCreditInvoiceWithTax(new TaxPostingReversalPolicy, new TaxPostingIdentityPolicy, new PostingEngine(new PostingValidation, fn () => new JournalEntryId($this->uuid('a')))))->execute(
             $invoice, $inputs, $history, new JournalId($this->uuid('b')), new LedgerAccountId($this->uuid('c')), $creditorLine ?? $this->lineId(), new PostingDate(new DateTimeImmutable('2026-08-19')), new JournalEntryReference('PC-FISCAL-1')
         );
     }
@@ -165,9 +176,9 @@ final class PostPurchaseCreditInvoiceWithTaxTest extends TestCase
         return new TaxPosting(new TaxPostingId($this->uuid('6')), $original->administrationId(), $original->taxCodeId(), $original->taxRate(), $original->taxableBase(), $original->taxAmount(), $original->direction(), TaxSourceDocumentType::PurchaseCreditInvoice, new TaxSourceDocumentId($this->uuid('8')), new TaxSourceLineId($this->uuid('9')), new PostingDate(new DateTimeImmutable('2026-08-19')), new JournalEntryId($this->uuid('d')), $this->lineId(), $original->taxAmount()->isZero() ? null : $this->lineId(), TaxPostingType::Reversal, $original->id());
     }
 
-    private function input(PurchaseCreditInvoiceLine $line, TaxPosting $original, bool $taxLine = true, ?JournalEntryLineId $expense = null): PurchasingCreditFiscalLineInput
+    private function input(PurchaseCreditInvoiceLine $line, TaxPosting $original, bool $taxLine = true, ?JournalEntryLineId $expense = null, ?TaxPostingId $reversalId = null): PurchasingCreditFiscalLineInput
     {
-        return new PurchasingCreditFiscalLineInput($line->id(), $original, new LedgerAccountId($this->uuid('c')), new LedgerAccountId($this->uuid('c')), $expense ?? $this->lineId(), $taxLine ? $this->lineId() : null, new TaxPostingId($this->uuid('6')));
+        return new PurchasingCreditFiscalLineInput($line->id(), $original, new LedgerAccountId($this->uuid('c')), new LedgerAccountId($this->uuid('c')), $expense ?? $this->lineId(), $taxLine ? $this->lineId() : null, $reversalId ?? new TaxPostingId($this->uuid('6')));
     }
 
     private function lineId(): JournalEntryLineId

@@ -22,6 +22,7 @@ use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Services\TaxCalculation;
+use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -224,6 +225,14 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
         self::assertSame('duplicate_line_id', $result->postingResult()->validationErrors()[0]->code());
     }
 
+    public function test_duplicate_tax_posting_identity_in_request_is_rejected(): void
+    {
+        $invoice = $this->invoiceWithLines([['1', '100'], ['1', '100']]);
+        $id = new TaxPostingId($this->nextUuid('8'));
+        $this->expectException(DomainException::class);
+        $this->execute($invoice, [$this->input($invoice->lines()[0], '21', taxPostingId: $id), $this->input($invoice->lines()[1], '21', taxPostingId: $id)]);
+    }
+
     /** @param list<PurchasingFiscalLineInput> $inputs */
     private function execute(
         PurchaseInvoice $invoice,
@@ -233,6 +242,7 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
         $validation = new PostingValidation;
         $useCase = new PostPurchaseInvoiceWithTax(
             new TaxCalculation,
+            new TaxPostingIdentityPolicy,
             new PostingEngine(
                 $validation,
                 static fn (): JournalEntryId => new JournalEntryId(new Uuid(self::POSTED_ENTRY_ID)),
@@ -242,6 +252,7 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
         return $useCase->execute(
             $invoice,
             $inputs,
+            [],
             new JournalId($this->nextUuid('6')),
             new LedgerAccountId($this->nextUuid('7')),
             $creditorLineId ?? $this->journalEntryLineId(),
@@ -286,6 +297,7 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
         string $rate,
         bool $includeTaxLine = true,
         ?JournalEntryLineId $expenseLineId = null,
+        ?TaxPostingId $taxPostingId = null,
     ): PurchasingFiscalLineInput {
         return new PurchasingFiscalLineInput(
             $line->id(),
@@ -300,7 +312,7 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
             new LedgerAccountId($this->nextUuid('7')),
             $expenseLineId ?? $this->journalEntryLineId(),
             $includeTaxLine ? $this->journalEntryLineId() : null,
-            new TaxPostingId($this->nextUuid('8')),
+            $taxPostingId ?? new TaxPostingId($this->nextUuid('8')),
         );
     }
 

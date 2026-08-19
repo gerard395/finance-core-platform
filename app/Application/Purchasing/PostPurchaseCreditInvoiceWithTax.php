@@ -16,6 +16,7 @@ use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Fiscal\ValueObjects\TaxSourceLineId;
@@ -28,6 +29,7 @@ final readonly class PostPurchaseCreditInvoiceWithTax
 {
     public function __construct(
         private TaxPostingReversalPolicy $reversalPolicy,
+        private TaxPostingIdentityPolicy $identityPolicy,
         private PostingEngine $postingEngine,
     ) {}
 
@@ -49,12 +51,18 @@ final readonly class PostPurchaseCreditInvoiceWithTax
         $inputs = $this->indexInputs($creditInvoice, $fiscalLines);
         $workingHistory = array_values($history);
         $seenOriginals = [];
+        $newIds = [];
         $grossTotal = Money::zero($creditInvoice->currency());
         $journalLines = [];
 
         foreach ($creditInvoice->lines() as $line) {
             $input = $inputs[$line->id()->toString()];
             $original = $input->originalTaxPosting();
+            $this->identityPolicy->assertNewIdAvailable($input->reversalTaxPostingId(), $workingHistory);
+            if (isset($newIds[$input->reversalTaxPostingId()->toString()])) {
+                throw new DomainException('Tax posting identity can occur only once per request.');
+            }
+            $newIds[$input->reversalTaxPostingId()->toString()] = true;
             $this->assertInput($creditInvoice, $line->lineTotal(), $input);
             $key = $original->id()->toString();
             if (isset($seenOriginals[$key])) {

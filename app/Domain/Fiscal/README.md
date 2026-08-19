@@ -28,6 +28,7 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - `TaxPostingReversalPolicy::assertCanReverseOriginal()` valideert vóór financiële posting uitsluitend Original en aangeleverde historie; toekomstige Accounting-identiteiten zijn niet nodig.
 - `TaxPostingReversalPolicy::assertValidReversal()` valideert na succesvolle posting het volledig geconstrueerde Reversal-record, inclusief target en exacte snapshotgelijkheid.
 - De historyguard bevat geen persistence of globale state. Concurrency-safe afdwinging volgt later via een persistenceconstraint en transactie.
+- `TaxPostingIdentityPolicy` bewaakt dat iedere nieuwe TaxPostingId vrij is binnen de aangeleverde consistente history; Application bewaakt daarnaast duplicaten binnen dezelfde orchestration.
 
 ## Grenzen
 

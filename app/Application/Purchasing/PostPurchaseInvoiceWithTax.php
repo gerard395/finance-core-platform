@@ -17,6 +17,7 @@ use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Services\TaxCalculation;
+use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxCalculationResult;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Fiscal\ValueObjects\TaxSourceLineId;
@@ -29,6 +30,7 @@ final readonly class PostPurchaseInvoiceWithTax
 {
     public function __construct(
         private TaxCalculation $taxCalculation,
+        private TaxPostingIdentityPolicy $identityPolicy,
         private PostingEngine $postingEngine,
     ) {}
 
@@ -36,6 +38,7 @@ final readonly class PostPurchaseInvoiceWithTax
     public function execute(
         PurchaseInvoice $invoice,
         array $fiscalLines,
+        array $history,
         JournalId $purchaseJournalId,
         LedgerAccountId $creditorAccountId,
         JournalEntryLineId $creditorLineId,
@@ -46,9 +49,15 @@ final readonly class PostPurchaseInvoiceWithTax
         $inputs = $this->indexInputs($invoice, $fiscalLines);
         $calculatedLines = [];
         $grossTotal = Money::zero($invoice->currency());
+        $newIds = [];
 
         foreach ($invoice->lines() as $invoiceLine) {
             $input = $inputs[$invoiceLine->id()->toString()];
+            $this->identityPolicy->assertNewIdAvailable($input->taxPostingId(), $history);
+            if (isset($newIds[$input->taxPostingId()->toString()])) {
+                throw new DomainException('Tax posting identity can occur only once per request.');
+            }
+            $newIds[$input->taxPostingId()->toString()] = true;
             $calculation = $this->taxCalculation->calculate($invoiceLine->lineTotal(), $input->taxCode());
             $this->assertTaxLineCombination($input, $calculation);
             $grossTotal = $grossTotal->add($calculation->grossAmount());
