@@ -34,7 +34,7 @@ final readonly class TaxPosting
         private PostingDate $postingDate,
         private JournalEntryId $journalEntryId,
         private JournalEntryLineId $baseJournalEntryLineId,
-        private JournalEntryLineId $taxJournalEntryLineId,
+        private ?JournalEntryLineId $taxJournalEntryLineId,
         private ?TaxPostingId $reversedTaxPostingId = null,
     ) {
         if (! $this->taxableBase->currency()->equals($this->taxAmount->currency())) {
@@ -47,6 +47,14 @@ final readonly class TaxPosting
 
         if ($this->taxAmount->isNegative()) {
             throw new DomainException('Tax amount cannot be negative.');
+        }
+
+        if ($this->taxAmount->isPositive() && $this->taxJournalEntryLineId === null) {
+            throw new DomainException('A positive tax amount requires a tax journal entry line.');
+        }
+
+        if ($this->taxAmount->isZero() && $this->taxJournalEntryLineId !== null) {
+            throw new DomainException('A zero tax amount cannot reference a tax journal entry line.');
         }
     }
 
@@ -115,7 +123,7 @@ final readonly class TaxPosting
         return $this->baseJournalEntryLineId;
     }
 
-    public function taxJournalEntryLineId(): JournalEntryLineId
+    public function taxJournalEntryLineId(): ?JournalEntryLineId
     {
         return $this->taxJournalEntryLineId;
     }

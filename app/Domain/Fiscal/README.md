@@ -10,7 +10,7 @@ TaxCode beheert een immutable identiteit en code, een wijzigbare naam, precies Ã
 
 ## TaxPosting
 
-TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. Alle context is immutable. Een optionele `reversedTaxPostingId` legt een correctierelatie vast zonder het oorspronkelijke feit te muteren.
+TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. De base-regel is altijd verplicht; de tax-regel bestaat uitsluitend bij een positief taxAmount. Alle context is immutable. Een optionele `reversedTaxPostingId` legt een correctierelatie vast zonder het oorspronkelijke feit te muteren.
 
 ## Invarianten
 
@@ -20,7 +20,8 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - `changeRate()` vervangt het actuele tarief; historische tarieven vallen buiten F1-001.
 - Activeren en deactiveren zijn idempotent.
 - TaxPosting-bedragen zijn niet-negatief en gebruiken exact dezelfde Currency.
-- TaxPosting bevat altijd zowel een baseJournalEntryLineId als taxJournalEntryLineId.
+- TaxPosting bevat altijd een baseJournalEntryLineId.
+- Een positief taxAmount vereist taxJournalEntryLineId; bij canonieke nul moet taxJournalEntryLineId null zijn.
 - TaxPosting voert geen TaxCalculation of boekingslogica uit.
 - Een reversal is een nieuw immutable feit; de oorspronkelijke TaxPosting blijft ongewijzigd.
 

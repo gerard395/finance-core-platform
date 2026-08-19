@@ -85,12 +85,60 @@ final class TaxPostingTest extends TestCase
             sourceDocumentType: TaxSourceDocumentType::PurchaseInvoice,
             taxableBase: '0',
             taxAmount: '0',
+            includeTaxLine: false,
         );
 
         self::assertSame(TaxPostingDirection::Input, $posting->direction());
         self::assertSame(TaxSourceDocumentType::PurchaseInvoice, $posting->sourceDocumentType());
         self::assertTrue($posting->taxableBase()->isZero());
         self::assertTrue($posting->taxAmount()->isZero());
+        self::assertNull($posting->taxJournalEntryLineId());
+    }
+
+    public function test_positive_tax_amount_without_tax_line_is_rejected(): void
+    {
+        $this->expectException(DomainException::class);
+
+        $this->posting(includeTaxLine: false);
+    }
+
+    public function test_zero_tax_amount_with_tax_line_is_rejected(): void
+    {
+        $this->expectException(DomainException::class);
+
+        $this->posting(taxAmount: '0');
+    }
+
+    public function test_zero_tax_output_posting_has_no_artificial_tax_line(): void
+    {
+        $posting = $this->posting(
+            direction: TaxPostingDirection::Output,
+            sourceDocumentType: TaxSourceDocumentType::SalesInvoice,
+            taxAmount: '0',
+            taxRate: new TaxRate('0'),
+            includeTaxLine: false,
+        );
+
+        self::assertSame(TaxPostingDirection::Output, $posting->direction());
+        self::assertSame(TaxSourceDocumentType::SalesInvoice, $posting->sourceDocumentType());
+        self::assertSame('0', $posting->taxRate()->value());
+        self::assertNull($posting->taxJournalEntryLineId());
+        self::assertNotNull($posting->baseJournalEntryLineId());
+    }
+
+    public function test_zero_tax_input_posting_has_no_artificial_tax_line(): void
+    {
+        $posting = $this->posting(
+            direction: TaxPostingDirection::Input,
+            sourceDocumentType: TaxSourceDocumentType::PurchaseInvoice,
+            taxAmount: '0',
+            taxRate: new TaxRate('0'),
+            includeTaxLine: false,
+        );
+
+        self::assertSame(TaxPostingDirection::Input, $posting->direction());
+        self::assertSame(TaxSourceDocumentType::PurchaseInvoice, $posting->sourceDocumentType());
+        self::assertNull($posting->taxJournalEntryLineId());
     }
 
     public function test_tax_rate_is_retained_as_transaction_snapshot(): void
@@ -163,6 +211,7 @@ final class TaxPostingTest extends TestCase
         ?TaxRate $taxRate = null,
         ?Currency $taxAmountCurrency = null,
         ?TaxPostingId $reversedTaxPostingId = null,
+        bool $includeTaxLine = true,
     ): TaxPosting {
         $currency = new Currency('EUR');
 
@@ -180,7 +229,7 @@ final class TaxPostingTest extends TestCase
             new PostingDate(new DateTimeImmutable('2026-08-19')),
             $this->journalEntryId(),
             $this->journalEntryLineId(1),
-            $this->journalEntryLineId(2),
+            $includeTaxLine ? $this->journalEntryLineId(2) : null,
             $reversedTaxPostingId,
         );
     }
