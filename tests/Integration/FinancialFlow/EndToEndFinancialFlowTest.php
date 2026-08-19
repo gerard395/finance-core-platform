@@ -17,6 +17,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
+use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Banking\Entities\BankTransaction;
@@ -94,8 +95,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $relationId,
             $invoiceEntry->id(),
             $invoiceAmount,
-            $invoiceAmount,
-            OpenItemStatus::Open,
+            $invoiceEntry->postingDate(),
         );
         self::assertSame($administrationId, $openItem->administrationId());
         self::assertSame($relationId, $openItem->relationId());
@@ -124,17 +124,20 @@ final class EndToEndFinancialFlowTest extends TestCase
         self::assertTrue($validation->validate($bankRequest)->isValid());
         $bankResult = $this->postingEngine($validation, '00000000-0000-4000-8000-000000000025')->post($bankRequest);
         self::assertTrue($bankResult->isSuccess());
-        self::assertNotNull($bankResult->journalEntry());
+        $bankEntry = $bankResult->journalEntry();
+        self::assertNotNull($bankEntry);
         self::assertSame($administrationId, $bankRequest->administrationId());
-        self::assertSame($administrationId, $bankResult->journalEntry()->administrationId());
-        self::assertTrue($bankResult->journalEntry()->isPosted());
+        self::assertSame($administrationId, $bankEntry->administrationId());
+        self::assertTrue($bankEntry->isPosted());
         $this->assertBalanced($bankRequest, $invoiceAmount);
 
-        $openItem->settle($matchingResult->matchedAmount());
+        $openItem->applySettlement(
+            $this->openItemSettlementId('00000000-0000-4000-8000-000000000026'),
+            $bankEntry->postingDate(),
+            $matchingResult->matchedAmount(),
+            $bankEntry->id(),
+        );
         self::assertTrue($openItem->openAmount()->isZero());
-        self::assertTrue($openItem->isPartiallySettled());
-        $openItem->close();
-
         self::assertTrue($openItem->isClosed());
         self::assertSame(OpenItemStatus::Closed, $openItem->status());
         self::assertSame('EUR', $openItem->openAmount()->currency()->code());
@@ -149,7 +152,12 @@ final class EndToEndFinancialFlowTest extends TestCase
     {
         $openItem = $this->openItem('125');
 
-        $openItem->settle(new Money('100', new Currency('EUR')));
+        $openItem->applySettlement(
+            $this->openItemSettlementId('00000000-0000-4000-8000-000000000041'),
+            new PostingDate(new DateTimeImmutable('2026-07-20')),
+            new Money('100', new Currency('EUR')),
+            new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000042')),
+        );
 
         self::assertSame('25', $openItem->openAmount()->amount());
         self::assertTrue($openItem->isPartiallySettled());
@@ -161,7 +169,12 @@ final class EndToEndFinancialFlowTest extends TestCase
         $openItem = $this->openItem('125');
 
         try {
-            $openItem->settle(new Money('125.01', new Currency('EUR')));
+            $openItem->applySettlement(
+                $this->openItemSettlementId('00000000-0000-4000-8000-000000000043'),
+                new PostingDate(new DateTimeImmutable('2026-07-20')),
+                new Money('125.01', new Currency('EUR')),
+                new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000044')),
+            );
             self::fail('An excessive settlement must be rejected.');
         } catch (DomainException) {
             self::assertSame('125', $openItem->openAmount()->amount());
@@ -183,19 +196,6 @@ final class EndToEndFinancialFlowTest extends TestCase
         self::assertSame(BankTransactionStatus::Imported, $transaction->status());
         self::assertSame('125', $openItem->openAmount()->amount());
         self::assertTrue($openItem->isOpen());
-    }
-
-    public function test_open_item_cannot_close_while_amount_remains(): void
-    {
-        $openItem = $this->openItem('125');
-
-        try {
-            $openItem->close();
-            self::fail('An open item with a remaining amount must not close.');
-        } catch (DomainException) {
-            self::assertSame('125', $openItem->openAmount()->amount());
-            self::assertTrue($openItem->isOpen());
-        }
     }
 
     private function invoice(AdministrationId $administrationId, RelationId $relationId, Currency $currency): SalesInvoice
@@ -238,8 +238,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $this->relationId(),
             new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000040')),
             $money,
-            $money,
-            OpenItemStatus::Open,
+            new PostingDate(new DateTimeImmutable('2026-07-15')),
         );
     }
 
@@ -285,6 +284,11 @@ final class EndToEndFinancialFlowTest extends TestCase
     private function openItemId(): OpenItemId
     {
         return new OpenItemId(new Uuid('00000000-0000-4000-8000-000000000005'));
+    }
+
+    private function openItemSettlementId(string $uuid): OpenItemSettlementId
+    {
+        return new OpenItemSettlementId(new Uuid($uuid));
     }
 
     private function paymentId(): PaymentId

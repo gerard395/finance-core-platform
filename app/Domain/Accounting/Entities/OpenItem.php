@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Domain\Accounting\Entities;
 
+use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
+use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
+use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Finance\Money;
@@ -14,25 +17,19 @@ use DomainException;
 
 final class OpenItem
 {
+    /** @var array<string, OpenItemSettlement> */
+    private array $settlements = [];
+
     public function __construct(
         private readonly OpenItemId $id,
         private readonly AdministrationId $administrationId,
         private readonly RelationId $relationId,
         private readonly JournalEntryId $journalEntryId,
         private readonly Money $originalAmount,
-        private Money $openAmount,
-        private OpenItemStatus $status,
+        private readonly PostingDate $openedOn,
     ) {
-        self::assertNonNegative($originalAmount, 'Original amount');
-        self::assertNonNegative($openAmount, 'Open amount');
-        self::assertSameCurrency($originalAmount, $openAmount);
-
-        if (self::compare($openAmount, $originalAmount) > 0) {
-            throw new DomainException('Open amount cannot exceed original amount.');
-        }
-
-        if ($status === OpenItemStatus::Closed && ! $openAmount->isZero()) {
-            throw new DomainException('A closed open item must have an open amount of zero.');
+        if (! $originalAmount->isPositive()) {
+            throw new DomainException('Original amount must be positive.');
         }
     }
 
@@ -61,122 +58,195 @@ final class OpenItem
         return $this->originalAmount;
     }
 
+    public function openedOn(): PostingDate
+    {
+        return $this->openedOn;
+    }
+
+    /** @return list<OpenItemSettlement> */
+    public function settlements(): array
+    {
+        return self::ordered(array_values($this->settlements));
+    }
+
+    public function settlement(OpenItemSettlementId $id): ?OpenItemSettlement
+    {
+        return $this->settlements[$id->toString()] ?? null;
+    }
+
+    public function hasSettlement(OpenItemSettlementId $id): bool
+    {
+        return isset($this->settlements[$id->toString()]);
+    }
+
     public function openAmount(): Money
     {
-        return $this->openAmount;
+        return $this->calculateOpenAmount($this->settlements());
     }
 
     public function status(): OpenItemStatus
     {
-        return $this->status;
+        return $this->statusFor($this->openAmount());
+    }
+
+    public function openAmountAt(PostingDate $date): Money
+    {
+        $this->assertOnOrAfterOpenedOn($date);
+
+        return $this->calculateOpenAmount(array_values(array_filter(
+            $this->settlements(),
+            static fn (OpenItemSettlement $settlement): bool => $settlement->effectiveDate()->value() <= $date->value(),
+        )));
+    }
+
+    public function statusAt(PostingDate $date): OpenItemStatus
+    {
+        return $this->statusFor($this->openAmountAt($date));
     }
 
     public function isOpen(): bool
     {
-        return $this->status === OpenItemStatus::Open;
+        return $this->status() === OpenItemStatus::Open;
     }
 
     public function isPartiallySettled(): bool
     {
-        return $this->status === OpenItemStatus::PartiallySettled;
+        return $this->status() === OpenItemStatus::PartiallySettled;
     }
 
     public function isClosed(): bool
     {
-        return $this->status === OpenItemStatus::Closed;
+        return $this->status() === OpenItemStatus::Closed;
     }
 
-    public function settle(Money $amount): void
-    {
-        self::assertSameCurrency($this->openAmount, $amount);
-        self::assertNonNegative($amount, 'Settlement amount');
+    public function applySettlement(
+        OpenItemSettlementId $id,
+        PostingDate $effectiveDate,
+        Money $amount,
+        JournalEntryId $sourceJournalEntryId,
+    ): void {
+        $this->assertNewSettlement($id, $effectiveDate, $amount);
 
-        if ($amount->isZero()) {
-            return;
-        }
-
-        if ($this->isClosed()) {
-            throw new DomainException('A closed open item cannot be settled.');
-        }
-
-        if (self::compare($amount, $this->openAmount) > 0) {
-            throw new DomainException('Settlement amount cannot exceed open amount.');
-        }
-
-        $remaining = self::subtract(self::scaledAmount($this->openAmount), self::scaledAmount($amount));
-        $this->openAmount = new Money(self::decimalAmount($remaining), $this->openAmount->currency());
-        $this->status = OpenItemStatus::PartiallySettled;
+        $this->appendWhenHistoryRemainsValid(new OpenItemSettlement(
+            $id,
+            $effectiveDate,
+            $amount,
+            $sourceJournalEntryId,
+            OpenItemSettlementType::Applied,
+            null,
+        ));
     }
 
-    public function close(): void
-    {
-        if ($this->isClosed()) {
-            return;
+    public function reverseSettlement(
+        OpenItemSettlementId $id,
+        PostingDate $effectiveDate,
+        OpenItemSettlementId $settlementId,
+        JournalEntryId $sourceJournalEntryId,
+    ): void {
+        if ($this->hasSettlement($id)) {
+            throw new DomainException('Settlement ID must be unique within an open item.');
         }
 
-        if (! $this->openAmount->isZero()) {
-            throw new DomainException('An open item can only be closed when its open amount is zero.');
+        $this->assertOnOrAfterOpenedOn($effectiveDate);
+        $applied = $this->settlement($settlementId);
+
+        if ($applied === null || $applied->type() !== OpenItemSettlementType::Applied) {
+            throw new DomainException('A reversal must reference an existing applied settlement.');
         }
 
-        $this->status = OpenItemStatus::Closed;
+        foreach ($this->settlements as $settlement) {
+            if ($settlement->type() === OpenItemSettlementType::Reversal
+                && $settlement->reversedSettlementId()?->equals($settlementId)) {
+                throw new DomainException('An applied settlement can only be reversed once.');
+            }
+        }
+
+        $this->appendWhenHistoryRemainsValid(new OpenItemSettlement(
+            $id,
+            $effectiveDate,
+            $applied->amount(),
+            $sourceJournalEntryId,
+            OpenItemSettlementType::Reversal,
+            $settlementId,
+        ));
     }
 
-    private static function assertNonNegative(Money $amount, string $field): void
+    private function assertNewSettlement(OpenItemSettlementId $id, PostingDate $effectiveDate, Money $amount): void
     {
-        if (str_starts_with($amount->amount(), '-')) {
-            throw new DomainException($field.' cannot be negative.');
+        if ($this->hasSettlement($id)) {
+            throw new DomainException('Settlement ID must be unique within an open item.');
+        }
+
+        $this->assertOnOrAfterOpenedOn($effectiveDate);
+
+        if (! $amount->isPositive()) {
+            throw new DomainException('Settlement amount must be positive.');
+        }
+
+        if (! $this->originalAmount->currency()->equals($amount->currency())) {
+            throw new DomainException('Settlement currency must match the open item currency.');
         }
     }
 
-    private static function assertSameCurrency(Money $left, Money $right): void
+    private function assertOnOrAfterOpenedOn(PostingDate $date): void
     {
-        if (! $left->currency()->equals($right->currency())) {
-            throw new DomainException('Open item amounts must use the same currency.');
+        if ($date->value() < $this->openedOn->value()) {
+            throw new DomainException('Date cannot be before the open item opening date.');
         }
     }
 
-    private static function compare(Money $left, Money $right): int
+    private function appendWhenHistoryRemainsValid(OpenItemSettlement $candidate): void
     {
-        return self::compareUnsigned(self::scaledAmount($left), self::scaledAmount($right));
+        $history = self::ordered([...$this->settlements(), $candidate]);
+        $this->calculateOpenAmount($history);
+        $this->settlements[$candidate->id()->toString()] = $candidate;
     }
 
-    private static function scaledAmount(Money $amount): string
+    /** @param list<OpenItemSettlement> $settlements */
+    private function calculateOpenAmount(array $settlements): Money
     {
-        [$whole, $fraction] = array_pad(explode('.', $amount->amount(), 2), 2, '');
+        $openAmount = $this->originalAmount;
 
-        return ltrim($whole.str_pad($fraction, 8, '0'), '0') ?: '0';
-    }
+        foreach ($settlements as $settlement) {
+            $openAmount = $settlement->type() === OpenItemSettlementType::Applied
+                ? $openAmount->subtract($settlement->amount())
+                : $openAmount->add($settlement->amount());
 
-    private static function compareUnsigned(string $left, string $right): int
-    {
-        if (strlen($left) !== strlen($right)) {
-            return strlen($left) <=> strlen($right);
+            if ($openAmount->isNegative()) {
+                throw new DomainException('Settlement history cannot reduce the open amount below zero.');
+            }
+
+            if ($openAmount->subtract($this->originalAmount)->isPositive()) {
+                throw new DomainException('Settlement history cannot increase the open amount above the original amount.');
+            }
         }
 
-        return $left <=> $right;
+        return $openAmount;
     }
 
-    private static function subtract(string $left, string $right): string
+    private function statusFor(Money $openAmount): OpenItemStatus
     {
-        $right = str_pad($right, strlen($left), '0', STR_PAD_LEFT);
-        $borrow = 0;
-        $result = '';
-
-        for ($index = strlen($left) - 1; $index >= 0; $index--) {
-            $digit = (int) $left[$index] - (int) $right[$index] - $borrow;
-            $borrow = $digit < 0 ? 1 : 0;
-            $result = ($digit < 0 ? $digit + 10 : $digit).$result;
+        if ($openAmount->isZero()) {
+            return OpenItemStatus::Closed;
         }
 
-        return ltrim($result, '0') ?: '0';
+        return $openAmount->equals($this->originalAmount)
+            ? OpenItemStatus::Open
+            : OpenItemStatus::PartiallySettled;
     }
 
-    private static function decimalAmount(string $scaledAmount): string
+    /**
+     * @param  list<OpenItemSettlement>  $settlements
+     * @return list<OpenItemSettlement>
+     */
+    private static function ordered(array $settlements): array
     {
-        $digits = str_pad($scaledAmount, 9, '0', STR_PAD_LEFT);
-        $whole = substr($digits, 0, -8);
-        $fraction = rtrim(substr($digits, -8), '0');
+        usort($settlements, static function (OpenItemSettlement $left, OpenItemSettlement $right): int {
+            $dateOrder = $left->effectiveDate()->value() <=> $right->effectiveDate()->value();
 
-        return $fraction === '' ? $whole : $whole.'.'.$fraction;
+            return $dateOrder !== 0 ? $dateOrder : strcmp($left->id()->toString(), $right->id()->toString());
+        });
+
+        return $settlements;
     }
 }

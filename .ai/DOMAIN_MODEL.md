@@ -205,7 +205,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | LedgerAccount | — | De classificatie van boekingsregels binnen het grootboek beheren. |
 | Journal | — | Journaalposten naar de aard van hun financiële gebeurtenis groeperen. |
 | JournalEntry | JournalEntryLine | Een gebalanceerde financiële mutatie en haar debet- en creditregels beheren. |
-| OpenItem | — | Een uit een verkoop- of inkoopfactuur ontstaan openstaand bedrag en de afsluiting daarvan beheren. |
+| OpenItem | OpenItemSettlement | Een uit een geposte verkoop- of inkoopboeking ontstaan openstaand bedrag en de append-only vereffeninghistorie beheren. |
 
 #### Shared Value Objects
 
@@ -231,8 +231,9 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - Een JournalEntry kan alleen worden gepost wanneer deze in balans is.
 - Geposte JournalEntries zijn onveranderlijk.
 - Correcties op geposte JournalEntries gebeuren via tegenboekingen, nooit door de oorspronkelijke boeking te wijzigen.
-- OpenItems ontstaan uit verkoop- en inkoopfacturen.
-- Betalingen sluiten OpenItems af.
+- OpenItems ontstaan pas na de succesvolle geposte JournalEntry voor een verkoop- of inkoopfactuur; `openedOn` is diens PostingDate.
+- OpenItem bewaart immutable Applied- en Reversal-settlementfeiten. Open bedrag en status worden uit originalAmount plus deze historie afgeleid en nooit los gemuteerd.
+- Betalingen sluiten OpenItems via Application-orchestratie pas nadat de veroorzakende financiële boeking succesvol is gepost.
 - Grootboeksaldi worden berekend uit geposte JournalEntries en niet afzonderlijk opgeslagen.
 
 #### Domain Events
@@ -262,6 +263,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | TaxCodeCode | Een TaxCode herkenbaar identificeren | De immutable functionele code van een fiscale classificatie. |
 | TaxCodeName | Een TaxCode benoemen | De immutable leesbare naam van een fiscale classificatie. |
 | TaxCalculation | Fiscale bedragen berekenen | Een frameworkonafhankelijke domain service die met Money een fiscaal bedrag afleidt. |
+| TaxPosting | Een gepost fiscaal feit traceerbaar vastleggen | Een immutable TaxCode/rate/base/tax-snapshot koppelen aan bron-documentregel en geposte financiële regel. |
 | TaxPeriod | Een fiscaal aangiftetijdvak afbakenen | De periode waarvoor fiscale bedragen worden vastgesteld. |
 | TaxReturn | Een fiscale aangifte representeren | De formele rapportage van verschuldigde en verrekenbare belasting over een tijdvak. |
 
@@ -272,6 +274,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | Aggregate Root | Verantwoordelijkheid |
 | --- | --- |
 | TaxCode | Een fiscale classificatie met precies één actief TaxRate beheren. |
+| TaxPosting | Een append-only fiscaal feit met bron-, posting- en correctietrace bewaren. |
 
 #### Value Objects
 
@@ -289,14 +292,19 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - TaxRate is immutable.
 - TaxCalculation gebruikt Money en geen floats of primitieve geldbedragen.
 - TaxCalculation maakt geen JournalEntries.
+- TaxPosting bewaart de gebruikte TaxRate, taxable base en taxAmount als transactiesnapshot; de actuele TaxCode-rate is nooit historische rapportagewaarheid.
+- TaxPostings zijn immutable en append-only. Het definitieve correctiemodel gebruikt een expliciet type `Original` of `Reversal`; bedragen blijven positief en Input/Output-direction blijft gelijk aan het origineel.
+- Een Reversal verwijst naar precies één Original, neemt TaxCode/rate/base/tax/Currency/direction exact over en is in v1 altijd volledig. Een Original mag maximaal eenmaal worden gereversed en een Reversal kan niet zelf reversal-target zijn.
+- Correcties verwijderen geen feiten. Application laat de financiële tegenboeking door PostingEngine maken en creëert pas daarna het Reversal-TaxPosting met de werkelijke correctie-JournalEntry/Line-identiteiten.
 - `PostingEngine` blijft als enige verantwoordelijk voor het maken en posten van JournalEntries.
 - De Fiscal-kern bevat geen land-specifieke fiscale regels; zulke regels worden later buiten de kern gemodelleerd.
 
 #### Architectuurregels
 
 - Fiscal is onafhankelijk van Sales en Purchasing.
-- Sales en Purchasing mogen Fiscal gebruiken voor fiscale classificatie en berekening.
+- Application vertaalt Sales-/Purchasing-documentregelidentiteiten naar een capability-neutrale Fiscal-bronreferentie en orkestreert fiscale classificatie en berekening.
 - Fiscal muteert geen Sales-, Purchasing- of Accounting-aggregates.
+- TaxPosting mag immutable JournalEntryId en JournalEntryLineId refereren zonder JournalEntry te maken of muteren; Accounting draagt geen fiscale metadata.
 - Financiële gevolgen lopen uitsluitend via Accounting en `PostingEngine`.
 - Fiscal bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
@@ -373,10 +381,10 @@ BankTransaction
         ↓
 Matching
         ↓
-OpenItem Closed
+OpenItem append-only settlement
 ```
 
-`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. De laatste stap bestaat uit de bestaande `OpenItem::settle()`- en `OpenItem::close()`-methoden; Matching muteert het OpenItem niet rechtstreeks.
+`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. Na succesvolle bankposting past Application een immutable Accounting-settlement toe met settlement-ID, PostingDate en de werkelijk geposte JournalEntry als bron. Matching en Banking muteren het OpenItem niet rechtstreeks.
 
 #### Verantwoordelijkheden en hand-offs
 
@@ -387,11 +395,11 @@ OpenItem Closed
 | PostingValidation | Accounting | PostingValidation | Valideert minimaal twee regels, Currency, unieke regelidentiteiten en debet = credit. |
 | PostingEngine | Accounting | PostingEngine | Is als enige verantwoordelijk voor het maken en posten van JournalEntry. |
 | JournalEntry | JournalEntry Aggregate Root | — | Bewaart de immutable geposte boeking; maakt zelf geen OpenItem. |
-| OpenItem | OpenItem Aggregate Root | — | Bewaakt originalAmount, openAmount en vereffening; verwijst naar JournalEntryId. |
+| OpenItem | OpenItem Aggregate Root | — | Bewaart immutable openingscontext en append-only settlementchildren; openAmount en status zijn afleidingen. |
 | Payment | Child entity van BankTransaction | — | Verwijst met OpenItemId naar precies één OpenItem en draagt een positief Money-bedrag. |
 | BankTransaction | BankTransaction Aggregate Root | — | Bewaakt Payment-ownership, Currency en de Imported → Matched → Posted-statusmachine. |
 | Matching | Banking | Matching | Valideert de exacte Payment-som en zet alleen een geldige Imported transactie op Matched. |
-| OpenItem Closed | OpenItem Aggregate Root | — | Application-orchestratie roept settle(Money) en daarna close() aan; Banking muteert Accounting niet rechtstreeks. |
+| OpenItem settlement | OpenItem Aggregate Root | — | Application roept na succesvolle posting `applySettlement(...)` of `reverseSettlement(...)` aan met de geposte JournalEntry als bron; Banking muteert Accounting niet rechtstreeks. |
 
 #### Dragende Value Objects
 
@@ -409,7 +417,7 @@ OpenItem Closed
 - `CreateBankTransactionPostingRequest` vertaalt uitsluitend een Matched BankTransaction met Payments naar een bankboeking; Imported en Posted worden geweigerd.
 - De Application-laag kiest JournalId, LedgerAccountIds, JournalEntryLineIds, PostingDate en JournalEntryReference en bevat daarmee de capability-overstijgende orchestration.
 - PostingValidation accepteert de gebalanceerde requests en uitsluitend PostingEngine maakt de geposte JournalEntries.
-- De end-to-endtest construeert na de factuurboeking een OpenItem uit expliciete factuur- en boekingscontext, koppelt een Payment via OpenItemId en past een succesvol MatchingResult toe via `settle()` en daarna `close()`.
+- De end-to-endtest moet in R2-001B migreren naar OpenItem-constructie met de PostingDate van de geposte factuurboeking en na bankposting `applySettlement(...)` gebruiken met settlement-ID, effectieve PostingDate en de geposte bank-JournalEntry als bron.
 - Matching sluit geen OpenItem en maakt geen boeking; een BankTransaction gebruikt een afzonderlijke PostingRequest via dezelfde PostingEngine.
 
 #### Acceptance en resterende grenzen
@@ -418,7 +426,7 @@ OpenItem Closed
 - Money-totalisatie en -vergelijking gebruiken exacte decimale strings zonder floats.
 - De drie PostingRequest-use-cases dupliceren beperkt orchestrationpatroon voor totalisatie, beschrijving en twee boekingsregels. Dit is zichtbare technische schuld, maar abstraheren vóór extra stabiele varianten zou de capabilitytaal verbergen.
 - De exclusiviteit van PostingEngine als JournalEntry-factory is in productiecode en architectuurregels aantoonbaar, maar nog niet technisch afgedwongen door modulevisibility.
-- Auditmetadata, tegenboekingsorchestration, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. Reporting kan veilig starten door een readmodel over geposte JournalEntries en OpenItems te ontwerpen zonder de bewezen write-side aggregategrenzen te wijzigen.
+- Generieke auditmetadata, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. R2-001B0 legt wel vast dat Accounting settlement en reversal append-only en brontraceerbaar maakt; Reporting blijft hiervan uitsluitend read-only consument.
 
 **Milestonestatus M5:** Integrated Financial Flow accepted; Reporting kan starten zonder fundamentele architectuurwijziging.
 
@@ -459,8 +467,8 @@ Reporting is read-only ten opzichte van de financiële domeinwaarheid. De capabi
 
 - `JournalEntry` en `JournalEntryLine` zijn de boekingsbron voor grootboekrapportages.
 - `LedgerAccount` levert de rekeningidentiteit en classificatie die nodig zijn om regels te groeperen en rapportsecties te selecteren.
-- `OpenItem` is een aanvullende bron voor latere openstaande-postenrapportages.
-- Fiscal-data is alleen een aanvullende bron waar een fiscaal rapport dat vereist, zoals een latere VAT Overview.
+- `OpenItem` is de Accounting-bron voor historische openstaande-postenrapportages.
+- `TaxPosting` is de Fiscal-bron voor VAT Overview.
 - Alleen JournalEntries met status `Posted` worden opgenomen; Draft JournalEntries tellen niet mee.
 - Iedere rapportage vereist een expliciet `Administration`-filter.
 - Iedere rapportage vereist een expliciete datum, balansdatum of periode van/tot, passend bij het rapport.
@@ -486,11 +494,11 @@ De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 
 De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over de overgenomen expliciete periode van/tot. Revenue wordt uitsluitend voor presentatie met `Money::absolute()` genormaliseerd; Expense behoudt het Trial Balance-saldo. `netResult` is exact `totalRevenue - totalExpenses`. Zij introduceert geen zelfstandig opgeslagen resultaat.
 
-#### Latere rapportages
+#### Operationele rapportages
 
-- General Ledger Card: detail en verloop van geposte boekingsregels per LedgerAccount.
-- Open Items Report: openstaande bedragen afgeleid met `OpenItem` als aanvullende bron.
-- VAT Overview: fiscaal overzicht afgeleid uit geposte boekingen en relevante Fiscal-data.
+- General Ledger Report: deterministisch geordende Posted JournalEntry-regels met een berekende period movement balance volgens `debit - credit`.
+- Open Items Report: historische openstanden en statussen op peildatum, uitsluitend gelezen via `OpenItem::openAmountAt()` en `statusAt()`.
+- VAT Overview: Input en Output VAT, 0%-classificaties, Original/Reversal-feiten en groepering op TaxCodeId plus TaxRate-snapshot, uitsluitend afgeleid uit `TaxPosting`.
 
 #### Architectuurregels
 
@@ -505,6 +513,46 @@ De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 - De huidige calculators werken op volledig aangeleverde in-memory domeinobjecten; schaalbare selectie en projecties volgen in Application/Infrastructure.
 - Balance Sheet veronderstelt dat de Trial Balance de benodigde openings- en historische saldi bevat; boekjaaropening, carry-forward en resultaatbestemming vragen expliciet vervolgontwerp.
 - De presentatie-normalisatie signaleert afwijkende debet-/creditsaldi nog niet als aparte waarschuwing.
-- General Ledger Card, Open Items/Aging Report, VAT Overview, audit-drill-down en exportcontracten zijn aanbevolen vervolgstories.
+- Aging buckets, schaalbare projecties, autorisatie en export-/presentatiecontracten zijn aanbevolen vervolgstories.
 
-**Capabilitystatus:** Reporting Foundation completed (R1-004).
+**Capabilitystatus:** Reporting Foundation en Operational Reporting completed (R1-004, R2-005).
+
+### Operational Reporting (R2)
+
+Operational Reporting blijft een read-only afleiding en sluit aan op de R1-context en tekenconventie: Administration is verplicht, datum/periode en Currency zijn expliciet, Money blijft de geldrepresentatie en geen rapportuitkomst wordt teruggeschreven.
+
+#### General Ledger Report / Grootboekkaart
+
+- Bronnen: `JournalEntry`, `JournalEntryLine` en `LedgerAccount`.
+- Context: AdministrationId, inclusieve startDate/endDate, Currency en optioneel LedgerAccountId.
+- Alleen Posted JournalEntries binnen Administration en periode worden opgenomen.
+- Iedere regel bevat minimaal postingDate, JournalEntryId, JournalId, reference, LedgerAccountId, debit, credit en running balance; JournalEntryLineId wordt als stabiele trace/tie-breaker aanbevolen.
+- Volgorde is postingDate, JournalEntryId en JournalEntryLineId, alle oplopend op canonieke waarde.
+- Running balance is exact de cumulatieve periodebeweging `vorige balance + debit - credit`, start in de eerste iteratie op Money-zero en wordt niet opgeslagen. Een boekhoudkundig openingssaldo vóór startDate vraagt later expliciete openingsbalansinput of een voorafgaande Trial Balance.
+
+#### Open Items Report / Openstaande posten
+
+- Bron: `OpenItem` met immutable openingscontext en append-only `OpenItemSettlement`-children.
+- Context: AdministrationId, peildatum, Currency en optioneel RelationId.
+- Closed wordt standaard uitgesloten; open en partially settled worden read-only gerapporteerd.
+- `OpenItem` bewaart `openedOn` plus immutable Applied/Reversal-feiten; `openAmount` en status worden voor iedere peildatum uit Accounting-bronwaarheid afgeleid.
+- Reporting berekent of muteert geen settlements en gebruikt `openAmountAt()` en `statusAt()` read-only.
+
+#### VAT Overview / BTW-overzicht
+
+- Bron: immutable Fiscal-owned `TaxPosting`-feiten met duurzame trace naar bron-documentregel en geposte Accounting-regels.
+- Vereiste context: AdministrationId, inclusieve periode en Currency; aanvullende jurisdictie-/aangiftecontext volgt pas uit fiscaal ontwerp.
+- `TaxPosting` bewaart TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en IDs voor de geboekte base-line en, uitsluitend bij positieve tax, tax-line.
+- PostingRequest en JournalEntryLine blijven generiek. Application bouwt netto/VAT/bruto-regels, laat uitsluitend PostingEngine posten en finaliseert daarna TaxPostings met de werkelijk geposte IDs.
+- Sales en Purchasing Application-services orkestreren Original-postings en volledige creditreversals zonder Domain-dependencies tussen capabilities.
+- Correcties gebruiken `TaxPostingType::Original/Reversal`, positieve bedragen en onveranderde Input/Output-direction. Reversals gebruiken het creditdocument als nieuwe bron, verwijzen naar één Original en vallen via hun eigen PostingDate in de correctieperiode.
+- `TaxPostingIdentityPolicy` bewaakt nieuwe IDs tegen consistente aangeleverde historie; iedere orchestration weigert daarnaast duplicaten binnen dezelfde uitvoering vóór PostingEngine. Globale concurrency-safe uniciteit blijft een persistenceverantwoordelijkheid.
+- VAT Overview telt Reversal-snapshots tegen, houdt Input en Output gescheiden, behoudt 0%-feiten en groepeert op TaxCodeId plus historische TaxRate-snapshot.
+
+#### Bekende niet-blokkerende beperkingen
+
+- De calculators ontvangen complete in-memory bronnen; selectie, autorisatie en schaalbare projecties volgen in Application/Infrastructure.
+- Concurrency-safe TaxPostingId-uniciteit en dubbele-reversalpreventie vereisen toekomstige persistenceconstraints en transacties.
+- Symmetrische fiscale orchestration is bewust expliciet maar bevat duplicatie; `VatOverviewLine` gebruikt nog `mixed` returntypes voor gedelegeerde auditgetters.
+
+**R2-status:** Completed (R2-005). General Ledger, historische Open Items en VAT Overview zijn betrouwbaar reproduceerbaar vanuit Accounting- en Fiscal-bronwaarheid.
