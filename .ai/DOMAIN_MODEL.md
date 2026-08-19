@@ -450,3 +450,54 @@ OpenItem Closed
 | TrialBalance | Grootboeksaldi controleren | Een overzicht van debet- en creditsaldi per grootboekrekening. |
 | AgingReport | Openstaande bedragen naar ouderdom analyseren | Een overzicht dat nog te ontvangen of te betalen bedragen in ouderdomscategorieën toont. |
 | DashboardMetric | Een kernwaarde compact presenteren | Een berekende indicator voor operationeel of financieel inzicht. |
+
+### Reporting Capability
+
+Reporting is read-only ten opzichte van de financiële domeinwaarheid. De capability observeert bestaande gegevens, berekent rapportuitkomsten en muteert geen aggregates. Een rapportuitkomst of latere projectie is een reproduceerbare afleiding en geen nieuwe financiële waarheid.
+
+#### Bronnen en selectiegrenzen
+
+- `JournalEntry` en `JournalEntryLine` zijn de boekingsbron voor grootboekrapportages.
+- `LedgerAccount` levert de rekeningidentiteit en classificatie die nodig zijn om regels te groeperen en rapportsecties te selecteren.
+- `OpenItem` is een aanvullende bron voor latere openstaande-postenrapportages.
+- Fiscal-data is alleen een aanvullende bron waar een fiscaal rapport dat vereist, zoals een latere VAT Overview.
+- Alleen JournalEntries met status `Posted` worden opgenomen; Draft JournalEntries tellen niet mee.
+- Iedere rapportage vereist een expliciet `Administration`-filter.
+- Iedere rapportage vereist een expliciete datum, balansdatum of periode van/tot, passend bij het rapport.
+- Tegenboekingen worden als eigen geposte JournalEntries verwerkt en werken daardoor via dezelfde selectie door in de berekende uitkomst.
+
+#### Eerste rapportages
+
+**Trial Balance**
+
+De Trial Balance groepeert de geselecteerde JournalEntryLines per LedgerAccount en levert minimaal:
+
+- `totalDebit`: de som van de debetbedragen binnen Administration en datum/periode;
+- `totalCredit`: de som van de creditbedragen binnen Administration en datum/periode;
+- `balance`: het berekende saldo op basis van totalDebit en totalCredit.
+
+Over het volledige rapport moeten de totale debit en totale credit gelijk zijn. De selectie bevat uitsluitend Posted JournalEntries. De richting en tekenconventie van `balance`, de inclusiviteit van periodegrenzen en eventuele openingsbalansbehandeling moeten in het uitvoercontract van R1-001 expliciet en eenduidig worden vastgelegd.
+
+**Balance Sheet**
+
+De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Asset, Liability of Equity en rapporteert op een expliciete balansdatum. Zij introduceert geen zelfstandig opgeslagen saldi.
+
+**Profit & Loss**
+
+De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over een expliciete periode van/tot. Zij introduceert geen zelfstandig opgeslagen resultaat.
+
+#### Latere rapportages
+
+- General Ledger Card: detail en verloop van geposte boekingsregels per LedgerAccount.
+- Open Items Report: openstaande bedragen afgeleid met `OpenItem` als aanvullende bron.
+- VAT Overview: fiscaal overzicht afgeleid uit geposte boekingen en relevante Fiscal-data.
+
+#### Architectuurregels
+
+- Reporting maakt of post geen JournalEntries.
+- Reporting wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates.
+- Grootboeksaldi worden berekend uit geposte JournalEntries en niet als domeinwaarheid opgeslagen.
+- Reporting bevat in deze designstory geen Laravel-, database-, repository- of UI-logica.
+- Read models en projecties mogen later in Application/Infrastructure worden geïntroduceerd voor selectie en performance, maar zijn herbouwbare afleidingen en geen nieuwe financiële waarheid.
+
+**Capabilitystatus:** Designed; implementation starts with R1-001.
