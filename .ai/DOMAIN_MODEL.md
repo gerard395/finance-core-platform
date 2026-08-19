@@ -467,8 +467,8 @@ Reporting is read-only ten opzichte van de financiële domeinwaarheid. De capabi
 
 - `JournalEntry` en `JournalEntryLine` zijn de boekingsbron voor grootboekrapportages.
 - `LedgerAccount` levert de rekeningidentiteit en classificatie die nodig zijn om regels te groeperen en rapportsecties te selecteren.
-- `OpenItem` is een aanvullende bron voor latere openstaande-postenrapportages.
-- Fiscal-data is alleen een aanvullende bron waar een fiscaal rapport dat vereist, zoals een latere VAT Overview.
+- `OpenItem` is de Accounting-bron voor historische openstaande-postenrapportages.
+- `TaxPosting` is de Fiscal-bron voor VAT Overview.
 - Alleen JournalEntries met status `Posted` worden opgenomen; Draft JournalEntries tellen niet mee.
 - Iedere rapportage vereist een expliciet `Administration`-filter.
 - Iedere rapportage vereist een expliciete datum, balansdatum of periode van/tot, passend bij het rapport.
@@ -494,11 +494,11 @@ De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 
 De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over de overgenomen expliciete periode van/tot. Revenue wordt uitsluitend voor presentatie met `Money::absolute()` genormaliseerd; Expense behoudt het Trial Balance-saldo. `netResult` is exact `totalRevenue - totalExpenses`. Zij introduceert geen zelfstandig opgeslagen resultaat.
 
-#### Latere rapportages
+#### Operationele rapportages
 
-- General Ledger Card: detail en verloop van geposte boekingsregels per LedgerAccount.
-- Open Items Report: openstaande bedragen afgeleid met `OpenItem` als aanvullende bron.
-- VAT Overview: fiscaal overzicht afgeleid uit geposte boekingen en relevante Fiscal-data.
+- General Ledger Report: deterministisch geordende Posted JournalEntry-regels met een berekende period movement balance volgens `debit - credit`.
+- Open Items Report: historische openstanden en statussen op peildatum, uitsluitend gelezen via `OpenItem::openAmountAt()` en `statusAt()`.
+- VAT Overview: Input en Output VAT, 0%-classificaties, Original/Reversal-feiten en groepering op TaxCodeId plus TaxRate-snapshot, uitsluitend afgeleid uit `TaxPosting`.
 
 #### Architectuurregels
 
@@ -513,11 +513,11 @@ De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 - De huidige calculators werken op volledig aangeleverde in-memory domeinobjecten; schaalbare selectie en projecties volgen in Application/Infrastructure.
 - Balance Sheet veronderstelt dat de Trial Balance de benodigde openings- en historische saldi bevat; boekjaaropening, carry-forward en resultaatbestemming vragen expliciet vervolgontwerp.
 - De presentatie-normalisatie signaleert afwijkende debet-/creditsaldi nog niet als aparte waarschuwing.
-- General Ledger Card, Open Items/Aging Report, VAT Overview, audit-drill-down en exportcontracten zijn aanbevolen vervolgstories.
+- Aging buckets, schaalbare projecties, autorisatie en export-/presentatiecontracten zijn aanbevolen vervolgstories.
 
-**Capabilitystatus:** Reporting Foundation completed (R1-004).
+**Capabilitystatus:** Reporting Foundation en Operational Reporting completed (R1-004, R2-005).
 
-### Operational Reporting (R2 design)
+### Operational Reporting (R2)
 
 Operational Reporting blijft een read-only afleiding en sluit aan op de R1-context en tekenconventie: Administration is verplicht, datum/periode en Currency zijn expliciet, Money blijft de geldrepresentatie en geen rapportuitkomst wordt teruggeschreven.
 
@@ -532,28 +532,27 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 
 #### Open Items Report / Openstaande posten
 
-- Beoogde bron na R2-001B: `OpenItem` met immutable openingscontext en append-only `OpenItemSettlement`-children.
+- Bron: `OpenItem` met immutable openingscontext en append-only `OpenItemSettlement`-children.
 - Context: AdministrationId, peildatum, Currency en optioneel RelationId.
 - Closed wordt standaard uitgesloten; open en partially settled worden read-only gerapporteerd.
-- R2-001B0 kiest definitief een breaking OpenItem-contract: `openedOn` plus immutable Applied/Reversal-feiten; `openAmount` en status worden voor iedere peildatum uit Accounting-bronwaarheid afgeleid.
-- Reporting berekent of muteert geen settlements en gebruikt na implementatie `openAmountAt()` en `statusAt()` read-only.
-- Implementatiegat: het huidige OpenItem gebruikt nog mutable openAmount/status en `settle()`/`close()`. R2-002 blijft geblokkeerd totdat R2-001B het vastgelegde temporele contract implementeert en de I1-test migreert.
+- `OpenItem` bewaart `openedOn` plus immutable Applied/Reversal-feiten; `openAmount` en status worden voor iedere peildatum uit Accounting-bronwaarheid afgeleid.
+- Reporting berekent of muteert geen settlements en gebruikt `openAmountAt()` en `statusAt()` read-only.
 
 #### VAT Overview / BTW-overzicht
 
-- Beoogde bronnen: Fiscal-classificatie en uitsluitend geposte financiële gegevens met duurzame fiscale trace.
+- Bron: immutable Fiscal-owned `TaxPosting`-feiten met duurzame trace naar bron-documentregel en geposte Accounting-regels.
 - Vereiste context: AdministrationId, inclusieve periode en Currency; aanvullende jurisdictie-/aangiftecontext volgt pas uit fiscaal ontwerp.
-- Huidige Fiscal-objecten (`TaxCode`, `TaxCalculationResult`) zijn niet gekoppeld aan Sales/Purchasing-documentregels of `JournalEntryLine`; invoiceposting bevat nog geen afzonderlijke btw-regels.
-- R2-003A realiseert een immutable Fiscal-owned `TaxPosting` naast Accounting: TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en IDs voor de geboekte base-line en, uitsluitend bij positieve tax, tax-line.
+- `TaxPosting` bewaart TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, direction, bron-documentregel, AdministrationId, PostingDate en IDs voor de geboekte base-line en, uitsluitend bij positieve tax, tax-line.
 - PostingRequest en JournalEntryLine blijven generiek. Application bouwt netto/VAT/bruto-regels, laat uitsluitend PostingEngine posten en finaliseert daarna TaxPostings met de werkelijk geposte IDs.
-- R2-003B en R2-003C realiseren de fiscale Sales-/Purchasing-original-postingorchestratie.
-- R2-003D kiest voor correcties `TaxPostingType::Original/Reversal`, positieve bedragen en onveranderde Input/Output-direction. Reversals zijn v1 volledig, gebruiken het creditdocument als nieuwe bron, verwijzen naar één Original en vallen via hun eigen PostingDate in de correctieperiode.
-- Implementatiegat: TaxPosting mist nog het expliciete type, creditdocumenttypen, historyguard en fiscale credit-orchestraties. Tot die prerequisites gereed zijn, is VAT Overview niet betrouwbaar implementeerbaar voor correcties en mag Reporting niets afleiden uit LedgerAccount, description of actuele TaxCode-rate.
+- Sales en Purchasing Application-services orkestreren Original-postings en volledige creditreversals zonder Domain-dependencies tussen capabilities.
+- Correcties gebruiken `TaxPostingType::Original/Reversal`, positieve bedragen en onveranderde Input/Output-direction. Reversals gebruiken het creditdocument als nieuwe bron, verwijzen naar één Original en vallen via hun eigen PostingDate in de correctieperiode.
+- `TaxPostingIdentityPolicy` bewaakt nieuwe IDs tegen consistente aangeleverde historie; iedere orchestration weigert daarnaast duplicaten binnen dezelfde uitvoering vóór PostingEngine. Globale concurrency-safe uniciteit blijft een persistenceverantwoordelijkheid.
+- VAT Overview telt Reversal-snapshots tegen, houdt Input en Output gescheiden, behoudt 0%-feiten en groepeert op TaxCodeId plus historische TaxRate-snapshot.
 
-#### Aanbevolen implementatievolgorde
+#### Bekende niet-blokkerende beperkingen
 
-1. R2-001 General Ledger Report, omdat alle minimale immutable bronvelden beschikbaar zijn.
-2. R2-001B: het in R2-001B0 ontworpen temporele OpenItem-contract implementeren; daarna R2-002 Open Items Report.
-3. TaxPosting en fiscale Sales-/Purchasing-postingorchestration implementeren; pas daarna VAT Overview bouwen.
+- De calculators ontvangen complete in-memory bronnen; selectie, autorisatie en schaalbare projecties volgen in Application/Infrastructure.
+- Concurrency-safe TaxPostingId-uniciteit en dubbele-reversalpreventie vereisen toekomstige persistenceconstraints en transacties.
+- Symmetrische fiscale orchestration is bewust expliciet maar bevat duplicatie; `VatOverviewLine` gebruikt nog `mixed` returntypes voor gedelegeerde auditgetters.
 
-**R2-status:** General Ledger is geïmplementeerd; het temporele OpenItem-contract is definitief ontworpen maar nog niet geïmplementeerd; VAT heeft nog een fiscale prerequisite.
+**R2-status:** Completed (R2-005). General Ledger, historische Open Items en VAT Overview zijn betrouwbaar reproduceerbaar vanuit Accounting- en Fiscal-bronwaarheid.

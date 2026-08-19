@@ -12,6 +12,8 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 
 `OpenItem` bewaart immutable openingscontext en beheert immutable `OpenItemSettlement`-children. Applied settlements en Reversals worden uitsluitend toegevoegd. Actueel en historisch open bedrag en status worden steeds afgeleid uit `originalAmount` en deze historie; zij worden niet als zelfstandige financiële waarheid gemuteerd.
 
+`openAmountAt()` en `statusAt()` zijn de enige bron voor historische openstand en status. Reporting leest deze API's en reconstrueert geen settlementlogica.
+
 ## Invarianten
 
 - De identiteit en rekeningcode zijn onveranderlijk.

@@ -1,5 +1,7 @@
 # Fiscal Domain
 
+**Status:** Fiscal posting trace and reversal contract completed for R2
+
 ## Doel
 
 Fiscal biedt capabilityneutrale fiscale classificatie, berekening en geposte fiscale trace zonder framework- of infrastructuurafhankelijkheden. `TaxCode` beheert classificatie, `TaxCalculation` berekent fiscale Money-bedragen en `TaxPosting` bewaart de immutable transactiesnapshot.
@@ -29,6 +31,7 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - `TaxPostingReversalPolicy::assertValidReversal()` valideert na succesvolle posting het volledig geconstrueerde Reversal-record, inclusief target en exacte snapshotgelijkheid.
 - De historyguard bevat geen persistence of globale state. Concurrency-safe afdwinging volgt later via een persistenceconstraint en transactie.
 - `TaxPostingIdentityPolicy` bewaakt dat iedere nieuwe TaxPostingId vrij is binnen de aangeleverde consistente history; Application bewaakt daarnaast duplicaten binnen dezelfde orchestration.
+- Alle vier fiscale invoice- en credit-orchestrators voeren deze identiteitscontroles uit vóór `PostingEngine`. Daardoor kan een geweigerde identiteit geen financiële boeking veroorzaken.
 
 ## Grenzen
 
@@ -41,3 +44,4 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.
+- Globale, concurrency-safe uniciteit van TaxPostingId en dubbele-reversalpreventie worden later door persistenceconstraints en transacties afgedwongen; de huidige policies bewaken een volledig en consistent aangeleverde historie.

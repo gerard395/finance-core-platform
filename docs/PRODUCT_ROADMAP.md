@@ -81,7 +81,7 @@ De eerste Accounting-domeiniteratie is geïmplementeerd. Het Accounting-domein b
 
 ## Capability 07 – Fiscal
 
-**Status:** Planned
+**Status:** Fiscal posting trace completed for R2
 
 ### Capability Fiscal
 
@@ -109,7 +109,7 @@ OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluit
 
 ## Capability 10 – Reporting
 
-**Status:** Reporting Foundation completed
+**Status:** Operational Reporting completed
 
 ### Capability Reporting
 
@@ -117,7 +117,7 @@ Reporting is een read-only capability ten opzichte van de financiële domeinwaar
 
 De eerste rapportages Trial Balance, Balance Sheet en Profit & Loss zijn frameworkonafhankelijk geïmplementeerd. Trial Balance gebruikt exact `balance = debit - credit`; Balance Sheet normaliseert uitsluitend Liability en Equity met `absolute()`, terwijl Profit & Loss uitsluitend Revenue normaliseert. Balance Sheet vergelijkt `totalAssets = totalLiabilities + totalEquity` en Profit & Loss berekent `netResult = totalRevenue - totalExpenses`. AdministrationId, periode en Currency blijven expliciet en immutable behouden.
 
-General Ledger Card, Open Items Report en VAT Overview volgen later. Reporting maakt geen JournalEntries en wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates. Grootboeksaldi blijven berekende uitkomsten en worden niet als domeinwaarheid opgeslagen. Latere read models en projecties mogen in Application/Infrastructure worden toegevoegd, maar vormen geen nieuwe financiële waarheid.
+R2 levert daarnaast General Ledger Report, historisch Open Items Report en VAT Overview. General Ledger leest alleen Posted JournalEntries; Open Items gebruikt de temporele Accounting-API; VAT Overview leest uitsluitend immutable Fiscal-owned TaxPostings. Reporting maakt geen JournalEntries en wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates. Grootboeksaldi blijven berekende uitkomsten en worden niet als domeinwaarheid opgeslagen. Latere read models en projecties mogen in Application/Infrastructure worden toegevoegd, maar vormen geen nieuwe financiële waarheid.
 
 ## Capability 11 – Workflow
 
@@ -148,18 +148,18 @@ Payment binnen BankTransaction
     ↓
 Matching
     ↓
-OpenItem settle() → close()
+OpenItem::applySettlement(...)
 ```
 
-Sales blijft verantwoordelijk tot en met de gefinaliseerde SalesInvoice. Accounting neemt de boekingsopdracht over bij PostingRequest; uitsluitend PostingEngine maakt de geposte JournalEntry. OpenItem blijft een Accounting Aggregate Root. Banking beheert BankTransaction en Payment en Matching valideert uitsluitend de allocaties. Na succesvolle matching moet application-orchestratie het gekoppelde OpenItem vereffenen en sluiten.
+Sales blijft verantwoordelijk tot en met de gefinaliseerde SalesInvoice. Accounting neemt de boekingsopdracht over bij PostingRequest; uitsluitend PostingEngine maakt de geposte JournalEntry. OpenItem blijft een Accounting Aggregate Root. Banking beheert BankTransaction en Payment en Matching valideert uitsluitend de allocaties. Na succesvolle matching voegt Application-orchestratie een gedateerd settlementfeit met de werkelijk geposte JournalEntry als bron toe.
 
-I1-001 tot en met I1-004 bewijzen de application-koppelingen voor SalesInvoice, PurchaseInvoice en BankTransaction naar PostingRequest en de volledige verkoopfactuur-tot-afwikkelingketen. De Application-laag kiest expliciet JournalId, LedgerAccountIds, regelidentiteiten, boekingsdatum en referentie. PostingValidation bewaakt de boekingsopdracht en uitsluitend PostingEngine maakt JournalEntries. Matching valideert Payment-allocaties zonder OpenItems te muteren; application-orchestratie past een succesvol MatchingResult toe via `OpenItem::settle()` en `close()`.
+I1-001 tot en met I1-004 bewijzen de application-koppelingen voor SalesInvoice, PurchaseInvoice en BankTransaction naar PostingRequest en de volledige verkoopfactuur-tot-afwikkelingketen. De Application-laag kiest expliciet JournalId, LedgerAccountIds, regelidentiteiten, boekingsdatum en referentie. PostingValidation bewaakt de boekingsopdracht en uitsluitend PostingEngine maakt JournalEntries. Matching valideert Payment-allocaties zonder OpenItems te muteren; sinds R2-001B gebruikt application-orchestratie `OpenItem::applySettlement()` met immutable bron- en datumcontext.
 
 De acceptance review in I1-005 bevestigt dat geen fundamentele architectuurwijziging nodig is voordat Reporting start. Reporting moet nog een expliciet read-/projectiemodel, periode- en administratieafbakening en audit-/correctietrace ontwerpen. Dit is vervolgscope, geen blocker voor het starten van de Reporting-milestone. De exclusiviteit van PostingEngine wordt momenteel door architectuurregels en productiecode bewaakt en nog niet door een technische modulegrens afgedwongen.
 
 ## Milestone M6 – Financial Insight
 
-**Status:** In Progress
+**Status:** Completed
 
 ### Batch R1 – Reporting Foundation
 
@@ -171,13 +171,15 @@ Niet-blokkerend vervolg omvat Application/Infrastructure-projecties voor schaalb
 
 ### Batch R2 – Operational Reporting
 
-**Status:** Designed; implementation starts with R2-001
+**Status:** Completed
 
-R2 ontwerpt dagelijkse boekhoudkundige rapportages bovenop de read-only grenzen van R1. De General Ledger Report/Grootboekkaart is met de huidige geposte JournalEntry-bron uitvoerbaar en wordt als R2-001 als eerste aanbevolen. Het rapport selecteert expliciet op Administration, inclusieve periode, Currency en optioneel LedgerAccountId en ordent deterministisch op boekingsdatum, JournalEntryId en JournalEntryLineId. De running balance is een berekende `debit - credit`-periodebeweging en wordt niet opgeslagen.
+R2 levert dagelijkse boekhoudkundige rapportages bovenop de read-only grenzen van R1. General Ledger selecteert Posted JournalEntries op Administration, inclusieve periode, Currency en optioneel LedgerAccountId, sorteert deterministisch en berekent een niet-opgeslagen `debit - credit`-periodebeweging.
 
-Een huidig Open Items-overzicht kan de actuele OpenItem-toestand tonen, maar een betrouwbaar historisch rapport op een willekeurige peildatum is nog niet mogelijk: OpenItem bevat geen ontstaans-/boekingsdatum en geen gedateerde settlementhistorie. Een prerequisite-story moet eerst minimale temporele bronwaarheid ontwerpen; Reporting mag die historie niet reconstrueren of settlement-logica overnemen.
+Accounting bewaart OpenItem-openingscontext en append-only Applied/Reversal-settlements. Open Items rapporteert historische openstand en status uitsluitend via `openAmountAt()` en `statusAt()` en dupliceert geen settlementlogica.
 
-VAT Overview is eveneens geblokkeerd als implementatiestory. Fiscal kent TaxCode en losse TaxCalculationResult-waarden, maar Sales/Purchasing-documentregels en geposte JournalEntryLines bevatten geen duurzame TaxCodeId, historische TaxRate, fiscale grondslag, taxAmount of trace naar de fiscale bronregel. De huidige invoice-posting maakt bovendien geen fiscaal geclassificeerde btw-regels. R2-003 volgt pas nadat deze fiscale traceerbaarheid capability-eigen en immutable is ontworpen en door de posting chain behouden blijft.
+Fiscal bewaart immutable Original/Reversal-TaxPostings met historische TaxRate, taxable base, taxAmount en volledige bron- en boekingstrace. Sales- en Purchasing-orchestrators laten uitsluitend PostingEngine boeken, bewaken TaxPosting-identiteiten vóór posting en creëren fiscale feiten pas na een succesvolle boeking. VAT Overview houdt Input en Output gescheiden, verwerkt correcties in hun eigen PostingDate-periode, behoudt 0%-classificaties en berekent exact `Output tax - Input tax`.
+
+Niet-blokkerend vervolg: schaalbare queryprojecties, autorisatie, persistenceconstraints voor concurrency-safe fiscale uniciteit, Aging, typed VAT-auditgetters en export-/presentatiecontracten. Symmetrische fiscale orchestration kan bij groei capabilityneutraal worden geconsolideerd.
 
 ## Releases
 
