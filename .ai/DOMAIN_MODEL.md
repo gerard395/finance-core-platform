@@ -205,7 +205,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | LedgerAccount | — | De classificatie van boekingsregels binnen het grootboek beheren. |
 | Journal | — | Journaalposten naar de aard van hun financiële gebeurtenis groeperen. |
 | JournalEntry | JournalEntryLine | Een gebalanceerde financiële mutatie en haar debet- en creditregels beheren. |
-| OpenItem | — | Een uit een verkoop- of inkoopfactuur ontstaan openstaand bedrag en de afsluiting daarvan beheren. |
+| OpenItem | OpenItemSettlement | Een uit een geposte verkoop- of inkoopboeking ontstaan openstaand bedrag en de append-only vereffeninghistorie beheren. |
 
 #### Shared Value Objects
 
@@ -231,8 +231,9 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - Een JournalEntry kan alleen worden gepost wanneer deze in balans is.
 - Geposte JournalEntries zijn onveranderlijk.
 - Correcties op geposte JournalEntries gebeuren via tegenboekingen, nooit door de oorspronkelijke boeking te wijzigen.
-- OpenItems ontstaan uit verkoop- en inkoopfacturen.
-- Betalingen sluiten OpenItems af.
+- OpenItems ontstaan pas na de succesvolle geposte JournalEntry voor een verkoop- of inkoopfactuur; `openedOn` is diens PostingDate.
+- OpenItem bewaart immutable Applied- en Reversal-settlementfeiten. Open bedrag en status worden uit originalAmount plus deze historie afgeleid en nooit los gemuteerd.
+- Betalingen sluiten OpenItems via Application-orchestratie pas nadat de veroorzakende financiële boeking succesvol is gepost.
 - Grootboeksaldi worden berekend uit geposte JournalEntries en niet afzonderlijk opgeslagen.
 
 #### Domain Events
@@ -373,10 +374,10 @@ BankTransaction
         ↓
 Matching
         ↓
-OpenItem Closed
+OpenItem append-only settlement
 ```
 
-`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. De laatste stap bestaat uit de bestaande `OpenItem::settle()`- en `OpenItem::close()`-methoden; Matching muteert het OpenItem niet rechtstreeks.
+`Payment` is in deze conceptuele keten geen zelfstandig Aggregate Root, maar een child entity die uitsluitend binnen `BankTransaction` bestaat. Na succesvolle bankposting past Application een immutable Accounting-settlement toe met settlement-ID, PostingDate en de werkelijk geposte JournalEntry als bron. Matching en Banking muteren het OpenItem niet rechtstreeks.
 
 #### Verantwoordelijkheden en hand-offs
 
@@ -387,11 +388,11 @@ OpenItem Closed
 | PostingValidation | Accounting | PostingValidation | Valideert minimaal twee regels, Currency, unieke regelidentiteiten en debet = credit. |
 | PostingEngine | Accounting | PostingEngine | Is als enige verantwoordelijk voor het maken en posten van JournalEntry. |
 | JournalEntry | JournalEntry Aggregate Root | — | Bewaart de immutable geposte boeking; maakt zelf geen OpenItem. |
-| OpenItem | OpenItem Aggregate Root | — | Bewaakt originalAmount, openAmount en vereffening; verwijst naar JournalEntryId. |
+| OpenItem | OpenItem Aggregate Root | — | Bewaart immutable openingscontext en append-only settlementchildren; openAmount en status zijn afleidingen. |
 | Payment | Child entity van BankTransaction | — | Verwijst met OpenItemId naar precies één OpenItem en draagt een positief Money-bedrag. |
 | BankTransaction | BankTransaction Aggregate Root | — | Bewaakt Payment-ownership, Currency en de Imported → Matched → Posted-statusmachine. |
 | Matching | Banking | Matching | Valideert de exacte Payment-som en zet alleen een geldige Imported transactie op Matched. |
-| OpenItem Closed | OpenItem Aggregate Root | — | Application-orchestratie roept settle(Money) en daarna close() aan; Banking muteert Accounting niet rechtstreeks. |
+| OpenItem settlement | OpenItem Aggregate Root | — | Application roept na succesvolle posting `applySettlement(...)` of `reverseSettlement(...)` aan met de geposte JournalEntry als bron; Banking muteert Accounting niet rechtstreeks. |
 
 #### Dragende Value Objects
 
@@ -409,7 +410,7 @@ OpenItem Closed
 - `CreateBankTransactionPostingRequest` vertaalt uitsluitend een Matched BankTransaction met Payments naar een bankboeking; Imported en Posted worden geweigerd.
 - De Application-laag kiest JournalId, LedgerAccountIds, JournalEntryLineIds, PostingDate en JournalEntryReference en bevat daarmee de capability-overstijgende orchestration.
 - PostingValidation accepteert de gebalanceerde requests en uitsluitend PostingEngine maakt de geposte JournalEntries.
-- De end-to-endtest construeert na de factuurboeking een OpenItem uit expliciete factuur- en boekingscontext, koppelt een Payment via OpenItemId en past een succesvol MatchingResult toe via `settle()` en daarna `close()`.
+- De end-to-endtest moet in R2-001B migreren naar OpenItem-constructie met de PostingDate van de geposte factuurboeking en na bankposting `applySettlement(...)` gebruiken met settlement-ID, effectieve PostingDate en de geposte bank-JournalEntry als bron.
 - Matching sluit geen OpenItem en maakt geen boeking; een BankTransaction gebruikt een afzonderlijke PostingRequest via dezelfde PostingEngine.
 
 #### Acceptance en resterende grenzen
@@ -418,7 +419,7 @@ OpenItem Closed
 - Money-totalisatie en -vergelijking gebruiken exacte decimale strings zonder floats.
 - De drie PostingRequest-use-cases dupliceren beperkt orchestrationpatroon voor totalisatie, beschrijving en twee boekingsregels. Dit is zichtbare technische schuld, maar abstraheren vóór extra stabiele varianten zou de capabilitytaal verbergen.
 - De exclusiviteit van PostingEngine als JournalEntry-factory is in productiecode en architectuurregels aantoonbaar, maar nog niet technisch afgedwongen door modulevisibility.
-- Auditmetadata, tegenboekingsorchestration, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. Reporting kan veilig starten door een readmodel over geposte JournalEntries en OpenItems te ontwerpen zonder de bewezen write-side aggregategrenzen te wijzigen.
+- Generieke auditmetadata, persistence en Reporting-projecties vallen buiten deze Domain-iteratie. R2-001B0 legt wel vast dat Accounting settlement en reversal append-only en brontraceerbaar maakt; Reporting blijft hiervan uitsluitend read-only consument.
 
 **Milestonestatus M5:** Integrated Financial Flow accepted; Reporting kan starten zonder fundamentele architectuurwijziging.
 
@@ -524,11 +525,12 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 
 #### Open Items Report / Openstaande posten
 
-- Bron: `OpenItem` met AdministrationId, RelationId, JournalEntryId, originalAmount, openAmount en status.
+- Beoogde bron na R2-001B: `OpenItem` met immutable openingscontext en append-only `OpenItemSettlement`-children.
 - Context: AdministrationId, peildatum, Currency en optioneel RelationId.
 - Closed wordt standaard uitgesloten; open en partially settled worden read-only gerapporteerd.
-- `openAmount` is Accounting-domeinwaarheid; Reporting berekent geen settlements en muteert OpenItem niet.
-- Systeemgat: OpenItem bevat geen ontstaans-/boekings-/vervaldatum en geen gedateerde settlementhistorie. De huidige status en openAmount representeren alleen de actuele toestand. Een betrouwbaar historisch peildatumrapport vereist eerst capability-eigen temporele broninformatie of een herbouwbare, gedateerde projectie uit brongebeurtenissen.
+- R2-001B0 kiest definitief een breaking OpenItem-contract: `openedOn` plus immutable Applied/Reversal-feiten; `openAmount` en status worden voor iedere peildatum uit Accounting-bronwaarheid afgeleid.
+- Reporting berekent of muteert geen settlements en gebruikt na implementatie `openAmountAt()` en `statusAt()` read-only.
+- Implementatiegat: het huidige OpenItem gebruikt nog mutable openAmount/status en `settle()`/`close()`. R2-002 blijft geblokkeerd totdat R2-001B het vastgelegde temporele contract implementeert en de I1-test migreert.
 
 #### VAT Overview / BTW-overzicht
 
@@ -541,7 +543,7 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 #### Aanbevolen implementatievolgorde
 
 1. R2-001 General Ledger Report, omdat alle minimale immutable bronvelden beschikbaar zijn.
-2. Prerequisite voor Open Items: temporele OpenItem-bronwaarheid en peildatumsemantiek ontwerpen; daarna Open Items Report.
+2. R2-001B: het in R2-001B0 ontworpen temporele OpenItem-contract implementeren; daarna R2-002 Open Items Report.
 3. Prerequisite voor VAT: fiscale classificatie en bedragen immutable door document- en posting chain traceerbaar maken; pas daarna R2-003 VAT Overview.
 
-**R2-status:** Operational Reporting designed; General Ledger is implementation-ready, Open Items en VAT hebben expliciete prerequisites.
+**R2-status:** General Ledger is geïmplementeerd; het temporele OpenItem-contract is definitief ontworpen maar nog niet geïmplementeerd; VAT heeft nog een fiscale prerequisite.
