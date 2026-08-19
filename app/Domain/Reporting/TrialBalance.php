@@ -70,7 +70,7 @@ final readonly class TrialBalance
         foreach ($accounts as $key => $ledgerAccount) {
             $debit = $debits[$key];
             $credit = $credits[$key];
-            $balance = $debit->add(new Money($credit->isZero() ? '0' : '-'.$credit->amount(), $currency));
+            $balance = $debit->subtract($credit);
             $lines[] = new TrialBalanceLine($ledgerAccount->id(), $debit, $credit, $balance);
             $totalDebit = $totalDebit->add($debit);
             $totalCredit = $totalCredit->add($credit);
