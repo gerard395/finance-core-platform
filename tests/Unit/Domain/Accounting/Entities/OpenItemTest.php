@@ -5,136 +5,259 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
+use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
+use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
+use DateTimeImmutable;
 use DomainException;
 use PHPUnit\Framework\TestCase;
 
 final class OpenItemTest extends TestCase
 {
-    public function test_it_is_constructed_with_all_values_exposed(): void
+    public function test_new_open_item_exposes_immutable_opening_context_and_is_fully_open(): void
     {
-        $item = $this->createOpenItem();
+        $openedOn = $this->date('2026-01-01');
+        $item = $this->createOpenItem('1000', $openedOn);
 
         self::assertSame('550e8400-e29b-41d4-a716-446655440000', $item->id()->toString());
         self::assertSame('123e4567-e89b-42d3-a456-426614174000', $item->administrationId()->toString());
         self::assertSame('936da01f-9abd-4d9d-80c7-02af85c822a8', $item->relationId()->toString());
         self::assertSame('6ba7b810-9dad-41d1-80b4-00c04fd430c8', $item->journalEntryId()->toString());
-        self::assertSame('100', $item->originalAmount()->amount());
-        self::assertSame('100', $item->openAmount()->amount());
+        self::assertSame($openedOn, $item->openedOn());
+        self::assertSame('1000', $item->originalAmount()->amount());
+        self::assertSame('1000', $item->openAmount()->amount());
         self::assertSame(OpenItemStatus::Open, $item->status());
+        self::assertSame([], $item->settlements());
         self::assertTrue($item->isOpen());
     }
 
-    public function test_settlement_reduces_the_open_amount_exactly_without_floats(): void
+    public function test_historical_open_amount_and_status_follow_applied_settlements(): void
     {
-        $item = $this->createOpenItem('0.3');
+        $item = $this->createOpenItem('1000', $this->date('2026-01-01'));
+        $firstId = $this->settlementId(1);
+        $secondId = $this->settlementId(2);
 
-        $item->settle($this->money('0.1'));
+        $item->applySettlement($firstId, $this->date('2026-01-15'), $this->money('400'), $this->journalEntryId(1));
+        $historyBeforeQueries = $item->settlements();
 
-        self::assertSame('0.2', $item->openAmount()->amount());
+        self::assertSame('1000', $item->openAmountAt($this->date('2026-01-10'))->amount());
+        self::assertSame('600', $item->openAmountAt($this->date('2026-01-20'))->amount());
+        self::assertSame(OpenItemStatus::Open, $item->statusAt($this->date('2026-01-10')));
+        self::assertSame(OpenItemStatus::PartiallySettled, $item->statusAt($this->date('2026-01-20')));
         self::assertTrue($item->isPartiallySettled());
-        self::assertSame('0.3', $item->originalAmount()->amount());
-    }
+        self::assertSame($historyBeforeQueries, $item->settlements());
+        self::assertSame($firstId, $historyBeforeQueries[0]->id());
+        self::assertSame('2026-01-15', $historyBeforeQueries[0]->effectiveDate()->value()->format('Y-m-d'));
+        self::assertSame('400', $historyBeforeQueries[0]->amount()->amount());
+        self::assertSame($this->journalEntryId(1)->toString(), $historyBeforeQueries[0]->sourceJournalEntryId()->toString());
+        self::assertSame(OpenItemSettlementType::Applied, $historyBeforeQueries[0]->type());
 
-    public function test_full_settlement_reaches_zero_and_can_then_be_closed(): void
-    {
-        $item = $this->createOpenItem();
-        $item->settle($this->money('100'));
+        $item->applySettlement($secondId, $this->date('2026-02-10'), $this->money('600'), $this->journalEntryId(2));
 
+        self::assertSame('600', $item->openAmountAt($this->date('2026-01-31'))->amount());
+        self::assertTrue($item->openAmountAt($this->date('2026-02-28'))->isZero());
+        self::assertSame(OpenItemStatus::Closed, $item->statusAt($this->date('2026-02-28')));
         self::assertTrue($item->openAmount()->isZero());
-        self::assertTrue($item->isPartiallySettled());
-
-        $item->close();
-        $item->close();
-
         self::assertTrue($item->isClosed());
     }
 
-    public function test_zero_settlement_is_idempotent(): void
+    public function test_full_reversal_reopens_and_does_not_mutate_applied_settlement(): void
     {
-        $item = $this->createOpenItem();
+        $item = $this->createOpenItem('1000', $this->date('2026-01-01'));
+        $appliedId = $this->settlementId(1);
+        $reversalId = $this->settlementId(2);
+        $item->applySettlement($appliedId, $this->date('2026-01-15'), $this->money('1000'), $this->journalEntryId(1));
+        $applied = $item->settlement($appliedId);
 
-        $item->settle($this->money('0'));
-        $item->settle($this->money('0'));
+        $item->reverseSettlement($reversalId, $this->date('2026-02-01'), $appliedId, $this->journalEntryId(2));
 
-        self::assertSame('100', $item->openAmount()->amount());
-        self::assertSame(OpenItemStatus::Open, $item->status());
+        self::assertNotNull($applied);
+        self::assertSame($applied, $item->settlement($appliedId));
+        self::assertSame(OpenItemSettlementType::Applied, $applied->type());
+        self::assertNull($applied->reversedSettlementId());
+        self::assertSame('1000', $item->settlement($reversalId)?->amount()->amount());
+        self::assertTrue($item->settlement($reversalId)?->reversedSettlementId()?->equals($appliedId));
+        self::assertSame(OpenItemStatus::Closed, $item->statusAt($this->date('2026-01-31')));
+        self::assertSame(OpenItemStatus::Open, $item->statusAt($this->date('2026-02-01')));
+        self::assertTrue($item->isOpen());
     }
 
-    public function test_it_rejects_settlement_above_the_open_amount(): void
+    public function test_settlement_lookup_and_history_are_append_only_and_deterministically_ordered(): void
+    {
+        $item = $this->createOpenItem();
+        $laterId = $this->settlementId(2);
+        $earlierId = $this->settlementId(1);
+        $sameDateHigherId = $this->settlementId(3);
+
+        $item->applySettlement($laterId, $this->date('2026-01-20'), $this->money('10'), $this->journalEntryId(2));
+        $item->applySettlement($sameDateHigherId, $this->date('2026-01-15'), $this->money('10'), $this->journalEntryId(3));
+        $item->applySettlement($earlierId, $this->date('2026-01-15'), $this->money('10'), $this->journalEntryId(1));
+
+        $history = $item->settlements();
+        self::assertSame([$earlierId, $sameDateHigherId, $laterId], array_map(
+            static fn ($settlement) => $settlement->id(),
+            $history,
+        ));
+        self::assertTrue($item->hasSettlement($earlierId));
+        self::assertSame($history[0], $item->settlement($earlierId));
+        self::assertNull($item->settlement($this->settlementId(9)));
+
+        array_pop($history);
+        self::assertCount(3, $item->settlements());
+    }
+
+    public function test_duplicate_settlement_id_is_rejected_without_mutation(): void
+    {
+        $item = $this->createOpenItem();
+        $id = $this->settlementId(1);
+        $item->applySettlement($id, $this->date('2026-01-15'), $this->money('10'), $this->journalEntryId(1));
+
+        try {
+            $item->applySettlement($id, $this->date('2026-01-16'), $this->money('10'), $this->journalEntryId(2));
+            self::fail('A duplicate settlement ID must be rejected.');
+        } catch (DomainException) {
+            self::assertCount(1, $item->settlements());
+            self::assertSame('90', $item->openAmount()->amount());
+        }
+    }
+
+    public function test_settlement_before_opening_date_is_rejected(): void
     {
         $item = $this->createOpenItem();
 
         $this->expectException(DomainException::class);
-        $item->settle($this->money('100.00000001'));
+        $item->applySettlement($this->settlementId(1), $this->date('2025-12-31'), $this->money('10'), $this->journalEntryId(1));
     }
 
-    public function test_it_rejects_negative_settlement(): void
+    public function test_historical_query_before_opening_date_is_rejected(): void
     {
         $item = $this->createOpenItem();
 
         $this->expectException(DomainException::class);
-        $item->settle($this->money('-1'));
+        $item->openAmountAt($this->date('2025-12-31'));
     }
 
-    public function test_it_rejects_a_different_settlement_currency(): void
+    public function test_zero_and_negative_settlement_amounts_are_rejected(): void
+    {
+        foreach (['0', '-1'] as $index => $amount) {
+            $item = $this->createOpenItem();
+
+            try {
+                $item->applySettlement($this->settlementId($index + 1), $this->date('2026-01-15'), $this->money($amount), $this->journalEntryId(1));
+                self::fail('A non-positive settlement must be rejected.');
+            } catch (DomainException) {
+                self::assertSame([], $item->settlements());
+            }
+        }
+    }
+
+    public function test_currency_mismatch_is_rejected(): void
     {
         $item = $this->createOpenItem();
 
         $this->expectException(DomainException::class);
-        $item->settle(new Money('1', new Currency('USD')));
+        $item->applySettlement(
+            $this->settlementId(1),
+            $this->date('2026-01-15'),
+            new Money('10', new Currency('USD')),
+            $this->journalEntryId(1),
+        );
     }
 
-    public function test_it_cannot_close_while_an_amount_is_open(): void
+    public function test_over_settlement_is_rejected_without_mutation(): void
     {
         $item = $this->createOpenItem();
 
         $this->expectException(DomainException::class);
-        $item->close();
+        $item->applySettlement($this->settlementId(1), $this->date('2026-01-15'), $this->money('100.00000001'), $this->journalEntryId(1));
     }
 
-    public function test_closed_item_rejects_further_positive_settlement(): void
+    public function test_backdated_settlement_that_invalidates_later_history_is_rejected(): void
     {
         $item = $this->createOpenItem();
-        $item->settle($this->money('100'));
-        $item->close();
+        $item->applySettlement($this->settlementId(1), $this->date('2026-02-01'), $this->money('60'), $this->journalEntryId(1));
 
-        $this->expectException(DomainException::class);
-        $item->settle($this->money('1'));
+        try {
+            $item->applySettlement($this->settlementId(2), $this->date('2026-01-15'), $this->money('50'), $this->journalEntryId(2));
+            self::fail('History cannot contain a negative chronological balance.');
+        } catch (DomainException) {
+            self::assertCount(1, $item->settlements());
+            self::assertSame('40', $item->openAmount()->amount());
+        }
     }
 
-    public function test_constructor_rejects_invalid_amount_invariants(): void
+    public function test_unknown_settlement_cannot_be_reversed(): void
+    {
+        $item = $this->createOpenItem();
+
+        $this->expectException(DomainException::class);
+        $item->reverseSettlement($this->settlementId(2), $this->date('2026-02-01'), $this->settlementId(1), $this->journalEntryId(2));
+    }
+
+    public function test_applied_settlement_cannot_be_reversed_twice(): void
+    {
+        $item = $this->createOpenItem();
+        $appliedId = $this->settlementId(1);
+        $item->applySettlement($appliedId, $this->date('2026-01-15'), $this->money('40'), $this->journalEntryId(1));
+        $item->reverseSettlement($this->settlementId(2), $this->date('2026-02-01'), $appliedId, $this->journalEntryId(2));
+
+        $this->expectException(DomainException::class);
+        $item->reverseSettlement($this->settlementId(3), $this->date('2026-02-02'), $appliedId, $this->journalEntryId(3));
+    }
+
+    public function test_reversal_cannot_precede_the_applied_settlement_in_history(): void
+    {
+        $item = $this->createOpenItem();
+        $appliedId = $this->settlementId(1);
+        $item->applySettlement($appliedId, $this->date('2026-02-01'), $this->money('40'), $this->journalEntryId(1));
+
+        $this->expectException(DomainException::class);
+        $item->reverseSettlement($this->settlementId(2), $this->date('2026-01-15'), $appliedId, $this->journalEntryId(2));
+    }
+
+    public function test_original_amount_must_be_positive(): void
     {
         $this->expectException(DomainException::class);
-
-        $this->createOpenItem(originalAmount: '100', openAmount: '101');
+        $this->createOpenItem('0');
     }
 
-    private function createOpenItem(
-        string $originalAmount = '100',
-        ?string $openAmount = null,
-        OpenItemStatus $status = OpenItemStatus::Open,
-    ): OpenItem {
+    private function createOpenItem(string $originalAmount = '100', ?PostingDate $openedOn = null): OpenItem
+    {
         return new OpenItem(
             new OpenItemId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174000')),
             new RelationId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
             new JournalEntryId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
             $this->money($originalAmount),
-            $this->money($openAmount ?? $originalAmount),
-            $status,
+            $openedOn ?? $this->date('2026-01-01'),
         );
     }
 
     private function money(string $amount): Money
     {
         return new Money($amount, new Currency('EUR'));
+    }
+
+    private function date(string $date): PostingDate
+    {
+        return new PostingDate(new DateTimeImmutable($date));
+    }
+
+    private function settlementId(int $suffix): OpenItemSettlementId
+    {
+        return new OpenItemSettlementId(new Uuid(sprintf('00000000-0000-4000-8000-%012d', $suffix)));
+    }
+
+    private function journalEntryId(int $suffix): JournalEntryId
+    {
+        return new JournalEntryId(new Uuid(sprintf('10000000-0000-4000-8000-%012d', $suffix)));
     }
 }
