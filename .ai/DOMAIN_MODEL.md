@@ -476,15 +476,15 @@ De Trial Balance groepeert de geselecteerde JournalEntryLines per LedgerAccount 
 - `totalCredit`: de som van de creditbedragen binnen Administration en datum/periode;
 - `balance`: het berekende saldo op basis van totalDebit en totalCredit.
 
-Over het volledige rapport moeten de totale debit en totale credit gelijk zijn. De selectie bevat uitsluitend Posted JournalEntries. De richting en tekenconventie van `balance`, de inclusiviteit van periodegrenzen en eventuele openingsbalansbehandeling moeten in het uitvoercontract van R1-001 expliciet en eenduidig worden vastgelegd.
+Over het volledige rapport bepalen exacte Money-totalen of debit en credit gelijk zijn. De selectie bevat uitsluitend Posted JournalEntries en gebruikt inclusieve periodegrenzen. `balance` is exact `totalDebit - totalCredit`: een normaal debetsaldo is positief en een normaal creditsaldo negatief.
 
 **Balance Sheet**
 
-De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Asset, Liability of Equity en rapporteert op een expliciete balansdatum. Zij introduceert geen zelfstandig opgeslagen saldi.
+De Balance Sheet is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Asset, Liability of Equity en rapporteert op een expliciete balansdatum die gelijk is aan de Trial Balance-einddatum. Asset gebruikt het Trial Balance-saldo direct; Liability en Equity worden uitsluitend voor presentatie met `Money::absolute()` genormaliseerd. Zij introduceert geen zelfstandig opgeslagen saldi en vergelijkt exact `totalAssets = totalLiabilities + totalEquity`.
 
 **Profit & Loss**
 
-De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over een expliciete periode van/tot. Zij introduceert geen zelfstandig opgeslagen resultaat.
+De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend LedgerAccounts met classificatie Revenue of Expense en rapporteert over de overgenomen expliciete periode van/tot. Revenue wordt uitsluitend voor presentatie met `Money::absolute()` genormaliseerd; Expense behoudt het Trial Balance-saldo. `netResult` is exact `totalRevenue - totalExpenses`. Zij introduceert geen zelfstandig opgeslagen resultaat.
 
 #### Latere rapportages
 
@@ -497,7 +497,14 @@ De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 - Reporting maakt of post geen JournalEntries.
 - Reporting wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates.
 - Grootboeksaldi worden berekend uit geposte JournalEntries en niet als domeinwaarheid opgeslagen.
-- Reporting bevat in deze designstory geen Laravel-, database-, repository- of UI-logica.
+- Reporting bevat geen Laravel-, database-, repository-, infrastructuur- of UI-logica.
 - Read models en projecties mogen later in Application/Infrastructure worden geïntroduceerd voor selectie en performance, maar zijn herbouwbare afleidingen en geen nieuwe financiële waarheid.
 
-**Capabilitystatus:** Designed; implementation starts with R1-001.
+#### Bekende niet-blokkerende beperkingen en vervolg
+
+- De huidige calculators werken op volledig aangeleverde in-memory domeinobjecten; schaalbare selectie en projecties volgen in Application/Infrastructure.
+- Balance Sheet veronderstelt dat de Trial Balance de benodigde openings- en historische saldi bevat; boekjaaropening, carry-forward en resultaatbestemming vragen expliciet vervolgontwerp.
+- De presentatie-normalisatie signaleert afwijkende debet-/creditsaldi nog niet als aparte waarschuwing.
+- General Ledger Card, Open Items/Aging Report, VAT Overview, audit-drill-down en exportcontracten zijn aanbevolen vervolgstories.
+
+**Capabilitystatus:** Reporting Foundation completed (R1-004).

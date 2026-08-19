@@ -109,13 +109,13 @@ OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluit
 
 ## Capability 10 – Reporting
 
-**Status:** Designed; implementation starts with R1-001
+**Status:** Reporting Foundation completed
 
 ### Capability Reporting
 
 Reporting is een read-only capability ten opzichte van de financiële domeinwaarheid. Zij leidt rapportages af uit uitsluitend geposte `JournalEntry`-aggregates en hun `JournalEntryLine`-regels, aangevuld met `LedgerAccount`, `OpenItem` en fiscale gegevens waar het rapport dat vereist. Draft JournalEntries tellen nooit mee. Iedere rapportvraag bevat een expliciet `Administration`-filter en een expliciete datum- of periodeafbakening.
 
-De eerste rapportages zijn Trial Balance, Balance Sheet en Profit & Loss. De Trial Balance berekent per LedgerAccount `totalDebit`, `totalCredit` en `balance`; de totalen van debit en credit moeten over het volledige rapport gelijk zijn. De Balance Sheet gebruikt de Trial Balance voor uitsluitend Asset, Liability en Equity op een balansdatum. Profit & Loss gebruikt de Trial Balance voor uitsluitend Revenue en Expense over een periode van/tot.
+De eerste rapportages Trial Balance, Balance Sheet en Profit & Loss zijn frameworkonafhankelijk geïmplementeerd. Trial Balance gebruikt exact `balance = debit - credit`; Balance Sheet normaliseert uitsluitend Liability en Equity met `absolute()`, terwijl Profit & Loss uitsluitend Revenue normaliseert. Balance Sheet vergelijkt `totalAssets = totalLiabilities + totalEquity` en Profit & Loss berekent `netResult = totalRevenue - totalExpenses`. AdministrationId, periode en Currency blijven expliciet en immutable behouden.
 
 General Ledger Card, Open Items Report en VAT Overview volgen later. Reporting maakt geen JournalEntries en wijzigt geen Accounting-, Sales-, Purchasing-, Banking- of Fiscal-aggregates. Grootboeksaldi blijven berekende uitkomsten en worden niet als domeinwaarheid opgeslagen. Latere read models en projecties mogen in Application/Infrastructure worden toegevoegd, maar vormen geen nieuwe financiële waarheid.
 
@@ -163,7 +163,11 @@ De acceptance review in I1-005 bevestigt dat geen fundamentele architectuurwijzi
 
 ### Batch R1 – Reporting Foundation
 
-R1 definieert Reporting als read-only afleiding van de financiële domeinwaarheid. R1-000 legt de capabilitygrenzen en de functionele contracten voor Trial Balance, Balance Sheet en Profit & Loss vast. R1-001 kan deze contracten vervolgens frameworkonafhankelijk uitwerken, met expliciete Administration- en periodefilters en uitsluitend geposte JournalEntries als boekingsbron.
+**Status:** Completed
+
+R1 levert een frameworkonafhankelijke Trial Balance, Balance Sheet en Profit & Loss als read-only afleiding van financiële domeinwaarheid. Alleen Posted JournalEntries voeden de Trial Balance; Balance Sheet en Profit & Loss hergebruiken uitsluitend `TrialBalanceResult`. Money-rekenkunde blijft exact en capability-neutraal in Shared Finance. De review in R1-004 bevestigt de architectuurgrenzen, contextovername, tekenconventies en testdekking.
+
+Niet-blokkerend vervolg omvat Application/Infrastructure-projecties voor schaalbare selectie, expliciete boekjaaropening en resultaatbestemming, General Ledger Card, Open Items/Aging Report, VAT Overview en audit-drill-down. Deze uitbreidingen mogen geen nieuwe financiële waarheid introduceren.
 
 ## Releases
 
