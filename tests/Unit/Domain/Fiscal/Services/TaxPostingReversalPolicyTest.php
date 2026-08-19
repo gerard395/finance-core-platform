@@ -38,7 +38,8 @@ final class TaxPostingReversalPolicyTest extends TestCase
             sourceDocumentType: TaxSourceDocumentType::SalesCreditInvoice,
         );
 
-        (new TaxPostingReversalPolicy)->assertCanReverse($original, $reversal, [$original]);
+        (new TaxPostingReversalPolicy)->assertCanReverseOriginal($original, [$original]);
+        (new TaxPostingReversalPolicy)->assertValidReversal($original, $reversal, [$original]);
 
         self::assertSame(TaxPostingType::Original, $original->type());
         self::assertNull($original->reversedTaxPostingId());
@@ -48,24 +49,17 @@ final class TaxPostingReversalPolicyTest extends TestCase
     public function test_unknown_target_is_rejected(): void
     {
         $original = $this->posting();
-        $reversal = $this->reversalOf($original);
-
         $this->expectException(DomainException::class);
-        (new TaxPostingReversalPolicy)->assertCanReverse($original, $reversal, []);
+        (new TaxPostingReversalPolicy)->assertCanReverseOriginal($original, []);
     }
 
     public function test_reversal_cannot_be_the_target(): void
     {
         $original = $this->posting();
         $firstReversal = $this->reversalOf($original);
-        $secondReversal = $this->posting(
-            id: 3,
-            type: TaxPostingType::Reversal,
-            reversedTaxPostingId: $firstReversal->id(),
-        );
 
         $this->expectException(DomainException::class);
-        (new TaxPostingReversalPolicy)->assertCanReverse($firstReversal, $secondReversal, [$original, $firstReversal]);
+        (new TaxPostingReversalPolicy)->assertCanReverseOriginal($firstReversal, [$original, $firstReversal]);
     }
 
     public function test_candidate_must_be_a_reversal(): void
@@ -73,7 +67,7 @@ final class TaxPostingReversalPolicyTest extends TestCase
         $original = $this->posting();
 
         $this->expectException(DomainException::class);
-        (new TaxPostingReversalPolicy)->assertCanReverse($original, $this->posting(id: 2), [$original]);
+        (new TaxPostingReversalPolicy)->assertValidReversal($original, $this->posting(id: 2), [$original]);
     }
 
     #[DataProvider('mismatchedReversals')]
@@ -97,7 +91,7 @@ final class TaxPostingReversalPolicyTest extends TestCase
         };
 
         $this->expectException(DomainException::class);
-        (new TaxPostingReversalPolicy)->assertCanReverse(
+        (new TaxPostingReversalPolicy)->assertValidReversal(
             $original,
             $this->posting(...$arguments),
             [$original],
@@ -122,18 +116,35 @@ final class TaxPostingReversalPolicyTest extends TestCase
     {
         $original = $this->posting();
         $firstReversal = $this->reversalOf($original);
-        $secondReversal = $this->posting(
+
+        $this->expectException(DomainException::class);
+        (new TaxPostingReversalPolicy)->assertCanReverseOriginal(
+            $original,
+            [$original, $firstReversal],
+        );
+    }
+
+    public function test_preflight_requires_only_original_and_existing_history(): void
+    {
+        $original = $this->posting();
+
+        (new TaxPostingReversalPolicy)->assertCanReverseOriginal($original, [$original]);
+
+        self::assertSame(TaxPostingType::Original, $original->type());
+    }
+
+    public function test_reversal_must_reference_supplied_original(): void
+    {
+        $original = $this->posting();
+        $otherOriginal = $this->posting(id: 2);
+        $reversal = $this->posting(
             id: 3,
             type: TaxPostingType::Reversal,
-            reversedTaxPostingId: $original->id(),
+            reversedTaxPostingId: $otherOriginal->id(),
         );
 
         $this->expectException(DomainException::class);
-        (new TaxPostingReversalPolicy)->assertCanReverse(
-            $original,
-            $secondReversal,
-            [$original, $firstReversal],
-        );
+        (new TaxPostingReversalPolicy)->assertValidReversal($original, $reversal, [$original, $otherOriginal]);
     }
 
     private function reversalOf(TaxPosting $original): TaxPosting

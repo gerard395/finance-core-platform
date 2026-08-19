@@ -11,34 +11,23 @@ use DomainException;
 final readonly class TaxPostingReversalPolicy
 {
     /** @param list<TaxPosting> $history */
-    public function assertCanReverse(
+    public function assertCanReverseOriginal(
         TaxPosting $original,
-        TaxPosting $reversal,
         array $history,
     ): void {
         if ($original->type() !== TaxPostingType::Original) {
             throw new DomainException('A reversal can only target an original tax posting.');
         }
 
-        if ($reversal->type() !== TaxPostingType::Reversal) {
-            throw new DomainException('The candidate tax posting must be a reversal.');
-        }
-
-        $targetId = $reversal->reversedTaxPostingId();
-
-        if ($targetId === null || ! $targetId->equals($original->id())) {
-            throw new DomainException('The reversal must reference the supplied original tax posting.');
-        }
-
         $target = null;
 
         foreach ($history as $posting) {
-            if ($posting->id()->equals($targetId)) {
+            if ($posting->id()->equals($original->id())) {
                 $target = $posting;
             }
 
             if ($posting->type() === TaxPostingType::Reversal
-                && $posting->reversedTaxPostingId()?->equals($targetId)) {
+                && $posting->reversedTaxPostingId()?->equals($original->id())) {
                 throw new DomainException('An original tax posting can be reversed only once.');
             }
         }
@@ -53,6 +42,25 @@ final readonly class TaxPostingReversalPolicy
 
         if (! $target->id()->equals($original->id())) {
             throw new DomainException('The supplied original does not match the history target.');
+        }
+    }
+
+    /** @param list<TaxPosting> $history */
+    public function assertValidReversal(
+        TaxPosting $original,
+        TaxPosting $reversal,
+        array $history,
+    ): void {
+        $this->assertCanReverseOriginal($original, $history);
+
+        if ($reversal->type() !== TaxPostingType::Reversal) {
+            throw new DomainException('The candidate tax posting must be a reversal.');
+        }
+
+        $targetId = $reversal->reversedTaxPostingId();
+
+        if ($targetId === null || ! $targetId->equals($original->id())) {
+            throw new DomainException('The reversal must reference the supplied original tax posting.');
         }
 
         if ($reversal->direction() !== $original->direction()) {
