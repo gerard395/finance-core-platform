@@ -19,6 +19,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
@@ -84,6 +85,7 @@ final class PostSalesInvoiceWithTaxTest extends TestCase
         self::assertSame('100', $taxPosting->taxableBase()->amount());
         self::assertSame('21', $taxPosting->taxAmount()->amount());
         self::assertSame(TaxPostingDirection::Output, $taxPosting->direction());
+        self::assertSame(TaxPostingType::Original, $taxPosting->type());
         self::assertSame(TaxSourceDocumentType::SalesInvoice, $taxPosting->sourceDocumentType());
         self::assertSame($invoice->id()->toString(), $taxPosting->sourceDocumentId()->toString());
         self::assertSame($invoice->lines()[0]->id()->toString(), $taxPosting->sourceLineId()->toString());

@@ -10,6 +10,7 @@ use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
@@ -57,6 +58,7 @@ final class TaxPostingTest extends TestCase
             $journalEntryId,
             $baseLineId,
             $taxLineId,
+            TaxPostingType::Original,
         );
 
         self::assertTrue((new ReflectionClass(TaxPosting::class))->isReadOnly());
@@ -74,6 +76,7 @@ final class TaxPostingTest extends TestCase
         self::assertSame($journalEntryId, $posting->journalEntryId());
         self::assertSame($baseLineId, $posting->baseJournalEntryLineId());
         self::assertSame($taxLineId, $posting->taxJournalEntryLineId());
+        self::assertSame(TaxPostingType::Original, $posting->type());
         self::assertNull($posting->reversedTaxPostingId());
         self::assertFalse($posting->isReversal());
     }
@@ -180,16 +183,54 @@ final class TaxPostingTest extends TestCase
 
         $reversal = $this->posting(
             id: $this->taxPostingId(2),
+            type: TaxPostingType::Reversal,
             reversedTaxPostingId: $original->id(),
         );
 
         self::assertTrue($reversal->isReversal());
+        self::assertSame(TaxPostingType::Reversal, $reversal->type());
         self::assertSame($original->id(), $reversal->reversedTaxPostingId());
         self::assertNull($original->reversedTaxPostingId());
         self::assertFalse($original->isReversal());
         self::assertSame($originalRate, $original->taxRate());
         self::assertSame($originalBase, $original->taxableBase());
         self::assertSame($originalTax, $original->taxAmount());
+    }
+
+    public function test_original_with_reversal_reference_is_rejected(): void
+    {
+        $this->expectException(DomainException::class);
+
+        $this->posting(reversedTaxPostingId: $this->taxPostingId(2));
+    }
+
+    public function test_reversal_without_original_reference_is_rejected(): void
+    {
+        $this->expectException(DomainException::class);
+
+        $this->posting(type: TaxPostingType::Reversal);
+    }
+
+    public function test_zero_percent_reversal_has_positive_base_and_no_tax_line(): void
+    {
+        $reversal = $this->posting(
+            taxableBase: '100',
+            taxAmount: '0',
+            taxRate: new TaxRate('0'),
+            type: TaxPostingType::Reversal,
+            reversedTaxPostingId: $this->taxPostingId(2),
+            includeTaxLine: false,
+        );
+
+        self::assertTrue($reversal->taxableBase()->isPositive());
+        self::assertTrue($reversal->taxAmount()->isZero());
+        self::assertNull($reversal->taxJournalEntryLineId());
+    }
+
+    public function test_credit_document_types_are_available(): void
+    {
+        self::assertSame('sales_credit_invoice', TaxSourceDocumentType::SalesCreditInvoice->value);
+        self::assertSame('purchase_credit_invoice', TaxSourceDocumentType::PurchaseCreditInvoice->value);
     }
 
     public function test_money_values_remain_exact_decimal_strings_without_floats(): void
@@ -210,6 +251,7 @@ final class TaxPostingTest extends TestCase
         string $taxAmount = '21',
         ?TaxRate $taxRate = null,
         ?Currency $taxAmountCurrency = null,
+        TaxPostingType $type = TaxPostingType::Original,
         ?TaxPostingId $reversedTaxPostingId = null,
         bool $includeTaxLine = true,
     ): TaxPosting {
@@ -230,6 +272,7 @@ final class TaxPostingTest extends TestCase
             $this->journalEntryId(),
             $this->journalEntryLineId(1),
             $includeTaxLine ? $this->journalEntryLineId(2) : null,
+            $type,
             $reversedTaxPostingId,
         );
     }

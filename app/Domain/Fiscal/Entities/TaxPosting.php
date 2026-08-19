@@ -9,6 +9,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
@@ -35,6 +36,7 @@ final readonly class TaxPosting
         private JournalEntryId $journalEntryId,
         private JournalEntryLineId $baseJournalEntryLineId,
         private ?JournalEntryLineId $taxJournalEntryLineId,
+        private TaxPostingType $type,
         private ?TaxPostingId $reversedTaxPostingId = null,
     ) {
         if (! $this->taxableBase->currency()->equals($this->taxAmount->currency())) {
@@ -55,6 +57,14 @@ final readonly class TaxPosting
 
         if ($this->taxAmount->isZero() && $this->taxJournalEntryLineId !== null) {
             throw new DomainException('A zero tax amount cannot reference a tax journal entry line.');
+        }
+
+        if ($this->type === TaxPostingType::Original && $this->reversedTaxPostingId !== null) {
+            throw new DomainException('An original tax posting cannot reference a reversed tax posting.');
+        }
+
+        if ($this->type === TaxPostingType::Reversal && $this->reversedTaxPostingId === null) {
+            throw new DomainException('A reversal tax posting must reference the original tax posting.');
         }
     }
 
@@ -128,6 +138,11 @@ final readonly class TaxPosting
         return $this->taxJournalEntryLineId;
     }
 
+    public function type(): TaxPostingType
+    {
+        return $this->type;
+    }
+
     public function reversedTaxPostingId(): ?TaxPostingId
     {
         return $this->reversedTaxPostingId;
@@ -135,6 +150,6 @@ final readonly class TaxPosting
 
     public function isReversal(): bool
     {
-        return $this->reversedTaxPostingId !== null;
+        return $this->type === TaxPostingType::Reversal;
     }
 }

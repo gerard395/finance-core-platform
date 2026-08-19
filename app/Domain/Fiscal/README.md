@@ -10,7 +10,7 @@ TaxCode beheert een immutable identiteit en code, een wijzigbare naam, precies Ã
 
 ## TaxPosting
 
-TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. De base-regel is altijd verplicht; de tax-regel bestaat uitsluitend bij een positief taxAmount. Alle context is immutable. Een optionele `reversedTaxPostingId` legt een correctierelatie vast zonder het oorspronkelijke feit te muteren.
+TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, Original/Reversal-type, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. De base-regel is altijd verplicht; de tax-regel bestaat uitsluitend bij een positief taxAmount. Alle context is immutable. Een Reversal verwijst via `reversedTaxPostingId` naar het oorspronkelijke feit zonder dat feit te muteren.
 
 ## Invarianten
 
@@ -23,7 +23,10 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - TaxPosting bevat altijd een baseJournalEntryLineId.
 - Een positief taxAmount vereist taxJournalEntryLineId; bij canonieke nul moet taxJournalEntryLineId null zijn.
 - TaxPosting voert geen TaxCalculation of boekingslogica uit.
-- Een reversal is een nieuw immutable feit; de oorspronkelijke TaxPosting blijft ongewijzigd.
+- Original vereist een null reversedTaxPostingId; Reversal vereist een target-ID.
+- Reversalbedragen blijven niet-negatief en Input/Output-direction wordt niet omgekeerd.
+- `TaxPostingReversalPolicy` valideert tegen een expliciet aangeleverde consistente historie dat target en snapshot overeenkomen en dat een Original maximaal eenmaal wordt gereversed.
+- De historyguard bevat geen persistence of globale state. Concurrency-safe afdwinging volgt later via een persistenceconstraint en transactie.
 
 ## Grenzen
 

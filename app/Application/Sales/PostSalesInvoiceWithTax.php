@@ -14,6 +14,7 @@ use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\ValueObjects\TaxCalculationResult;
@@ -122,6 +123,7 @@ final readonly class PostSalesInvoiceWithTax
                 $journalEntry->id(),
                 $input->revenueLineId(),
                 $input->taxLineId(),
+                TaxPostingType::Original,
                 null,
             );
         }
