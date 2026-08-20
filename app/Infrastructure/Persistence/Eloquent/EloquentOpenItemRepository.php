@@ -11,6 +11,7 @@ use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -66,6 +67,7 @@ final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenIt
                 'administration_id' => $openItem->administrationId()->toString(),
                 'relation_id' => $openItem->relationId()->toString(),
                 'journal_entry_id' => $openItem->journalEntryId()->toString(),
+                'open_item_type' => $openItem->type()->value,
                 'original_amount' => $openItem->originalAmount()->amount(),
                 'currency' => $openItem->originalAmount()->currency()->code(),
                 'opened_on' => $openItem->openedOn()->value()->format('Y-m-d'),
@@ -144,6 +146,7 @@ final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenIt
             new AdministrationId(new Uuid($record->getAttribute('administration_id'))),
             new RelationId(new Uuid($record->getAttribute('relation_id'))),
             new JournalEntryId(new Uuid($record->getAttribute('journal_entry_id'))),
+            OpenItemType::from($record->getAttribute('open_item_type')),
             new Money((string) $record->getAttribute('original_amount'), new Currency($record->getAttribute('currency'))),
             new PostingDate(new DateTimeImmutable($record->getAttribute('opened_on')->format('Y-m-d'))),
             $settlements,

@@ -6,6 +6,7 @@ namespace App\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -25,6 +26,7 @@ final class OpenItem
         private readonly AdministrationId $administrationId,
         private readonly RelationId $relationId,
         private readonly JournalEntryId $journalEntryId,
+        private readonly OpenItemType $type,
         private readonly Money $originalAmount,
         private readonly PostingDate $openedOn,
     ) {
@@ -39,11 +41,12 @@ final class OpenItem
         AdministrationId $administrationId,
         RelationId $relationId,
         JournalEntryId $journalEntryId,
+        OpenItemType $type,
         Money $originalAmount,
         PostingDate $openedOn,
         array $settlements,
     ): self {
-        $item = new self($id, $administrationId, $relationId, $journalEntryId, $originalAmount, $openedOn);
+        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn);
         $indexed = [];
         $reversed = [];
 
@@ -108,6 +111,11 @@ final class OpenItem
     public function journalEntryId(): JournalEntryId
     {
         return $this->journalEntryId;
+    }
+
+    public function type(): OpenItemType
+    {
+        return $this->type;
     }
 
     public function originalAmount(): Money

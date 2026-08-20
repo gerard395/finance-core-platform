@@ -12,6 +12,7 @@ use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -31,6 +32,7 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class EloquentOpenItemReadPersistenceTest extends TestCase
@@ -69,6 +71,8 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         self::assertTrue($item->administrationId()->equals($read[0]->administrationId()));
         self::assertTrue($item->relationId()->equals($read[0]->relationId()));
         self::assertTrue($item->journalEntryId()->equals($read[0]->journalEntryId()));
+        self::assertSame(OpenItemType::Receivable, $read[0]->type());
+        self::assertSame('receivable', OpenItemRecord::query()->firstOrFail()->getAttribute('open_item_type'));
         self::assertSame('1000.12345678', $read[0]->originalAmount()->amount());
         self::assertSame('EUR', $read[0]->originalAmount()->currency()->code());
         self::assertSame('2026-01-01', $read[0]->openedOn()->value()->format('Y-m-d'));
@@ -79,6 +83,52 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         self::assertFalse(
             in_array('status', OpenItemRecord::query()->firstOrFail()->getConnection()->getSchemaBuilder()->getColumnListing('open_items'), true),
         );
+    }
+
+    public function test_payable_type_roundtrips_with_settlement_history_and_as_of_read(): void
+    {
+        $item = $this->openItem(self::ADMINISTRATION_A, '100', type: OpenItemType::Payable);
+        $this->repository->append($item);
+        $settlement = $this->apply($item, 1, '2026-01-15', '40', 2);
+        $this->repository->appendSettlement($item, $settlement);
+
+        $read = $this->read(self::ADMINISTRATION_A, '2026-01-31')[0];
+
+        self::assertSame(OpenItemType::Payable, $read->type());
+        self::assertSame('payable', OpenItemRecord::query()->firstOrFail()->getAttribute('open_item_type'));
+        self::assertCount(1, $read->settlements());
+        self::assertSame('60', $read->openAmountAt($this->date('2026-01-31'))->amount());
+    }
+
+    public function test_database_requires_open_item_type_without_default_and_rejects_invalid_values(): void
+    {
+        $column = DB::selectOne(<<<'SQL'
+            SELECT COLUMN_DEFAULT, IS_NULLABLE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'open_items'
+              AND COLUMN_NAME = 'open_item_type'
+            SQL);
+
+        self::assertNotNull($column);
+        self::assertSame('NO', $column->IS_NULLABLE);
+        self::assertNull($column->COLUMN_DEFAULT);
+
+        try {
+            OpenItemRecord::query()->create([
+                'id' => '32000000-0000-4000-8000-000000000001',
+                'administration_id' => self::ADMINISTRATION_A,
+                'relation_id' => '42000000-0000-4000-8000-000000000001',
+                'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
+                'open_item_type' => 'other',
+                'original_amount' => '100',
+                'currency' => 'EUR',
+                'opened_on' => '2026-01-01',
+            ]);
+            self::fail('OpenItem type must be restricted to the Domain values.');
+        } catch (QueryException) {
+            self::assertSame(0, OpenItemRecord::query()->count());
+        }
     }
 
     public function test_full_future_history_is_hydrated_and_domain_reproduces_as_of_amounts(): void
@@ -144,6 +194,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             $this->administrationId(self::ADMINISTRATION_A),
             new RelationId(new Uuid('40000000-0000-4000-8000-000000000001')),
             $this->journalEntryId(self::ADMINISTRATION_B, 1),
+            OpenItemType::Receivable,
             new Money('100', new Currency('EUR')),
             $this->date('2026-01-01'),
         );
@@ -272,12 +323,14 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         string $amount,
         string $openedOn = '2026-01-01',
         int $sequence = 1,
+        OpenItemType $type = OpenItemType::Receivable,
     ): OpenItem {
         return new OpenItem(
             new OpenItemId(new Uuid(sprintf('30000000-0000-4000-8000-%012d', $sequence))),
             $this->administrationId($administration),
             new RelationId(new Uuid(sprintf('40000000-0000-4000-8000-%012d', $sequence))),
             $this->journalEntryId($administration, 1),
+            $type,
             new Money($amount, new Currency('EUR')),
             $this->date($openedOn),
         );

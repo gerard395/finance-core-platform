@@ -8,6 +8,7 @@ use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -32,6 +33,7 @@ final class OpenItemTest extends TestCase
         self::assertSame('123e4567-e89b-42d3-a456-426614174000', $item->administrationId()->toString());
         self::assertSame('936da01f-9abd-4d9d-80c7-02af85c822a8', $item->relationId()->toString());
         self::assertSame('6ba7b810-9dad-41d1-80b4-00c04fd430c8', $item->journalEntryId()->toString());
+        self::assertSame(OpenItemType::Receivable, $item->type());
         self::assertSame($openedOn, $item->openedOn());
         self::assertSame('1000', $item->originalAmount()->amount());
         self::assertSame('1000', $item->openAmount()->amount());
@@ -68,6 +70,20 @@ final class OpenItemTest extends TestCase
         self::assertSame(OpenItemStatus::Closed, $item->statusAt($this->date('2026-02-28')));
         self::assertTrue($item->openAmount()->isZero());
         self::assertTrue($item->isClosed());
+    }
+
+    public function test_payable_type_remains_immutable_through_settlement_lifecycle(): void
+    {
+        $item = $this->createOpenItem(type: OpenItemType::Payable);
+        $appliedId = $this->settlementId(1);
+
+        $item->applySettlement($appliedId, $this->date('2026-01-15'), $this->money('100'), $this->journalEntryId(1));
+        self::assertSame(OpenItemType::Payable, $item->type());
+        self::assertSame(OpenItemStatus::Closed, $item->status());
+
+        $item->reverseSettlement($this->settlementId(2), $this->date('2026-01-16'), $appliedId, $this->journalEntryId(2));
+        self::assertSame(OpenItemType::Payable, $item->type());
+        self::assertSame(OpenItemStatus::Open, $item->status());
     }
 
     public function test_full_reversal_reopens_and_does_not_mutate_applied_settlement(): void
@@ -238,6 +254,7 @@ final class OpenItemTest extends TestCase
             $original->administrationId(),
             $original->relationId(),
             $original->journalEntryId(),
+            OpenItemType::Payable,
             $original->originalAmount(),
             $original->openedOn(),
             [],
@@ -247,6 +264,7 @@ final class OpenItemTest extends TestCase
         self::assertSame($original->administrationId(), $item->administrationId());
         self::assertSame($original->relationId(), $item->relationId());
         self::assertSame($original->journalEntryId(), $item->journalEntryId());
+        self::assertSame(OpenItemType::Payable, $item->type());
         self::assertSame($original->originalAmount(), $item->originalAmount());
         self::assertSame($original->openedOn(), $item->openedOn());
         self::assertSame('EUR', $item->originalAmount()->currency()->code());
@@ -354,13 +372,17 @@ final class OpenItemTest extends TestCase
         ]);
     }
 
-    private function createOpenItem(string $originalAmount = '100', ?PostingDate $openedOn = null): OpenItem
-    {
+    private function createOpenItem(
+        string $originalAmount = '100',
+        ?PostingDate $openedOn = null,
+        OpenItemType $type = OpenItemType::Receivable,
+    ): OpenItem {
         return new OpenItem(
             new OpenItemId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
             new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174000')),
             new RelationId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
             new JournalEntryId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+            $type,
             $this->money($originalAmount),
             $openedOn ?? $this->date('2026-01-01'),
         );
@@ -396,6 +418,7 @@ final class OpenItemTest extends TestCase
             $item->administrationId(),
             $item->relationId(),
             $item->journalEntryId(),
+            $item->type(),
             $item->originalAmount(),
             $item->openedOn(),
             $settlements,
