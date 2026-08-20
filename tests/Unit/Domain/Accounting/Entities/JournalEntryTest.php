@@ -135,6 +135,93 @@ final class JournalEntryTest extends TestCase
         self::assertFalse(method_exists(JournalEntry::class, 'isBalanced'));
     }
 
+    public function test_it_reconstitutes_a_draft_with_its_complete_persisted_state(): void
+    {
+        $entry = $this->reconstitute(JournalEntryStatus::Draft);
+
+        self::assertSame('550e8400-e29b-41d4-a716-446655440000', $entry->id()->toString());
+        self::assertSame('123e4567-e89b-42d3-a456-426614174001', $entry->administrationId()->toString());
+        self::assertSame('123e4567-e89b-42d3-a456-426614174000', $entry->journalId()->toString());
+        self::assertSame('2026-07-16', $entry->postingDate()->value()->format('Y-m-d'));
+        self::assertSame('Opening entry', $entry->reference()->toString());
+        self::assertSame(JournalEntryStatus::Draft, $entry->status());
+        self::assertCount(2, $entry->lines());
+        self::assertSame('100.12345678', $entry->lines()[0]->debit()?->amount());
+        self::assertSame('EUR', $entry->lines()[0]->debit()?->currency()->code());
+
+        $entry->addLine($this->createLine('6ba7b812-9dad-41d1-80b4-00c04fd430c8'));
+        self::assertCount(3, $entry->lines());
+    }
+
+    public function test_it_reconstitutes_a_posted_entry_without_lifecycle_transition_and_keeps_it_immutable(): void
+    {
+        $entry = $this->reconstitute(JournalEntryStatus::Posted);
+
+        self::assertSame(JournalEntryStatus::Posted, $entry->status());
+        self::assertTrue($entry->isPosted());
+        self::assertSame([
+            '123e4567-e89b-42d3-a456-426614174000',
+            '6ba7b811-9dad-41d1-80b4-00c04fd430c8',
+        ], array_map(static fn (JournalEntryLine $line): string => $line->id()->toString(), $entry->lines()));
+        self::assertSame('100.12345678', $entry->lines()[1]->credit()?->amount());
+
+        $this->expectException(DomainException::class);
+        $entry->addLine($this->createLine('6ba7b812-9dad-41d1-80b4-00c04fd430c8'));
+    }
+
+    public function test_reconstitution_rejects_duplicate_line_identity(): void
+    {
+        $line = $this->createLine();
+
+        $this->expectException(DomainException::class);
+        JournalEntry::reconstitute(
+            $this->createEntry()->id(),
+            $this->createEntry()->administrationId(),
+            $this->createEntry()->journalId(),
+            $this->createEntry()->postingDate(),
+            $this->createEntry()->reference(),
+            JournalEntryStatus::Draft,
+            [$line, $line],
+        );
+    }
+
+    public function test_reconstitution_rejects_mixed_currencies(): void
+    {
+        $this->expectException(DomainException::class);
+        JournalEntry::reconstitute(
+            $this->createEntry()->id(),
+            $this->createEntry()->administrationId(),
+            $this->createEntry()->journalId(),
+            $this->createEntry()->postingDate(),
+            $this->createEntry()->reference(),
+            JournalEntryStatus::Draft,
+            [
+                $this->createLine(),
+                new JournalEntryLine(
+                    new JournalEntryLineId(new Uuid('6ba7b811-9dad-41d1-80b4-00c04fd430c8')),
+                    new LedgerAccountId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+                    null,
+                    new Money('100', new Currency('USD')),
+                    'USD line',
+                ),
+            ],
+        );
+    }
+
+    public function test_reconstitution_rejects_an_unbalanced_posted_entry(): void
+    {
+        $this->expectException(DomainException::class);
+        JournalEntry::reconstitute(
+            $this->createEntry()->id(),
+            $this->createEntry()->administrationId(),
+            $this->createEntry()->journalId(),
+            $this->createEntry()->postingDate(),
+            $this->createEntry()->reference(),
+            JournalEntryStatus::Posted,
+            [$this->createLine()],
+        );
+    }
+
     private function createEntry(): JournalEntry
     {
         return new JournalEntry(
@@ -147,14 +234,45 @@ final class JournalEntryTest extends TestCase
         );
     }
 
-    private function createLine(): JournalEntryLine
+    private function createLine(string $id = '936da01f-9abd-4d9d-80c7-02af85c822a8'): JournalEntryLine
     {
         return new JournalEntryLine(
-            new JournalEntryLineId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
+            new JournalEntryLineId(new Uuid($id)),
             new LedgerAccountId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
             new Money('100', new Currency('EUR')),
             null,
             'Opening balance',
+        );
+    }
+
+    private function reconstitute(JournalEntryStatus $status): JournalEntry
+    {
+        $entry = $this->createEntry();
+        $currency = new Currency('EUR');
+
+        return JournalEntry::reconstitute(
+            $entry->id(),
+            $entry->administrationId(),
+            $entry->journalId(),
+            $entry->postingDate(),
+            $entry->reference(),
+            $status,
+            [
+                new JournalEntryLine(
+                    new JournalEntryLineId(new Uuid('123e4567-e89b-42d3-a456-426614174000')),
+                    new LedgerAccountId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+                    new Money('100.12345678', $currency),
+                    null,
+                    'Debit',
+                ),
+                new JournalEntryLine(
+                    new JournalEntryLineId(new Uuid('6ba7b811-9dad-41d1-80b4-00c04fd430c8')),
+                    new LedgerAccountId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+                    null,
+                    new Money('100.12345678', $currency),
+                    'Credit',
+                ),
+            ],
         );
     }
 

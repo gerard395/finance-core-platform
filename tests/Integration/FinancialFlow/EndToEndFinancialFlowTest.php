@@ -8,6 +8,7 @@ use App\Application\Banking\CreateBankTransactionPostingRequest;
 use App\Application\Sales\CreateSalesInvoicePostingRequest;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\Requests\PostingRequest;
 use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Accounting\Services\PostingValidation;
@@ -94,12 +95,14 @@ final class EndToEndFinancialFlowTest extends TestCase
             $administrationId,
             $relationId,
             $invoiceEntry->id(),
+            OpenItemType::Receivable,
             $invoiceAmount,
             $invoiceEntry->postingDate(),
         );
         self::assertSame($administrationId, $openItem->administrationId());
         self::assertSame($relationId, $openItem->relationId());
         self::assertSame($invoiceEntry->id(), $openItem->journalEntryId());
+        self::assertSame(OpenItemType::Receivable, $openItem->type());
 
         $transaction = $this->bankTransaction($administrationId, $currency, '125');
         $payment = new Payment($this->paymentId(), $openItemId, new Money('125', $currency));
@@ -237,6 +240,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $this->administrationId(),
             $this->relationId(),
             new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000040')),
+            OpenItemType::Receivable,
             $money,
             new PostingDate(new DateTimeImmutable('2026-07-15')),
         );

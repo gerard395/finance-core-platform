@@ -10,7 +10,11 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 
 `Journal` beheert de identiteit, code, naam, het type en de actieve of inactieve status van een dagboek. De Aggregate Root ondersteunt hernoemen, activeren en deactiveren, maar bevat zelf geen journaalposten.
 
-`OpenItem` bewaart immutable openingscontext en beheert immutable `OpenItemSettlement`-children. Applied settlements en Reversals worden uitsluitend toegevoegd. Actueel en historisch open bedrag en status worden steeds afgeleid uit `originalAmount` en deze historie; zij worden niet als zelfstandige financiële waarheid gemuteerd.
+`OpenItem` bewaart immutable openingscontext en beheert immutable `OpenItemSettlement`-children. `RelationId` identificeert de tegenpartij; de onafhankelijke verplichte `OpenItemType` legt als Accounting-bronwaarheid vast of de open post Receivable (door de Administration te ontvangen) of Payable (door de Administration te betalen) is. Applied settlements en Reversals worden uitsluitend toegevoegd. Actueel en historisch open bedrag en status worden steeds afgeleid uit `originalAmount` en deze historie; zij worden niet als zelfstandige financiële waarheid gemuteerd.
+
+Nieuwe `JournalEntry`-businessstate ontstaat via de bestaande constructor en lifecycle; `PostingEngine` valideert de posting, voegt regels toe aan Draft en post daarna. `JournalEntry::reconstitute()` is uitsluitend een hydration-grens voor reeds bestaande feitelijke state. Zij ontvangt alle typed state en regels tegelijk, simuleert geen lifecyclemethoden en behoudt de onveranderlijkheid van een herstelde Posted entry. Posted snapshots worden met de bestaande `PostingValidation` op minimumregels, Currency, unieke regelidentiteiten en balans gecontroleerd.
+
+Nieuwe `OpenItem`-businessstate ontstaat via de constructor; nieuwe settlementfeiten uitsluitend via `applySettlement()` en `reverseSettlement()`. `OpenItem::reconstitute()` herstelt daarentegen bestaande typed basisstate en volledige settlementhistorie in één side-effectvrije stap. Zij sorteert en valideert de auditfeiten zonder commands te replayen; open bedrag en status blijven uitsluitend afleidingen van originalAmount en historie.
 
 `openAmountAt()` en `statusAt()` zijn de enige bron voor historische openstand en status. Reporting leest deze API's en reconstrueert geen settlementlogica.
 
@@ -27,6 +31,7 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 - De Journal-code bevat 2 tot en met 16 ASCII-letters of cijfers en wordt genormaliseerd naar uppercase.
 - Journal activeren en deactiveren zijn idempotent.
 - OpenItem ontstaat na een geposte bron-JournalEntry en gebruikt diens PostingDate als `openedOn`.
+- OpenItemType is verplicht en immutable; het wordt nooit afgeleid uit RelationId, bedrag, grootboekrekening of JournalEntry.
 - Settlementbedragen zijn strikt positief, gebruiken dezelfde Currency als het OpenItem en hebben een geposte JournalEntry als bron.
 - Een Applied settlement mag de chronologische openstand niet negatief maken.
 - Een Reversal draait één bestaand Applied settlement eenmaal en volledig terug; het oorspronkelijke feit blijft ongewijzigd.

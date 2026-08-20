@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnsureActiveAdministration;
+use App\Http\Middleware\EnsureActiveDomainUser;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,7 +14,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        $middleware->alias([
+            'domain.active' => EnsureActiveDomainUser::class,
+            'administration.active' => EnsureActiveAdministration::class,
+        ]);
+        $middleware->redirectUsersTo(fn (): string => route('app'));
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

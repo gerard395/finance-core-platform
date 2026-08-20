@@ -6,6 +6,7 @@ namespace Tests\Unit\Domain\Reporting;
 
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -264,6 +265,7 @@ final class OpenItemsReportTest extends TestCase
             $this->administrationId($administrationId),
             $this->relationId($relationId),
             $this->journalEntryId(),
+            OpenItemType::Receivable,
             new Money($amount, $currency ?? new Currency('EUR')),
             $this->date($openedOn),
         );

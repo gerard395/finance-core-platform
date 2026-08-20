@@ -2,6 +2,8 @@
 
 namespace Database\Factories;
 
+use App\Domain\Identity\Enums\UserStatus;
+use App\Infrastructure\Persistence\Eloquent\Models\DomainUserRecord;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
@@ -27,6 +29,18 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
+            'domain_user_id' => function (array $attributes): string {
+                $id = (string) Str::uuid();
+
+                DomainUserRecord::query()->create([
+                    'id' => $id,
+                    'display_name' => $attributes['name'],
+                    'email' => $attributes['email'],
+                    'status' => UserStatus::Active->value,
+                ]);
+
+                return $id;
+            },
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
