@@ -67,7 +67,7 @@
                 @foreach ($relations->items() as $relation)
                     <tr>
                         <td class="whitespace-nowrap px-4 py-3 font-medium">{{ $relation->code()->toString() }}</td>
-                        <td class="px-4 py-3">{{ $relation->displayName()->toString() }}</td>
+                        <td class="px-4 py-3"><a href="{{ route('relations.show', $relation->id()->toString()) }}" aria-label="Bekijk {{ $relation->displayName()->toString() }}" class="font-medium text-blue-700 underline-offset-4 hover:underline focus:ring-2 focus:ring-blue-700">{{ $relation->displayName()->toString() }}</a></td>
                         <td class="px-4 py-3"><div class="flex flex-wrap gap-2">@if ($relation->isCustomer())<span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-900">Klant</span>@endif @if ($relation->isSupplier())<span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Leverancier</span>@endif @if (! $relation->isCustomer() && ! $relation->isSupplier())<span aria-label="Geen classificatie">—</span>@endif</div></td>
                         <td class="px-4 py-3"><span @class(['rounded-full px-2 py-1 text-xs font-medium', 'bg-emerald-100 text-emerald-900' => $relation->isActive(), 'bg-slate-200 text-slate-800' => ! $relation->isActive()])>{{ $relation->isActive() ? 'Actief' : 'Inactief' }}</span></td>
                     </tr>
@@ -82,6 +82,7 @@
                     <h2 class="font-semibold">{{ $relation->displayName()->toString() }}</h2>
                     <p class="mt-1 text-sm text-slate-600">Code: {{ $relation->code()->toString() }}</p>
                     <div class="mt-3 flex flex-wrap gap-2">@if ($relation->isCustomer())<span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-900">Klant</span>@endif @if ($relation->isSupplier())<span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Leverancier</span>@endif @if (! $relation->isCustomer() && ! $relation->isSupplier())<span class="text-sm text-slate-500">Geen classificatie</span>@endif <span @class(['rounded-full px-2 py-1 text-xs font-medium', 'bg-emerald-100 text-emerald-900' => $relation->isActive(), 'bg-slate-200 text-slate-800' => ! $relation->isActive()])>{{ $relation->isActive() ? 'Actief' : 'Inactief' }}</span></div>
+                    <a href="{{ route('relations.show', $relation->id()->toString()) }}" aria-label="Bekijk {{ $relation->displayName()->toString() }}" class="mt-4 inline-flex min-h-11 items-center rounded-lg font-semibold text-blue-700 underline-offset-4 hover:underline focus:ring-2 focus:ring-blue-700">Bekijken</a>
                 </article>
             @endforeach
         </div>

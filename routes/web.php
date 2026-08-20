@@ -5,6 +5,7 @@ use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Relations\RelationIndexController;
+use App\Http\Controllers\Relations\RelationShowController;
 use App\Http\Middleware\EnsureRelationsPermission;
 use Illuminate\Support\Facades\Route;
 
@@ -37,3 +38,12 @@ Route::get('/relations', RelationIndexController::class)
         EnsureRelationsPermission::using(RelationsPermission::View),
     ])
     ->name('relations.index');
+
+Route::get('/relations/{relation}', RelationShowController::class)
+    ->middleware([
+        'auth',
+        'domain.active',
+        'administration.active',
+        EnsureRelationsPermission::using(RelationsPermission::View),
+    ])
+    ->name('relations.show');

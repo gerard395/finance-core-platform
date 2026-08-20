@@ -199,6 +199,95 @@ final class RelationsIndexTest extends TestCase
         $this->get('/relations?q=anything')->assertSeeText('Geen relaties gevonden voor deze zoekopdracht.');
     }
 
+    public function test_detail_access_requires_authentication_active_administration_and_view(): void
+    {
+        $relationId = $this->uuid('6', 1)->toString();
+        $this->get('/relations/'.$relationId)->assertRedirect('/login');
+        $this->provisionScenario();
+        $this->login();
+        $this->get('/relations/'.$relationId)->assertRedirect('/administrations/select');
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_A]);
+        $this->get('/relations/'.$relationId)->assertForbidden();
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_A, 1);
+        $this->relation(self::ADMIN_A, 1, 'D-001', 'Detail Relation', true);
+        $this->get('/relations/'.$relationId)->assertOk()->assertSeeText('Detail Relation');
+    }
+
+    public function test_non_view_permissions_do_not_authorize_detail(): void
+    {
+        $this->provisionScenario();
+        $this->loginWithAdministration(self::ADMIN_A);
+        foreach ([RelationsPermission::Create, RelationsPermission::Update, RelationsPermission::ClassifyCustomer, RelationsPermission::ClassifySupplier] as $sequence => $permission) {
+            $assignmentId = $this->assignPermissionOnly($permission, $sequence + 1);
+            $this->get('/relations/'.$this->uuid('6', 1)->toString())->assertForbidden();
+            $assignment = (new EloquentMembershipRoleRepository)->findById($assignmentId);
+            self::assertNotNull($assignment);
+            $assignment->deactivate();
+            (new EloquentMembershipRoleRepository)->save($assignment);
+        }
+    }
+
+    public function test_detail_returns_the_same_safe_not_found_for_unknown_cross_tenant_and_malformed_ids(): void
+    {
+        $this->authorizedScenario();
+        $otherTenant = $this->relation(self::ADMIN_B, 2, 'B-002', 'Secret Tenant Relation', true);
+        $unknown = $this->uuid('6', 99)->toString();
+
+        $unknownResponse = $this->get('/relations/'.$unknown)->assertNotFound()->assertDontSeeText('Invalid UUID');
+        $crossTenantResponse = $this->get('/relations/'.$otherTenant->toString())->assertNotFound()->assertDontSeeText('Secret Tenant Relation');
+        $malformedResponse = $this->get('/relations/not-a-uuid')->assertNotFound()->assertDontSeeText('Invalid UUID');
+        self::assertSame($unknownResponse->getContent(), $crossTenantResponse->getContent());
+        self::assertSame($unknownResponse->getContent(), $malformedResponse->getContent());
+    }
+
+    public function test_detail_renders_persisted_fields_status_and_current_classifications_only(): void
+    {
+        $this->authorizedScenario();
+        $customer = $this->relation(self::ADMIN_A, 1, 'C-001', '<Customer Detail>', true);
+        $supplier = $this->relation(self::ADMIN_A, 2, 'S-001', 'Supplier Detail', false);
+        $both = $this->relation(self::ADMIN_A, 3, 'B-001', 'Both Detail', true);
+        $neither = $this->relation(self::ADMIN_A, 4, 'N-001', 'Neither Detail', true);
+        $inactiveClassifications = $this->relation(self::ADMIN_A, 5, 'I-001', 'Inactive Classifications', true);
+        $this->customer(self::ADMIN_A, $customer, 1);
+        $this->supplier(self::ADMIN_A, $supplier, 2);
+        $this->customer(self::ADMIN_A, $both, 3);
+        $this->supplier(self::ADMIN_A, $both, 3);
+        $this->customer(self::ADMIN_A, $inactiveClassifications, 5, false);
+        $this->supplier(self::ADMIN_A, $inactiveClassifications, 5, false);
+
+        $this->get('/relations/'.$customer->toString())->assertOk()->assertSee('&lt;Customer Detail&gt;', false)->assertDontSee('<Customer Detail>', false)->assertSeeText('C-001')->assertSeeText('Actief')->assertSeeText('Klant');
+        $this->get('/relations/'.$supplier->toString())->assertOk()->assertSeeText('Supplier Detail')->assertSeeText('Inactief')->assertSeeText('Leverancier');
+        $this->get('/relations/'.$both->toString())->assertOk()->assertSeeText('Klant')->assertSeeText('Leverancier');
+        $this->get('/relations/'.$neither->toString())->assertOk()->assertSeeText('Geen classificatie');
+        $this->get('/relations/'.$inactiveClassifications->toString())->assertOk()->assertSeeText('Geen classificatie')->assertDontSee('>Klant<', false)->assertDontSee('>Leverancier<', false);
+    }
+
+    public function test_index_has_real_desktop_and_mobile_detail_links(): void
+    {
+        $this->authorizedScenario();
+        $relationId = $this->relation(self::ADMIN_A, 1, 'L-001', 'Linked Relation', true);
+        $url = route('relations.show', $relationId->toString());
+
+        $this->get('/relations')->assertOk()->assertSee('href="'.$url.'"', false, 2)
+            ->assertSee('aria-label="Bekijk Linked Relation"', false, 2)
+            ->assertDontSee('href="#"', false);
+    }
+
+    public function test_administration_switch_changes_detail_access(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_A, 3);
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_B, 4);
+        $relationA = $this->relation(self::ADMIN_A, 1, 'A-001', 'Tenant Alpha Detail', true);
+        $relationB = $this->relation(self::ADMIN_B, 2, 'B-001', 'Tenant Beta Detail', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->get('/relations/'.$relationA->toString())->assertOk();
+        $this->get('/relations/'.$relationB->toString())->assertNotFound();
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_B]);
+        $this->get('/relations/'.$relationA->toString())->assertNotFound();
+        $this->get('/relations/'.$relationB->toString())->assertOk()->assertSeeText('Tenant Beta Detail');
+    }
+
     private function authorizedScenario(): void
     {
         $this->provisionScenario();
@@ -246,14 +335,14 @@ final class RelationsIndexTest extends TestCase
         return $id;
     }
 
-    private function customer(string $administrationId, RelationId $relationId, int $sequence): void
+    private function customer(string $administrationId, RelationId $relationId, int $sequence, bool $active = true): void
     {
-        (new EloquentCustomerRepository)->save(new AdministrationId(new Uuid($administrationId)), new Customer(new CustomerId($this->uuid('4', $sequence)), $relationId, new CustomerNumber(sprintf('C-%03d', $sequence)), true));
+        (new EloquentCustomerRepository)->save(new AdministrationId(new Uuid($administrationId)), new Customer(new CustomerId($this->uuid('4', $sequence)), $relationId, new CustomerNumber(sprintf('C-%03d', $sequence)), $active));
     }
 
-    private function supplier(string $administrationId, RelationId $relationId, int $sequence): void
+    private function supplier(string $administrationId, RelationId $relationId, int $sequence, bool $active = true): void
     {
-        (new EloquentSupplierRepository)->save(new AdministrationId(new Uuid($administrationId)), new Supplier(new SupplierId($this->uuid('5', $sequence)), $relationId, new SupplierNumber(sprintf('S-%03d', $sequence)), true));
+        (new EloquentSupplierRepository)->save(new AdministrationId(new Uuid($administrationId)), new Supplier(new SupplierId($this->uuid('5', $sequence)), $relationId, new SupplierNumber(sprintf('S-%03d', $sequence)), $active));
     }
 
     private function loginWithAdministration(string $administrationId): void
