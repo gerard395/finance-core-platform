@@ -37,6 +37,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\SupplierRecord;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -149,6 +150,79 @@ final class EloquentRelationClassificationReadPersistenceTest extends TestCase
         self::assertFalse($otherTenant->isSupplier());
     }
 
+    public function test_customer_deactivation_and_reactivation_preserve_identity_and_change_current_classification(): void
+    {
+        $relation = $this->relation(1);
+        $customer = $this->customer(1, $relation->id());
+        $identity = $customer->id();
+        $this->relations->save($this->administration(self::ADMINISTRATION_A), $relation);
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        self::assertTrue($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isCustomer());
+
+        $customer->deactivate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        self::assertFalse($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isCustomer());
+        self::assertSame(1, CustomerRecord::query()->count());
+        self::assertDatabaseHas('customers', ['id' => $identity->toString(), 'active' => false]);
+
+        $reconstituted = $this->customers->findForAdministration($this->administration(self::ADMINISTRATION_A))[0];
+        self::assertTrue($identity->equals($reconstituted->id()));
+        $reconstituted->activate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $reconstituted);
+
+        self::assertTrue($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isCustomer());
+        self::assertSame(1, CustomerRecord::query()->count());
+        self::assertDatabaseHas('customers', ['id' => $identity->toString(), 'active' => true]);
+    }
+
+    public function test_supplier_deactivation_and_reactivation_preserve_identity_and_change_current_classification(): void
+    {
+        $relation = $this->relation(1);
+        $supplier = $this->supplier(1, $relation->id());
+        $identity = $supplier->id();
+        $this->relations->save($this->administration(self::ADMINISTRATION_A), $relation);
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
+        self::assertTrue($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isSupplier());
+
+        $supplier->deactivate();
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
+        self::assertFalse($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isSupplier());
+        self::assertSame(1, SupplierRecord::query()->count());
+        self::assertDatabaseHas('suppliers', ['id' => $identity->toString(), 'active' => false]);
+
+        $reconstituted = $this->suppliers->findForAdministration($this->administration(self::ADMINISTRATION_A))[0];
+        self::assertTrue($identity->equals($reconstituted->id()));
+        $reconstituted->activate();
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $reconstituted);
+
+        self::assertTrue($this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id())->isSupplier());
+        self::assertSame(1, SupplierRecord::query()->count());
+        self::assertDatabaseHas('suppliers', ['id' => $identity->toString(), 'active' => true]);
+    }
+
+    public function test_reader_tracks_all_active_customer_supplier_overlap_states(): void
+    {
+        $relation = $this->relation(1);
+        $customer = $this->customer(1, $relation->id());
+        $supplier = $this->supplier(1, $relation->id());
+        $this->relations->save($this->administration(self::ADMINISTRATION_A), $relation);
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
+
+        $this->assertClassification($relation->id(), true, true);
+        $customer->deactivate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->assertClassification($relation->id(), false, true);
+        $customer->activate();
+        $supplier->deactivate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
+        $this->assertClassification($relation->id(), true, false);
+        $customer->deactivate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->assertClassification($relation->id(), false, false);
+    }
+
     public function test_database_rejects_cross_tenant_customer_and_supplier_links(): void
     {
         $relation = $this->relation(1);
@@ -165,6 +239,33 @@ final class EloquentRelationClassificationReadPersistenceTest extends TestCase
                 self::assertTrue(true);
             }
         }
+    }
+
+    public function test_existing_classification_status_cannot_be_changed_through_another_tenant(): void
+    {
+        $relation = $this->relation(1);
+        $customer = $this->customer(1, $relation->id());
+        $supplier = $this->supplier(1, $relation->id());
+        $this->relations->save($this->administration(self::ADMINISTRATION_A), $relation);
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
+        $customer->deactivate();
+        $supplier->deactivate();
+
+        foreach ([
+            fn () => $this->customers->save($this->administration(self::ADMINISTRATION_B), $customer),
+            fn () => $this->suppliers->save($this->administration(self::ADMINISTRATION_B), $supplier),
+        ] as $write) {
+            try {
+                $write();
+                self::fail('A classification status cannot be changed through another Administration.');
+            } catch (DomainException) {
+                self::assertTrue(true);
+            }
+        }
+
+        self::assertDatabaseHas('customers', ['id' => $customer->id()->toString(), 'active' => true]);
+        self::assertDatabaseHas('suppliers', ['id' => $supplier->id()->toString(), 'active' => true]);
     }
 
     public function test_duplicate_classification_and_identity_constraints_are_enforced(): void
@@ -210,10 +311,16 @@ final class EloquentRelationClassificationReadPersistenceTest extends TestCase
 
         $receivable = $this->openItem($relation->id(), OpenItemType::Receivable, 1);
         $payable = $this->openItem($relation->id(), OpenItemType::Payable, 2);
+        $customer = $this->customers->findForAdministration($this->administration(self::ADMINISTRATION_A))[0];
+        $supplier = $this->suppliers->findForAdministration($this->administration(self::ADMINISTRATION_A))[0];
+        $customer->deactivate();
+        $supplier->deactivate();
+        $this->customers->save($this->administration(self::ADMINISTRATION_A), $customer);
+        $this->suppliers->save($this->administration(self::ADMINISTRATION_A), $supplier);
         $classification = $this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relation->id());
 
-        self::assertTrue($classification->isCustomer());
-        self::assertTrue($classification->isSupplier());
+        self::assertFalse($classification->isCustomer());
+        self::assertFalse($classification->isSupplier());
         self::assertSame(OpenItemType::Receivable, $receivable->type());
         self::assertSame(OpenItemType::Payable, $payable->type());
     }
@@ -232,6 +339,13 @@ final class EloquentRelationClassificationReadPersistenceTest extends TestCase
     private function relation(int $sequence, ?string $code = null, string $name = 'Relation name', bool $active = true): Relation
     {
         return new Relation($this->relationId($sequence), new RelationCode($code ?? sprintf('REL-%02d', $sequence)), new DisplayName($name), $active);
+    }
+
+    private function assertClassification(RelationId $relationId, bool $customer, bool $supplier): void
+    {
+        $classification = $this->classifications->classify($this->administration(self::ADMINISTRATION_A), $relationId);
+        self::assertSame($customer, $classification->isCustomer());
+        self::assertSame($supplier, $classification->isSupplier());
     }
 
     private function customer(int $sequence, RelationId $relationId, bool $active = true): Customer

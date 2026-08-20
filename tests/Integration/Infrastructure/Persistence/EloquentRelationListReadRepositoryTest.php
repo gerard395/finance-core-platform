@@ -79,7 +79,7 @@ final class EloquentRelationListReadRepositoryTest extends TestCase
         self::assertSame(5, $this->searchRelations(search: '   ')->total());
     }
 
-    public function test_all_classification_filters_use_record_presence_without_duplicates(): void
+    public function test_all_classification_filters_use_active_classifications_without_duplicates(): void
     {
         self::assertSame(5, $this->searchRelations(classification: RelationClassificationFilter::All)->total());
         self::assertSame(['A-01', 'A-03'], $this->sortedCodes($this->searchRelations(classification: RelationClassificationFilter::Customer)->items()));
@@ -94,8 +94,9 @@ final class EloquentRelationListReadRepositoryTest extends TestCase
         self::assertSame(['A-02'], $this->codes($this->searchRelations(status: RelationStatusFilter::Inactive)->items()));
         self::assertSame(5, $this->searchRelations(status: RelationStatusFilter::All)->total());
 
-        $customer = $this->searchRelations(classification: RelationClassificationFilter::Customer)->items()[0];
-        self::assertTrue($customer->isCustomer(), 'An inactive Customer record is still a present classification in W2-000B.');
+        $inactiveClassifications = $this->searchRelations(search: 'Percent 100%')->items()[0];
+        self::assertFalse($inactiveClassifications->isCustomer());
+        self::assertFalse($inactiveClassifications->isSupplier());
     }
 
     public function test_sorting_is_allowlisted_and_deterministic(): void
@@ -147,10 +148,13 @@ final class EloquentRelationListReadRepositoryTest extends TestCase
         $tenantB = $this->saveRelation(self::ADMINISTRATION_B, 101, 'A-01', 'Alpha Customer');
         $customers = new EloquentCustomerRepository;
         $suppliers = new EloquentSupplierRepository;
-        $customers->save($this->administrationId(self::ADMINISTRATION_A), $this->customer(1, $first->id(), false));
+        $customers->save($this->administrationId(self::ADMINISTRATION_A), $this->customer(1, $first->id()));
         $suppliers->save($this->administrationId(self::ADMINISTRATION_A), $this->supplier(2, $second->id()));
         $customers->save($this->administrationId(self::ADMINISTRATION_A), $this->customer(3, $third->id()));
         $suppliers->save($this->administrationId(self::ADMINISTRATION_A), $this->supplier(3, $third->id()));
+        $fifth = $this->relationId(5);
+        $customers->save($this->administrationId(self::ADMINISTRATION_A), $this->customer(5, $fifth, false));
+        $suppliers->save($this->administrationId(self::ADMINISTRATION_A), $this->supplier(5, $fifth, false));
         $customers->save($this->administrationId(self::ADMINISTRATION_B), $this->customer(101, $tenantB->id()));
     }
 
@@ -178,9 +182,9 @@ final class EloquentRelationListReadRepositoryTest extends TestCase
         return new Customer(new CustomerId($this->uuid('4', $sequence)), $relationId, new CustomerNumber(sprintf('C-%03d', $sequence)), $active);
     }
 
-    private function supplier(int $sequence, RelationId $relationId): Supplier
+    private function supplier(int $sequence, RelationId $relationId, bool $active = true): Supplier
     {
-        return new Supplier(new SupplierId($this->uuid('5', $sequence)), $relationId, new SupplierNumber(sprintf('S-%03d', $sequence)), true);
+        return new Supplier(new SupplierId($this->uuid('5', $sequence)), $relationId, new SupplierNumber(sprintf('S-%03d', $sequence)), $active);
     }
 
     private function relationId(int $sequence): RelationId

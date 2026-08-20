@@ -94,6 +94,7 @@ final class EloquentRelationListReadRepository implements RelationListReadReposi
     {
         return RelationRecord::query()->selectRaw('1')->from($table)
             ->where($table.'.administration_id', $query->administrationId()->toString())
+            ->where($table.'.active', true)
             ->whereColumn($table.'.administration_id', 'relations.administration_id')->whereColumn($table.'.relation_id', 'relations.id');
     }
 }
