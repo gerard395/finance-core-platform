@@ -33,5 +33,31 @@
         </dl>
     </section>
 
+    @if ($canClassifyCustomer || $canClassifySupplier)
+        <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="classificaties-heading">
+            <h2 id="classificaties-heading" class="text-lg font-semibold">Classificaties beheren</h2>
+            <div class="mt-4 grid gap-5 sm:grid-cols-2">
+                @if ($canClassifyCustomer)
+                    <div><h3 class="font-semibold">Klant</h3><p class="mt-1 text-sm text-slate-600">{{ $relation->isCustomer() ? 'De klantclassificatie is actief.' : 'De klantclassificatie is niet actief.' }}</p>
+                        @if ($relation->isCustomer())
+                            <form method="POST" action="{{ route('relations.customer.destroy', $relation->id()->toString()) }}" class="mt-3">@csrf @method('DELETE')<button class="min-h-11 rounded-lg border border-red-300 px-4 font-semibold text-red-800 focus:ring-2 focus:ring-red-700">Klantclassificatie verwijderen</button></form>
+                        @else
+                            <form method="POST" action="{{ route('relations.customer.store', $relation->id()->toString()) }}" class="mt-3">@csrf<button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Als klant classificeren</button></form>
+                        @endif
+                    </div>
+                @endif
+                @if ($canClassifySupplier)
+                    <div><h3 class="font-semibold">Leverancier</h3><p class="mt-1 text-sm text-slate-600">{{ $relation->isSupplier() ? 'De leveranciersclassificatie is actief.' : 'De leveranciersclassificatie is niet actief.' }}</p>
+                        @if ($relation->isSupplier())
+                            <form method="POST" action="{{ route('relations.supplier.destroy', $relation->id()->toString()) }}" class="mt-3">@csrf @method('DELETE')<button class="min-h-11 rounded-lg border border-red-300 px-4 font-semibold text-red-800 focus:ring-2 focus:ring-red-700">Leveranciersclassificatie verwijderen</button></form>
+                        @else
+                            <form method="POST" action="{{ route('relations.supplier.store', $relation->id()->toString()) }}" class="mt-3">@csrf<button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Als leverancier classificeren</button></form>
+                        @endif
+                    </div>
+                @endif
+            </div>
+        </section>
+    @endif
+
     <p class="mt-6"><a href="{{ route('relations.index') }}" class="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Terug naar relaties</a></p>
 </x-layouts.app>

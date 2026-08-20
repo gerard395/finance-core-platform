@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Relations;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Relations\RelationNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -51,6 +52,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 final class RelationsIndexTest extends TestCase
@@ -413,6 +415,91 @@ final class RelationsIndexTest extends TestCase
             ->assertRedirect(route('relations.show', $relationId->toString()));
     }
 
+    public function test_customer_permission_controls_idempotent_lifecycle_with_safe_mutation_only_redirect(): void
+    {
+        $this->provisionScenario();
+        $this->provisionNumbers(self::ADMIN_A);
+        $this->assignPermissionOnly(RelationsPermission::ClassifyCustomer, 1);
+        $relationId = $this->relation(self::ADMIN_A, 1, 'C-WEB', 'Customer Web', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $this->post('/relations/'.$relationId->toString().'/customer', ['administration_id' => self::ADMIN_B, 'supplier' => true])
+            ->assertRedirect('/app')->assertSessionHas('status', 'Klantclassificatie is geactiveerd.');
+        $created = DB::table('customers')->where('relation_id', $relationId->toString())->first();
+        self::assertNotNull($created);
+        self::assertSame(self::ADMIN_A, $created->administration_id);
+        self::assertSame('C000001', $created->customer_number);
+        $this->post('/relations/'.$relationId->toString().'/customer')->assertRedirect('/app');
+        $this->assertDatabaseCount('customers', 1);
+        $this->delete('/relations/'.$relationId->toString().'/customer')->assertRedirect('/app')->assertSessionHas('status', 'Klantclassificatie is gedeactiveerd.');
+        $this->delete('/relations/'.$relationId->toString().'/customer')->assertRedirect('/app');
+        $this->assertDatabaseHas('customers', ['id' => $created->id, 'customer_number' => 'C000001', 'active' => false]);
+        $this->post('/relations/'.$relationId->toString().'/customer')->assertRedirect('/app');
+        $this->assertDatabaseHas('customers', ['id' => $created->id, 'customer_number' => 'C000001', 'active' => true]);
+        $this->assertDatabaseHas('relation_number_sequences', ['administration_id' => self::ADMIN_A, 'sequence_type' => 'customer', 'next_value' => 2]);
+        $this->assertDatabaseCount('suppliers', 0);
+    }
+
+    public function test_supplier_permission_is_independent_and_preserves_supplier_identity(): void
+    {
+        $this->provisionScenario();
+        $this->provisionNumbers(self::ADMIN_A);
+        $this->assignPermissionOnly(RelationsPermission::ClassifySupplier, 1);
+        $relationId = $this->relation(self::ADMIN_A, 1, 'S-WEB', 'Supplier Web', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $this->post('/relations/'.$relationId->toString().'/supplier')->assertRedirect('/app');
+        $created = DB::table('suppliers')->where('relation_id', $relationId->toString())->first();
+        self::assertNotNull($created);
+        self::assertSame('S000001', $created->supplier_number);
+        $this->post('/relations/'.$relationId->toString().'/supplier')->assertRedirect('/app');
+        $this->delete('/relations/'.$relationId->toString().'/supplier')->assertRedirect('/app');
+        $this->post('/relations/'.$relationId->toString().'/supplier')->assertRedirect('/app');
+        $this->assertDatabaseCount('suppliers', 1);
+        $this->assertDatabaseHas('suppliers', ['id' => $created->id, 'supplier_number' => 'S000001', 'active' => true]);
+        $this->assertDatabaseCount('customers', 0);
+        $this->post('/relations/'.$relationId->toString().'/customer')->assertForbidden();
+    }
+
+    public function test_classification_permissions_do_not_authorize_each_other_or_view_only_users(): void
+    {
+        $this->provisionScenario();
+        $this->provisionNumbers(self::ADMIN_A);
+        $relationId = $this->relation(self::ADMIN_A, 1, 'PERM-01', 'Permission Relation', true);
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_A, 8);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->get('/relations/'.$relationId->toString())->assertOk()
+            ->assertDontSeeText('Als klant classificeren')->assertDontSeeText('Als leverancier classificeren');
+        $this->post('/relations/'.$relationId->toString().'/customer')->assertForbidden();
+        $this->post('/relations/'.$relationId->toString().'/supplier')->assertForbidden();
+
+        $this->assignPermissionOnly(RelationsPermission::ClassifyCustomer, 1);
+        $this->get('/relations/'.$relationId->toString())->assertSeeText('Als klant classificeren')->assertDontSeeText('Als leverancier classificeren')
+            ->assertSee('name="_token"', false);
+        $this->post('/relations/'.$relationId->toString().'/supplier')->assertForbidden();
+        $this->post('/relations/'.$relationId->toString().'/customer')->assertRedirect(route('relations.show', $relationId->toString()));
+        $this->get('/relations/'.$relationId->toString())->assertSeeText('Klantclassificatie verwijderen')->assertSee('name="_method" value="DELETE"', false);
+    }
+
+    public function test_classification_routes_are_tenant_safe_and_reject_malformed_or_wrong_methods(): void
+    {
+        $this->provisionScenario();
+        $this->provisionNumbers(self::ADMIN_A);
+        $this->assignPermissionOnly(RelationsPermission::ClassifyCustomer, 1);
+        $relationA = $this->relation(self::ADMIN_A, 1, 'A-CLASS', 'Tenant A Classification', true);
+        $relationB = $this->relation(self::ADMIN_B, 2, 'B-CLASS', 'Tenant B Classification', true);
+        $this->customer(self::ADMIN_B, $relationB, 2, false);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        foreach ([$relationB->toString(), 'not-a-uuid'] as $id) {
+            $this->post('/relations/'.$id.'/customer', ['administration_id' => self::ADMIN_B])->assertNotFound();
+            $this->delete('/relations/'.$id.'/customer')->assertNotFound();
+        }
+        $this->get('/relations/'.$relationA->toString().'/customer')->assertStatus(405);
+        $this->assertDatabaseHas('customers', ['administration_id' => self::ADMIN_B, 'relation_id' => $relationB->toString(), 'active' => false]);
+        $this->assertDatabaseCount('customers', 1);
+    }
+
     private function authorizedScenario(): void
     {
         $this->provisionScenario();
@@ -431,6 +518,11 @@ final class RelationsIndexTest extends TestCase
         $memberships->save($this->membership(self::MEMBERSHIP_A, $userId, self::ADMIN_A));
         $memberships->save($this->membership(self::MEMBERSHIP_B, $userId, self::ADMIN_B));
         $this->app->make(RelationsAuthorizationProvisioner::class)->provision();
+    }
+
+    private function provisionNumbers(string $administrationId): void
+    {
+        $this->app->make(RelationNumberSequenceProvisioner::class)->ensureForAdministration(new AdministrationId(new Uuid($administrationId)));
     }
 
     private function assignRole(RelationsRole $role, string $membershipId, int $sequence): MembershipRoleId

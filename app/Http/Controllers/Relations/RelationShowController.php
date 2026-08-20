@@ -42,6 +42,8 @@ final class RelationShowController extends Controller
             'relation' => $detail,
             'canViewRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::View->id()),
             'canUpdateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Update->id()),
+            'canClassifyCustomer' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::ClassifyCustomer->id()),
+            'canClassifySupplier' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::ClassifySupplier->id()),
         ]);
     }
 }

@@ -14,4 +14,6 @@ interface CustomerReadRepository
     public function findForAdministration(AdministrationId $administrationId): array;
 
     public function existsForRelation(AdministrationId $administrationId, RelationId $relationId): bool;
+
+    public function findForRelation(AdministrationId $administrationId, RelationId $relationId): ?Customer;
 }

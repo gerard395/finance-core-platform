@@ -4,6 +4,7 @@ use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Relations\RelationClassificationController;
 use App\Http\Controllers\Relations\RelationCreateController;
 use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
@@ -85,3 +86,16 @@ Route::put('/relations/{relation}', [RelationEditController::class, 'update'])
         EnsureRelationsPermission::using(RelationsPermission::Update),
     ])
     ->name('relations.update');
+
+Route::post('/relations/{relation}/customer', [RelationClassificationController::class, 'storeCustomer'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifyCustomer)])
+    ->name('relations.customer.store');
+Route::delete('/relations/{relation}/customer', [RelationClassificationController::class, 'destroyCustomer'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifyCustomer)])
+    ->name('relations.customer.destroy');
+Route::post('/relations/{relation}/supplier', [RelationClassificationController::class, 'storeSupplier'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifySupplier)])
+    ->name('relations.supplier.store');
+Route::delete('/relations/{relation}/supplier', [RelationClassificationController::class, 'destroySupplier'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifySupplier)])
+    ->name('relations.supplier.destroy');

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Persistence\Eloquent;
 
+use App\Application\Relations\ClassificationPersistenceConflict;
+use App\Application\Relations\CustomerClassificationWriter;
 use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\CustomerStore;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -14,8 +16,9 @@ use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
 use DomainException;
+use Illuminate\Database\QueryException;
 
-final class EloquentCustomerRepository implements CustomerReadRepository, CustomerStore
+final class EloquentCustomerRepository implements CustomerClassificationWriter, CustomerReadRepository, CustomerStore
 {
     public function findForAdministration(AdministrationId $administrationId): array
     {
@@ -41,6 +44,25 @@ final class EloquentCustomerRepository implements CustomerReadRepository, Custom
             ->exists();
     }
 
+    public function findForRelation(AdministrationId $administrationId, RelationId $relationId): ?Customer
+    {
+        $record = CustomerRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where('relation_id', $relationId->toString())
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function persist(AdministrationId $administrationId, Customer $customer): void
+    {
+        try {
+            $this->save($administrationId, $customer);
+        } catch (DomainException|QueryException $exception) {
+            throw new ClassificationPersistenceConflict('Customer classification could not be persisted.', previous: $exception);
+        }
+    }
+
     public function save(AdministrationId $administrationId, Customer $customer): void
     {
         $existing = CustomerRecord::query()->find($customer->id()->toString());
@@ -62,6 +84,16 @@ final class EloquentCustomerRepository implements CustomerReadRepository, Custom
                 'customer_number' => $customer->customerNumber()->toString(),
                 'active' => $customer->isActive(),
             ],
+        );
+    }
+
+    private function hydrate(CustomerRecord $record): Customer
+    {
+        return new Customer(
+            new CustomerId(new Uuid($record->getAttribute('id'))),
+            new RelationId(new Uuid($record->getAttribute('relation_id'))),
+            new CustomerNumber($record->getAttribute('customer_number')),
+            (bool) $record->getAttribute('active'),
         );
     }
 }

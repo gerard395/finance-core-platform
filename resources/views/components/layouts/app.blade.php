@@ -33,6 +33,7 @@
         </header>
         <main id="main-content" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
             @if (session('status'))<p class="mb-6 rounded-lg bg-emerald-50 p-3 text-emerald-900" role="status">{{ session('status') }}</p>@endif
+            @if (session('error'))<p class="mb-6 rounded-lg bg-red-50 p-3 text-red-800" role="alert">{{ session('error') }}</p>@endif
             {{ $slot }}
         </main>
     </div>
