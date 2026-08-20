@@ -48,6 +48,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -286,6 +287,130 @@ final class RelationsIndexTest extends TestCase
         $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_B]);
         $this->get('/relations/'.$relationA->toString())->assertNotFound();
         $this->get('/relations/'.$relationB->toString())->assertOk()->assertSeeText('Tenant Beta Detail');
+    }
+
+    public function test_create_flow_requires_create_permission_and_safe_context(): void
+    {
+        $this->get('/relations/create')->assertRedirect('/login');
+        $this->provisionScenario();
+        $this->login();
+        $this->get('/relations/create')->assertRedirect('/administrations/select');
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_A]);
+        $this->get('/relations/create')->assertForbidden();
+        $this->assignPermissionOnly(RelationsPermission::Create, 1);
+
+        $this->get('/relations/create')->assertOk()->assertSeeText('Nieuwe relatie')
+            ->assertSee('name="_token"', false)->assertSee('name="code"', false)->assertSee('name="name"', false)
+            ->assertDontSee('customer')->assertDontSee('supplier');
+        $response = $this->post('/relations', [
+            'code' => 'new-01',
+            'name' => 'Created without View',
+            'administration_id' => self::ADMIN_B,
+            'relation_id' => $this->uuid('6', 99)->toString(),
+            'customer' => true,
+            'supplier' => true,
+            'active' => false,
+        ]);
+
+        $response->assertRedirect('/app')->assertSessionHas('status', 'Relatie aangemaakt.');
+        $this->assertDatabaseHas('relations', ['administration_id' => self::ADMIN_A, 'code' => 'NEW-01', 'display_name' => 'Created without View', 'active' => true]);
+        $this->assertDatabaseMissing('relations', ['administration_id' => self::ADMIN_B, 'code' => 'NEW-01']);
+        $this->assertDatabaseMissing('relations', ['id' => $this->uuid('6', 99)->toString()]);
+        $this->assertDatabaseCount('customers', 0);
+        $this->assertDatabaseCount('suppliers', 0);
+    }
+
+    public function test_create_validation_and_duplicate_code_are_safe_field_errors(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Create, 1);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->relation(self::ADMIN_A, 1, 'DUP-01', 'Existing Relation', true);
+
+        $this->post('/relations', ['code' => 'DUP-01', 'name' => 'Duplicate'])
+            ->assertSessionHasErrors(['code' => 'Deze relatiecode is al in gebruik.']);
+        $this->post('/relations', ['code' => '<invalid>', 'name' => ' A '])
+            ->assertSessionHasErrors(['code', 'name']);
+        $this->from('/relations/create')->post('/relations', ['code' => '<invalid>', 'name' => '<Old Input>'])
+            ->assertRedirect('/relations/create')->assertSessionHasErrors('code');
+        $this->get('/relations/create')->assertSee('&lt;Old Input&gt;', false)->assertDontSee('<Old Input>', false);
+        $this->assertDatabaseCount('relations', 1);
+    }
+
+    public function test_create_with_view_redirects_to_detail_and_index_action_is_permission_scoped(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_A, 8);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->get('/relations')->assertDontSeeText('Nieuwe relatie');
+        $this->assignPermissionOnly(RelationsPermission::Create, 2);
+        $this->get('/relations')->assertSeeText('Nieuwe relatie')->assertSee('href="'.route('relations.create').'"', false);
+
+        $response = $this->post('/relations', ['code' => 'VIEW-01', 'name' => '<Created Detail>']);
+        $created = RelationRecord::query()->where('code', 'VIEW-01')->firstOrFail();
+        $response->assertRedirect(route('relations.show', $created->getAttribute('id')));
+        $this->get($response->headers->get('Location'))->assertSee('&lt;Created Detail&gt;', false)->assertDontSee('<Created Detail>', false);
+    }
+
+    public function test_update_without_view_uses_immutable_identity_code_and_safe_redirect(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Update, 1);
+        $relationId = $this->relation(self::ADMIN_A, 1, 'EDIT-01', 'Original Name', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $this->get('/relations/'.$relationId->toString().'/edit')->assertOk()
+            ->assertSeeText('Relatie bewerken')->assertSeeText('EDIT-01')->assertSeeText('Original Name')
+            ->assertDontSee('name="code"', false)->assertSee('name="_method" value="PUT"', false)
+            ->assertDontSee('customer')->assertDontSee('supplier');
+        $response = $this->put('/relations/'.$relationId->toString(), [
+            'name' => 'Changed Name',
+            'status' => 'inactive',
+            'code' => 'HACKED',
+            'administration_id' => self::ADMIN_B,
+            'relation_id' => $this->uuid('6', 99)->toString(),
+            'customer' => true,
+            'supplier' => true,
+        ]);
+
+        $response->assertRedirect('/app')->assertSessionHas('status', 'Relatie bijgewerkt.');
+        $this->assertDatabaseHas('relations', ['id' => $relationId->toString(), 'administration_id' => self::ADMIN_A, 'code' => 'EDIT-01', 'display_name' => 'Changed Name', 'active' => false]);
+        $this->assertDatabaseMissing('relations', ['code' => 'HACKED']);
+        $this->assertDatabaseMissing('relations', ['id' => $this->uuid('6', 99)->toString()]);
+        $this->put('/relations/'.$relationId->toString(), ['name' => 'Active Again', 'status' => 'active'])->assertRedirect('/app');
+        $this->assertDatabaseHas('relations', ['id' => $relationId->toString(), 'display_name' => 'Active Again', 'active' => true]);
+    }
+
+    public function test_update_validation_not_found_and_tenant_isolation_are_safe(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Update, 1);
+        $relationA = $this->relation(self::ADMIN_A, 1, 'A-EDIT', 'Tenant A', true);
+        $relationB = $this->relation(self::ADMIN_B, 2, 'B-EDIT', 'Tenant B', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $this->put('/relations/'.$relationA->toString(), ['name' => ' X ', 'status' => 'deleted'])->assertSessionHasErrors(['name', 'status']);
+        foreach ([$this->uuid('6', 99)->toString(), $relationB->toString(), 'not-a-uuid'] as $id) {
+            $this->get('/relations/'.$id.'/edit')->assertNotFound();
+            $this->put('/relations/'.$id, ['name' => 'Forbidden Change', 'status' => 'inactive'])->assertNotFound();
+        }
+        $this->assertDatabaseHas('relations', ['id' => $relationB->toString(), 'administration_id' => self::ADMIN_B, 'display_name' => 'Tenant B', 'active' => true]);
+        $this->assertDatabaseCount('relations', 2);
+    }
+
+    public function test_edit_action_requires_update_and_success_with_view_redirects_to_detail(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Viewer, self::MEMBERSHIP_A, 8);
+        $relationId = $this->relation(self::ADMIN_A, 1, 'ACTION-01', 'Action Relation', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->get('/relations/'.$relationId->toString())->assertDontSeeText('Bewerken');
+        $this->get('/relations/'.$relationId->toString().'/edit')->assertForbidden();
+        $this->assignPermissionOnly(RelationsPermission::Update, 2);
+        $this->get('/relations/'.$relationId->toString())->assertSeeText('Bewerken')->assertSee('href="'.route('relations.edit', $relationId->toString()).'"', false);
+
+        $this->put('/relations/'.$relationId->toString(), ['name' => 'Updated with View', 'status' => 'active'])
+            ->assertRedirect(route('relations.show', $relationId->toString()));
     }
 
     private function authorizedScenario(): void

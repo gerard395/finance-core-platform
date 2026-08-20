@@ -68,6 +68,7 @@ final class RelationIndexController extends Controller
                 || $query->classification() !== RelationClassificationFilter::All
                 || $query->status() !== RelationStatusFilter::All,
             'canViewRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::View->id()),
+            'canCreateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Create->id()),
         ]);
     }
 }

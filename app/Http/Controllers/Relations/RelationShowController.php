@@ -41,6 +41,7 @@ final class RelationShowController extends Controller
             'administrationContext' => $context,
             'relation' => $detail,
             'canViewRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::View->id()),
+            'canUpdateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Update->id()),
         ]);
     }
 }

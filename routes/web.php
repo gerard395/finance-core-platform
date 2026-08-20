@@ -4,6 +4,8 @@ use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Relations\RelationCreateController;
+use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
 use App\Http\Controllers\Relations\RelationShowController;
 use App\Http\Middleware\EnsureRelationsPermission;
@@ -39,6 +41,24 @@ Route::get('/relations', RelationIndexController::class)
     ])
     ->name('relations.index');
 
+Route::get('/relations/create', [RelationCreateController::class, 'create'])
+    ->middleware([
+        'auth',
+        'domain.active',
+        'administration.active',
+        EnsureRelationsPermission::using(RelationsPermission::Create),
+    ])
+    ->name('relations.create');
+
+Route::post('/relations', [RelationCreateController::class, 'store'])
+    ->middleware([
+        'auth',
+        'domain.active',
+        'administration.active',
+        EnsureRelationsPermission::using(RelationsPermission::Create),
+    ])
+    ->name('relations.store');
+
 Route::get('/relations/{relation}', RelationShowController::class)
     ->middleware([
         'auth',
@@ -47,3 +67,21 @@ Route::get('/relations/{relation}', RelationShowController::class)
         EnsureRelationsPermission::using(RelationsPermission::View),
     ])
     ->name('relations.show');
+
+Route::get('/relations/{relation}/edit', [RelationEditController::class, 'edit'])
+    ->middleware([
+        'auth',
+        'domain.active',
+        'administration.active',
+        EnsureRelationsPermission::using(RelationsPermission::Update),
+    ])
+    ->name('relations.edit');
+
+Route::put('/relations/{relation}', [RelationEditController::class, 'update'])
+    ->middleware([
+        'auth',
+        'domain.active',
+        'administration.active',
+        EnsureRelationsPermission::using(RelationsPermission::Update),
+    ])
+    ->name('relations.update');

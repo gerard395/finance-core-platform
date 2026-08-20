@@ -13,6 +13,7 @@
             </div>
             <span @class(['rounded-full px-3 py-1 text-sm font-medium', 'bg-emerald-100 text-emerald-900' => $relation->isActive(), 'bg-slate-200 text-slate-800' => ! $relation->isActive()])>{{ $relation->isActive() ? 'Actief' : 'Inactief' }}</span>
         </div>
+        @if ($canUpdateRelations)<p class="mt-5"><a href="{{ route('relations.edit', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Bewerken</a></p>@endif
     </header>
 
     <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="basisgegevens-heading">

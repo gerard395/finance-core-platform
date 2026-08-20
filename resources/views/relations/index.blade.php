@@ -1,7 +1,7 @@
 <x-layouts.app :$domainUser :$administrationContext :$canViewRelations title="Relaties">
-    <header>
-        <h1 class="text-2xl font-semibold">Relaties</h1>
-        <p class="mt-2 text-slate-600">Bekijk en filter de relaties van {{ $administrationContext->administration->name()->toString() }}.</p>
+    <header class="flex flex-wrap items-start justify-between gap-4">
+        <div><h1 class="text-2xl font-semibold">Relaties</h1><p class="mt-2 text-slate-600">Bekijk en filter de relaties van {{ $administrationContext->administration->name()->toString() }}.</p></div>
+        @if ($canCreateRelations)<a href="{{ route('relations.create') }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Nieuwe relatie</a>@endif
     </header>
 
     <form method="GET" action="{{ route('relations.index') }}" class="mt-6 grid gap-4 rounded-xl bg-white p-4 shadow-sm ring-1 ring-slate-200 md:grid-cols-2 xl:grid-cols-7">

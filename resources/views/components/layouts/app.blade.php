@@ -31,7 +31,10 @@
                 <div class="flex items-center gap-2 sm:gap-4"><span class="hidden text-sm text-slate-600 sm:inline">{{ $domainUser->displayName()->toString() }}</span><a href="{{ route('administrations.select') }}" class="min-h-11 rounded-lg px-3 py-2.5 text-sm font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Administratie wisselen</a><form method="POST" action="{{ route('logout') }}">@csrf<button class="min-h-11 rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold focus:ring-2 focus:ring-blue-700">Uitloggen</button></form></div>
             </div>
         </header>
-        <main id="main-content" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">{{ $slot }}</main>
+        <main id="main-content" class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+            @if (session('status'))<p class="mb-6 rounded-lg bg-emerald-50 p-3 text-emerald-900" role="status">{{ session('status') }}</p>@endif
+            {{ $slot }}
+        </main>
     </div>
 </div>
 </body>
