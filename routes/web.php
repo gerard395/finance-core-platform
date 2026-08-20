@@ -2,7 +2,7 @@
 
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
-use App\Http\Controllers\AuthenticatedPlaceholderController;
+use App\Http\Controllers\DashboardController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -22,6 +22,6 @@ Route::middleware(['auth', 'domain.active'])->group(function (): void {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
 });
 
-Route::get('/app', AuthenticatedPlaceholderController::class)
+Route::get('/app', DashboardController::class)
     ->middleware(['auth', 'domain.active', 'administration.active'])
     ->name('app');

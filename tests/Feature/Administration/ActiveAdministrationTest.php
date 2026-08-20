@@ -20,6 +20,12 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryLineRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\TaxPostingRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -45,6 +51,7 @@ final class ActiveAdministrationTest extends TestCase
     public function test_valid_selection_sets_session_and_exposes_request_context(): void
     {
         [, $administration] = $this->setupContext();
+        $this->seedDashboard($administration, 1, '100', '60', '40', '12');
         $this->login();
 
         $this->post('/administrations/select', ['administration_id' => $administration->id()->toString()])
@@ -57,10 +64,15 @@ final class ActiveAdministrationTest extends TestCase
             ->assertSee('aria-controls="primary-navigation"', false)
             ->assertSee('Administratie wisselen')
             ->assertSee('Uitloggen')
-            ->assertSee('Nog geen data gekoppeld')
+            ->assertSee('EUR 100,00')
+            ->assertSee('EUR 60,00')
+            ->assertSee('EUR 40,00')
+            ->assertSee('EUR 12,00')
+            ->assertSee('Periode:')
+            ->assertDontSee('Nog geen data gekoppeld')
             ->assertSee('Rapportages')
             ->assertSee('aria-disabled="true"', false)
-            ->assertDontSee('€');
+            ->assertDontSee('%');
     }
 
     public function test_unauthorized_or_invalid_selection_never_replaces_context(): void
@@ -106,11 +118,15 @@ final class ActiveAdministrationTest extends TestCase
         $second = $this->administration('05', 'SECOND', 'Second Administration');
         (new EloquentAdministrationRepository)->save($second);
         (new EloquentAdministrationMembershipRepository)->save($this->membership('15', $userId, $second->id()));
+        $this->seedDashboard($first, 1, '100', '60', '40', '12');
+        $this->seedDashboard($second, 2, '250', '90', '70', '21');
         $this->login();
 
         $this->post('/administrations/select', ['administration_id' => $first->id()->toString()]);
+        $this->get('/app')->assertOk()->assertSee('EUR 100,00')->assertDontSee('EUR 250,00');
         $this->post('/administrations/select', ['administration_id' => $second->id()->toString()])
             ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $second->id()->toString());
+        $this->get('/app')->assertOk()->assertSee('EUR 250,00')->assertDontSee('EUR 100,00');
         $this->post('/logout')->assertRedirect('/login')->assertSessionMissing(EnsureActiveAdministration::SESSION_KEY);
         $this->get('/app')->assertRedirect('/login');
     }
@@ -143,5 +159,106 @@ final class ActiveAdministrationTest extends TestCase
     private function login(): void
     {
         $this->post('/login', ['email' => 'tenant@example.com', 'password' => 'correct-secure-password'])->assertRedirect('/app');
+    }
+
+    private function seedDashboard(
+        Administration $administration,
+        int $sequence,
+        string $revenue,
+        string $receivable,
+        string $payable,
+        string $vat,
+    ): void {
+        $prefix = (string) $sequence;
+        $assetId = $prefix.'1000000-0000-4000-8000-000000000001';
+        $revenueId = $prefix.'2000000-0000-4000-8000-000000000001';
+        $entryId = $prefix.'3000000-0000-4000-8000-000000000001';
+        $baseLineId = $prefix.'4000000-0000-4000-8000-000000000001';
+        $taxLineId = $prefix.'5000000-0000-4000-8000-000000000001';
+        $relationId = $prefix.'6000000-0000-4000-8000-000000000001';
+        $date = (new DateTimeImmutable('today'))->format('Y-m-d');
+
+        foreach ([
+            [$assetId, '1000', 'Asset', 'asset'],
+            [$revenueId, '8000', 'Revenue', 'revenue'],
+        ] as [$id, $code, $name, $type]) {
+            LedgerAccountRecord::query()->create([
+                'id' => $id,
+                'administration_id' => $administration->id()->toString(),
+                'code' => $code,
+                'name' => $name,
+                'type' => $type,
+                'status' => 'active',
+            ]);
+        }
+
+        JournalEntryRecord::query()->create([
+            'id' => $entryId,
+            'administration_id' => $administration->id()->toString(),
+            'journal_id' => $prefix.'7000000-0000-4000-8000-000000000001',
+            'posting_date' => $date,
+            'reference' => 'Dashboard '.$sequence,
+            'status' => 'posted',
+        ]);
+        JournalEntryLineRecord::query()->create([
+            'id' => $baseLineId,
+            'administration_id' => $administration->id()->toString(),
+            'journal_entry_id' => $entryId,
+            'ledger_account_id' => $assetId,
+            'debit_amount' => $revenue,
+            'credit_amount' => null,
+            'currency' => 'EUR',
+            'description' => 'Dashboard debit',
+        ]);
+        JournalEntryLineRecord::query()->create([
+            'id' => $taxLineId,
+            'administration_id' => $administration->id()->toString(),
+            'journal_entry_id' => $entryId,
+            'ledger_account_id' => $revenueId,
+            'debit_amount' => null,
+            'credit_amount' => $revenue,
+            'currency' => 'EUR',
+            'description' => 'Dashboard revenue',
+        ]);
+        RelationRecord::query()->create([
+            'id' => $relationId,
+            'administration_id' => $administration->id()->toString(),
+            'code' => 'REL-'.$sequence,
+            'display_name' => 'Dashboard relation '.$sequence,
+            'active' => true,
+        ]);
+
+        foreach ([['8', 'receivable', $receivable], ['9', 'payable', $payable]] as [$idPrefix, $type, $amount]) {
+            OpenItemRecord::query()->create([
+                'id' => $prefix.$idPrefix.'000000-0000-4000-8000-000000000001',
+                'administration_id' => $administration->id()->toString(),
+                'relation_id' => $relationId,
+                'journal_entry_id' => $entryId,
+                'open_item_type' => $type,
+                'original_amount' => $amount,
+                'currency' => 'EUR',
+                'opened_on' => $date,
+            ]);
+        }
+
+        TaxPostingRecord::query()->create([
+            'id' => $prefix.'a000000-0000-4000-8000-000000000001',
+            'administration_id' => $administration->id()->toString(),
+            'tax_code_id' => $prefix.'b000000-0000-4000-8000-000000000001',
+            'tax_rate' => '21',
+            'taxable_base' => $revenue,
+            'tax_amount' => $vat,
+            'currency' => 'EUR',
+            'direction' => 'output',
+            'type' => 'original',
+            'source_document_type' => 'sales_invoice',
+            'source_document_id' => $prefix.'c000000-0000-4000-8000-000000000001',
+            'source_line_id' => $prefix.'d000000-0000-4000-8000-000000000001',
+            'posting_date' => $date,
+            'journal_entry_id' => $entryId,
+            'base_journal_entry_line_id' => $baseLineId,
+            'tax_journal_entry_line_id' => $taxLineId,
+            'reversed_tax_posting_id' => null,
+        ]);
     }
 }
