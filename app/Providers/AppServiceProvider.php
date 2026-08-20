@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Application\Accounting\JournalEntryReadRepository;
+use App\Application\Accounting\JournalEntryStore;
+use App\Application\Accounting\LedgerAccountReadRepository;
+use App\Application\Accounting\LedgerAccountStore;
 use App\Application\Administration\AdministrationRepository;
 use App\Application\Identity\AdministrationMembershipRepository;
 use App\Application\Identity\AuthAccountStore;
@@ -18,6 +22,8 @@ use App\Infrastructure\Auth\LaravelPasswordHasher;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAuthorizationReadRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentJournalEntryRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentLedgerAccountRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentMembershipRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentPermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
@@ -34,6 +40,10 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->bind(UserRepository::class, EloquentUserRepository::class);
+        $this->app->bind(LedgerAccountReadRepository::class, EloquentLedgerAccountRepository::class);
+        $this->app->bind(LedgerAccountStore::class, EloquentLedgerAccountRepository::class);
+        $this->app->bind(JournalEntryReadRepository::class, EloquentJournalEntryRepository::class);
+        $this->app->bind(JournalEntryStore::class, EloquentJournalEntryRepository::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);
         $this->app->bind(RoleRepository::class, EloquentRoleRepository::class);
