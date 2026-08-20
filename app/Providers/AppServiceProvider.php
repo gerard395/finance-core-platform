@@ -26,6 +26,8 @@ use App\Application\Relations\CustomerStore;
 use App\Application\Relations\RelationClassificationReader;
 use App\Application\Relations\RelationCreator;
 use App\Application\Relations\RelationListReadRepository;
+use App\Application\Relations\RelationNumberAllocator;
+use App\Application\Relations\RelationNumberSequenceProvisioner;
 use App\Application\Relations\RelationReadRepository;
 use App\Application\Relations\RelationStore;
 use App\Application\Relations\RelationUpdater;
@@ -52,6 +54,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
 use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
+use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -81,6 +84,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SupplierStore::class, EloquentSupplierRepository::class);
         $this->app->bind(RelationClassificationReader::class, EloquentRelationClassificationReader::class);
         $this->app->bind(RelationListReadRepository::class, EloquentRelationListReadRepository::class);
+        $this->app->bind(RelationNumberAllocator::class, DatabaseRelationNumberSequence::class);
+        $this->app->bind(RelationNumberSequenceProvisioner::class, DatabaseRelationNumberSequence::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);
         $this->app->bind(RoleRepository::class, EloquentRoleRepository::class);
