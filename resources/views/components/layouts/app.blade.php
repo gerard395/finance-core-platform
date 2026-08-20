@@ -15,7 +15,7 @@
         <nav class="mt-8 space-y-6">
             <x-navigation.section title="Overzicht"><x-navigation.item label="Dashboard" :href="route('app')" :active="request()->routeIs('app')" /></x-navigation.section>
             @if ($canViewRelations)
-                <x-navigation.section title="Relaties"><x-navigation.item label="Alle relaties" disabled /></x-navigation.section>
+                <x-navigation.section title="Relaties"><x-navigation.item label="Alle relaties" :href="route('relations.index')" :active="request()->routeIs('relations.*')" /></x-navigation.section>
             @endif
             <x-navigation.section title="Verkoop"><x-navigation.item label="Offertes" disabled /><x-navigation.item label="Orders" disabled /><x-navigation.item label="Facturen" disabled /><x-navigation.item label="Creditfacturen" disabled /></x-navigation.section>
             <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" disabled /><x-navigation.item label="Inkoopcreditfacturen" disabled /></x-navigation.section>
