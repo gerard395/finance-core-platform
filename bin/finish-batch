@@ -3,9 +3,16 @@
 set -Eeuo pipefail
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
-usage() { printf 'Usage: bin/finish-batch --domain <Domain> --base <branch> --title <title> --body-file <path> [--no-merge]\n'; }
+usage() { printf 'Usage: bin/finish-batch (--domain <Domain> | --all) --base <branch> --title <title> --body-file <path> [--no-merge]\n'; }
+show_final_status() {
+    printf '\nCurrent branch: %s\n' "$(git branch --show-current)"
+    printf 'Git status:\n'
+    git status --short
+    printf 'Recent commits:\n'
+    git log --oneline -8
+}
 
-domain=''; base=''; title=''; body_file=''; no_merge=false
+domain=''; all=false; base=''; title=''; body_file=''; no_merge=false
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --domain|--base|--title|--body-file)
@@ -19,13 +26,19 @@ while [[ $# -gt 0 ]]; do
             shift 2
             ;;
         --no-merge) no_merge=true; shift ;;
+        --all) all=true; shift ;;
         --help|-h) usage; exit 0 ;;
         *) fail "Unknown argument: $1" ;;
     esac
 done
 
-[[ -n "$domain" ]] || fail '--domain is required.'
-[[ "$domain" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || fail 'Invalid domain name.'
+if [[ -n "$domain" && "$all" == true ]]; then
+    fail 'Use exactly one validation mode: --domain or --all.'
+fi
+if [[ -z "$domain" && "$all" == false ]]; then
+    fail 'Use exactly one validation mode: --domain or --all.'
+fi
+[[ -z "$domain" || "$domain" =~ ^[A-Za-z][A-Za-z0-9]*$ ]] || fail 'Invalid domain name.'
 [[ -n "$base" ]] || fail '--base is required.'
 [[ -n "$title" ]] || fail '--title is required.'
 [[ -n "$body_file" ]] || fail '--body-file is required.'
@@ -38,9 +51,14 @@ command -v gh >/dev/null 2>&1 || fail 'GitHub CLI (`gh`) is missing.'
 branch="$(git branch --show-current)"
 [[ -n "$branch" ]] || fail 'Git is in detached HEAD state.'
 [[ "$branch" != main ]] || fail 'Refusing to run on main.'
+[[ "$branch" != "$base" ]] || fail 'Current branch must differ from base branch.'
 [[ -z "$(git status --porcelain)" ]] || fail 'Working tree must be clean.'
 
-bin/validate-batch "$domain"
+if [[ "$all" == true ]]; then
+    bin/validate-batch --all
+else
+    bin/validate-batch "$domain"
+fi
 git push --set-upstream origin "$branch"
 
 pr_url="$(gh pr list --head "$branch" --base "$base" --state open --json url --jq '.[0].url // empty')"
@@ -53,21 +71,31 @@ printf 'Pull request: %s\n' "$pr_url"
 
 if [[ "$no_merge" == true ]]; then
     printf 'Merge skipped because --no-merge was supplied.\n'
+    show_final_status
     exit 0
 fi
 
-merge_output=''
-if merge_output="$(gh pr merge "$pr_url" --merge --delete-branch 2>&1)"; then
-    [[ -z "$merge_output" ]] || printf '%s\n' "$merge_output"
+checks_json=''
+checks_exit=0
+checks_json="$(gh pr checks "$pr_url" --json state 2>/dev/null)" || checks_exit=$?
+
+if [[ "$checks_json" =~ \"state\":\"(FAILURE|ERROR|CANCELLED|TIMED_OUT|ACTION_REQUIRED|STARTUP_FAILURE)\" ]]; then
+    fail 'GitHub reports failing checks; merge is blocked.'
+elif [[ "$checks_json" =~ \"state\":\"(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED|EXPECTED)\" ]]; then
+    printf 'GitHub reports pending checks; attempting to enable auto-merge...\n'
+    gh pr merge "$pr_url" --auto --merge --delete-branch || fail 'Auto-merge could not be enabled.'
 else
-    printf '%s\n' "$merge_output" >&2
-    checks_json=''
-    if checks_json="$(gh pr checks "$pr_url" --json state 2>/dev/null)" \
-        && [[ "$checks_json" =~ \"state\":\"(PENDING|QUEUED|IN_PROGRESS|WAITING|REQUESTED)\" ]]; then
-        printf 'GitHub reports pending checks; attempting to enable auto-merge...\n'
-        gh pr merge "$pr_url" --auto --merge --delete-branch || fail 'Auto-merge could not be enabled.'
+    if [[ $checks_exit -ne 0 && -n "$checks_json" && "$checks_json" != '[]' ]]; then
+        fail 'GitHub check status could not be classified safely.'
+    fi
+    [[ "$checks_json" != '[]' ]] || printf 'GitHub checks: none configured.\n'
+
+    merge_output=''
+    if merge_output="$(gh pr merge "$pr_url" --merge --delete-branch 2>&1)"; then
+        [[ -z "$merge_output" ]] || printf '%s\n' "$merge_output"
     else
-        fail 'Normal merge failed and GitHub reports no pending checks. Resolve the PR blocker manually.'
+        printf '%s\n' "$merge_output" >&2
+        fail 'Normal merge failed. Resolve the PR blocker manually.'
     fi
 fi
 
@@ -79,3 +107,4 @@ if [[ "$state" == MERGED ]]; then
 else
     printf 'Merge status: auto-merge enabled; PR state is %s\n' "$state"
 fi
+show_final_status

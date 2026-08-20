@@ -27,11 +27,14 @@ Voer gerichte tests, de volledige testsuite, `./vendor/bin/sail pint --test` en 
 ## Git en GitHub
 
 - Houd `main` stabiel en maak branches vanaf actuele `main`.
+- Commit een afgeronde Story bij voorkeur met `bin/commit-story` en een expliciete `--file` per Storybestand; dit script pusht niet en laat andere unstaged follow-upwijzigingen ongemoeid.
 - Stage uitsluitend expliciete bestandspaden.
 - Controleer `git diff --cached --name-only` en `git diff --cached --check` vóór een commit.
 - Merge zonder `--admin`.
 - Het ontbreken van GitHub-checks is geen fout.
 - Bij lopende checks mag auto-merge worden ingeschakeld.
+- Gebruik `bin/validate-batch <Domain>` voor capabilitygerichte batches en `bin/validate-batch --all` voor cross-cutting Application-, Infrastructure- en Presentation-batches.
+- `bin/finish-batch` accepteert overeenkomstig precies één van `--domain <Domain>` en `--all` en verzorgt push, PR en de toegestane mergeflow.
 
 ## Rapportage
 

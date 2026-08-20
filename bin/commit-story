@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+usage() { printf 'Usage: bin/commit-story --story <StoryId> --message <message> --file <path> [--file <path> ...]\n'; }
+
+story=''; message=''; files=()
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --story|--message|--file)
+            [[ $# -ge 2 ]] || fail "Missing value for $1."
+            case "$1" in
+                --story) story="$2" ;;
+                --message) message="$2" ;;
+                --file) files+=("$2") ;;
+            esac
+            shift 2
+            ;;
+        --help|-h) usage; exit 0 ;;
+        *) fail "Unknown argument: $1" ;;
+    esac
+done
+
+[[ -n "$story" ]] || fail '--story is required.'
+[[ "$story" =~ ^[A-Za-z][A-Za-z0-9-]*$ ]] || fail 'Invalid story identifier.'
+[[ -n "$message" ]] || fail '--message is required.'
+[[ ${#files[@]} -gt 0 ]] || fail 'At least one --file is required.'
+
+git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail 'Not inside a Git repository.'
+root="$(git rev-parse --show-toplevel)"
+[[ "$(pwd -P)" == "$(cd "$root" && pwd -P)" ]] || fail "Run from repository root: $root"
+branch="$(git branch --show-current)"
+[[ -n "$branch" ]] || fail 'Git is in detached HEAD state.'
+[[ "$branch" != main ]] || fail 'Refusing to commit on main.'
+
+declare -A allowed=()
+normalized_files=()
+for file in "${files[@]}"; do
+    [[ -n "$file" ]] || fail 'File path cannot be empty.'
+    [[ "$file" != /* ]] || fail "File must be repository-relative: $file"
+    normalized="$(realpath -m --relative-to="$root" "$root/$file")"
+    [[ "$normalized" != '..' && "$normalized" != ../* ]] || fail "File is outside repository: $file"
+    [[ -e "$normalized" || -L "$normalized" ]] || git ls-files --error-unmatch -- "$normalized" >/dev/null 2>&1 \
+        || fail "File does not exist and is not tracked: $file"
+    [[ -z "${allowed[$normalized]+x}" ]] || fail "Duplicate file: $normalized"
+    allowed[$normalized]=1
+    normalized_files+=("$normalized")
+done
+
+git diff --cached --quiet || fail 'Staged changes already exist; unstage them before committing a story.'
+git diff --check
+
+printf 'Story: %s\nBranch: %s\nStaging explicit files:\n' "$story" "$branch"
+printf '  %s\n' "${normalized_files[@]}"
+git add -- "${normalized_files[@]}"
+
+git diff --cached --quiet && fail 'Specified files contain no committable changes.'
+git diff --cached --check
+while IFS= read -r staged; do
+    [[ -n "${allowed[$staged]+x}" ]] || fail "Unexpected staged file: $staged"
+done < <(git diff --cached --name-only)
+
+git commit -m "$message"
+hash="$(git rev-parse HEAD)"
+printf 'Story commit created: %s\n' "$hash"
+
+status="$(git status --short)"
+if [[ -z "$status" ]]; then
+    printf 'Git status: clean\n'
+else
+    printf 'Git status: remaining unstaged or untracked changes:\n%s\n' "$status"
+fi
+printf 'No push was performed.\n'
