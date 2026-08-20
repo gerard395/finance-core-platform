@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
@@ -229,6 +230,130 @@ final class OpenItemTest extends TestCase
         $this->createOpenItem('0');
     }
 
+    public function test_it_reconstitutes_empty_and_complete_factual_state(): void
+    {
+        $original = $this->createOpenItem('1000', $this->date('2026-01-01'));
+        $item = OpenItem::reconstitute(
+            $original->id(),
+            $original->administrationId(),
+            $original->relationId(),
+            $original->journalEntryId(),
+            $original->originalAmount(),
+            $original->openedOn(),
+            [],
+        );
+
+        self::assertSame($original->id(), $item->id());
+        self::assertSame($original->administrationId(), $item->administrationId());
+        self::assertSame($original->relationId(), $item->relationId());
+        self::assertSame($original->journalEntryId(), $item->journalEntryId());
+        self::assertSame($original->originalAmount(), $item->originalAmount());
+        self::assertSame($original->openedOn(), $item->openedOn());
+        self::assertSame('EUR', $item->originalAmount()->currency()->code());
+        self::assertSame([], $item->settlements());
+        self::assertSame(OpenItemStatus::Open, $item->status());
+    }
+
+    public function test_it_reconstitutes_ordered_historical_amounts_and_statuses(): void
+    {
+        $first = $this->settlement(1, '2026-01-15', '400');
+        $second = $this->settlement(2, '2026-02-10', '600');
+        $input = [$second, $first];
+        $item = $this->reconstitute($input, '1000');
+
+        self::assertSame([$second, $first], $input);
+        self::assertSame([$first, $second], $item->settlements());
+        self::assertSame('1000', $item->openAmountAt($this->date('2026-01-10'))->amount());
+        self::assertSame(OpenItemStatus::Open, $item->statusAt($this->date('2026-01-10')));
+        self::assertSame('600', $item->openAmountAt($this->date('2026-01-20'))->amount());
+        self::assertSame(OpenItemStatus::PartiallySettled, $item->statusAt($this->date('2026-01-20')));
+        self::assertSame('600', $item->openAmountAt($this->date('2026-01-31'))->amount());
+        self::assertSame('0', $item->openAmountAt($this->date('2026-02-28'))->amount());
+        self::assertSame(OpenItemStatus::Closed, $item->statusAt($this->date('2026-02-28')));
+    }
+
+    public function test_reconstitution_orders_same_date_by_settlement_identity_and_restores_reversal(): void
+    {
+        $applied = $this->settlement(1, '2026-01-15', '40');
+        $other = $this->settlement(2, '2026-01-15', '10');
+        $reversal = $this->settlement(3, '2026-02-01', '40', OpenItemSettlementType::Reversal, $applied->id());
+        $item = $this->reconstitute([$reversal, $other, $applied]);
+
+        self::assertSame([$applied, $other, $reversal], $item->settlements());
+        self::assertSame('50', $item->openAmountAt($this->date('2026-01-31'))->amount());
+        self::assertSame('90', $item->openAmountAt($this->date('2026-02-01'))->amount());
+        self::assertSame($applied->id(), $item->settlement($reversal->id())?->reversedSettlementId());
+
+        $item->applySettlement($this->settlementId(4), $this->date('2026-02-02'), $this->money('10'), $this->journalEntryId(4));
+        self::assertSame('80', $item->openAmount()->amount());
+    }
+
+    public function test_reconstitution_rejects_duplicate_identity_currency_and_date_corruption(): void
+    {
+        $settlement = $this->settlement(1, '2026-01-15', '10');
+
+        foreach ([
+            [$settlement, $settlement],
+            [$this->settlement(1, '2026-01-15', '10', currency: 'USD')],
+            [$this->settlement(1, '2025-12-31', '10')],
+        ] as $history) {
+            try {
+                $this->reconstitute($history);
+                self::fail('Corrupt settlement history must be rejected.');
+            } catch (DomainException) {
+                self::assertTrue(true);
+            }
+        }
+    }
+
+    public function test_reconstitution_rejects_unknown_and_reversal_targets(): void
+    {
+        $unknown = $this->settlement(2, '2026-02-01', '10', OpenItemSettlementType::Reversal, $this->settlementId(1));
+
+        try {
+            $this->reconstitute([$unknown]);
+            self::fail('Unknown reversal target must be rejected.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+
+        $applied = $this->settlement(1, '2026-01-10', '10');
+        $reversal = $this->settlement(2, '2026-01-11', '10', OpenItemSettlementType::Reversal, $applied->id());
+        $targetsReversal = $this->settlement(3, '2026-01-12', '10', OpenItemSettlementType::Reversal, $reversal->id());
+
+        $this->expectException(DomainException::class);
+        $this->reconstitute([$applied, $reversal, $targetsReversal]);
+    }
+
+    public function test_reconstitution_rejects_duplicate_reversal_and_amount_mismatch(): void
+    {
+        $applied = $this->settlement(1, '2026-01-10', '40');
+        $reversal = $this->settlement(2, '2026-01-11', '40', OpenItemSettlementType::Reversal, $applied->id());
+        $duplicate = $this->settlement(3, '2026-01-12', '40', OpenItemSettlementType::Reversal, $applied->id());
+
+        try {
+            $this->reconstitute([$applied, $reversal, $duplicate]);
+            self::fail('Duplicate reversal must be rejected.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+
+        $this->expectException(DomainException::class);
+        $this->reconstitute([
+            $applied,
+            $this->settlement(2, '2026-01-11', '39', OpenItemSettlementType::Reversal, $applied->id()),
+        ]);
+    }
+
+    public function test_reconstitution_rejects_chronological_over_settlement(): void
+    {
+        $this->expectException(DomainException::class);
+        $this->reconstitute([
+            $this->settlement(2, '2026-02-01', '60'),
+            $this->settlement(1, '2026-01-15', '50'),
+        ]);
+    }
+
     private function createOpenItem(string $originalAmount = '100', ?PostingDate $openedOn = null): OpenItem
     {
         return new OpenItem(
@@ -259,5 +384,39 @@ final class OpenItemTest extends TestCase
     private function journalEntryId(int $suffix): JournalEntryId
     {
         return new JournalEntryId(new Uuid(sprintf('10000000-0000-4000-8000-%012d', $suffix)));
+    }
+
+    /** @param list<OpenItemSettlement> $settlements */
+    private function reconstitute(array $settlements, string $originalAmount = '100'): OpenItem
+    {
+        $item = $this->createOpenItem($originalAmount, $this->date('2026-01-01'));
+
+        return OpenItem::reconstitute(
+            $item->id(),
+            $item->administrationId(),
+            $item->relationId(),
+            $item->journalEntryId(),
+            $item->originalAmount(),
+            $item->openedOn(),
+            $settlements,
+        );
+    }
+
+    private function settlement(
+        int $suffix,
+        string $date,
+        string $amount,
+        OpenItemSettlementType $type = OpenItemSettlementType::Applied,
+        ?OpenItemSettlementId $reversedSettlementId = null,
+        string $currency = 'EUR',
+    ): OpenItemSettlement {
+        return new OpenItemSettlement(
+            $this->settlementId($suffix),
+            $this->date($date),
+            new Money($amount, new Currency($currency)),
+            $this->journalEntryId($suffix),
+            $type,
+            $reversedSettlementId,
+        );
     }
 }

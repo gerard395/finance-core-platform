@@ -14,6 +14,8 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 
 Nieuwe `JournalEntry`-businessstate ontstaat via de bestaande constructor en lifecycle; `PostingEngine` valideert de posting, voegt regels toe aan Draft en post daarna. `JournalEntry::reconstitute()` is uitsluitend een hydration-grens voor reeds bestaande feitelijke state. Zij ontvangt alle typed state en regels tegelijk, simuleert geen lifecyclemethoden en behoudt de onveranderlijkheid van een herstelde Posted entry. Posted snapshots worden met de bestaande `PostingValidation` op minimumregels, Currency, unieke regelidentiteiten en balans gecontroleerd.
 
+Nieuwe `OpenItem`-businessstate ontstaat via de constructor; nieuwe settlementfeiten uitsluitend via `applySettlement()` en `reverseSettlement()`. `OpenItem::reconstitute()` herstelt daarentegen bestaande typed basisstate en volledige settlementhistorie in één side-effectvrije stap. Zij sorteert en valideert de auditfeiten zonder commands te replayen; open bedrag en status blijven uitsluitend afleidingen van originalAmount en historie.
+
 `openAmountAt()` en `statusAt()` zijn de enige bron voor historische openstand en status. Reporting leest deze API's en reconstrueert geen settlementlogica.
 
 ## Invarianten

@@ -33,6 +33,63 @@ final class OpenItem
         }
     }
 
+    /** @param list<OpenItemSettlement> $settlements */
+    public static function reconstitute(
+        OpenItemId $id,
+        AdministrationId $administrationId,
+        RelationId $relationId,
+        JournalEntryId $journalEntryId,
+        Money $originalAmount,
+        PostingDate $openedOn,
+        array $settlements,
+    ): self {
+        $item = new self($id, $administrationId, $relationId, $journalEntryId, $originalAmount, $openedOn);
+        $indexed = [];
+        $reversed = [];
+
+        foreach (self::ordered($settlements) as $settlement) {
+            $key = $settlement->id()->toString();
+
+            if (isset($indexed[$key])) {
+                throw new DomainException('Settlement ID must be unique within an open item.');
+            }
+
+            if (! $originalAmount->currency()->equals($settlement->amount()->currency())) {
+                throw new DomainException('Settlement currency must match the open item currency.');
+            }
+
+            if ($settlement->effectiveDate()->value() < $openedOn->value()) {
+                throw new DomainException('Date cannot be before the open item opening date.');
+            }
+
+            if ($settlement->type() === OpenItemSettlementType::Reversal) {
+                $reversedId = $settlement->reversedSettlementId();
+                $applied = $reversedId === null ? null : ($indexed[$reversedId->toString()] ?? null);
+
+                if ($applied === null || $applied->type() !== OpenItemSettlementType::Applied) {
+                    throw new DomainException('A reversal must reference an existing applied settlement.');
+                }
+
+                if (isset($reversed[$reversedId->toString()])) {
+                    throw new DomainException('An applied settlement can only be reversed once.');
+                }
+
+                if (! $settlement->amount()->equals($applied->amount())) {
+                    throw new DomainException('A reversal amount must equal the applied settlement amount.');
+                }
+
+                $reversed[$reversedId->toString()] = true;
+            }
+
+            $indexed[$key] = $settlement;
+        }
+
+        $item->calculateOpenAmount(array_values($indexed));
+        $item->settlements = $indexed;
+
+        return $item;
+    }
+
     public function id(): OpenItemId
     {
         return $this->id;
