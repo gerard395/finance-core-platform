@@ -1,4 +1,4 @@
-<x-layouts.app :$domainUser :$administrationContext title="Dashboard">
+<x-layouts.app :$domainUser :$administrationContext :$canViewRelations title="Dashboard">
     <header>
         <h1 class="text-2xl font-semibold">Dashboard</h1>
         <p class="mt-2 text-slate-600">Financieel overzicht voor {{ $administrationContext->administration->name()->toString() }}.</p>

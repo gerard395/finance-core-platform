@@ -1,4 +1,4 @@
-@props(['domainUser', 'administrationContext', 'title'])
+@props(['domainUser', 'administrationContext', 'canViewRelations' => false, 'title'])
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -14,7 +14,9 @@
         <div class="flex items-center justify-between px-2"><span class="text-lg font-semibold text-white">Finance Core</span><button data-menu-close class="min-h-11 min-w-11 rounded-lg text-2xl focus:ring-2 focus:ring-blue-400 lg:hidden" aria-label="Menu sluiten">×</button></div>
         <nav class="mt-8 space-y-6">
             <x-navigation.section title="Overzicht"><x-navigation.item label="Dashboard" :href="route('app')" :active="request()->routeIs('app')" /></x-navigation.section>
-            <x-navigation.section title="Relaties"><x-navigation.item label="Klanten" disabled /><x-navigation.item label="Leveranciers" disabled /></x-navigation.section>
+            @if ($canViewRelations)
+                <x-navigation.section title="Relaties"><x-navigation.item label="Alle relaties" disabled /></x-navigation.section>
+            @endif
             <x-navigation.section title="Verkoop"><x-navigation.item label="Offertes" disabled /><x-navigation.item label="Orders" disabled /><x-navigation.item label="Facturen" disabled /><x-navigation.item label="Creditfacturen" disabled /></x-navigation.section>
             <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" disabled /><x-navigation.item label="Inkoopcreditfacturen" disabled /></x-navigation.section>
             <x-navigation.section title="Financieel"><x-navigation.item label="Bank" disabled /><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>
