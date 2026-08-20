@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Application\Dashboard\GetDashboardOverview;
+use App\Application\Identity\PermissionAuthorizer;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Entities\User as DomainUser;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Presentation\Formatting\DutchMoneyFormatter;
@@ -19,6 +21,7 @@ final class DashboardController extends Controller
     public function __construct(
         private readonly GetDashboardOverview $dashboard,
         private readonly DutchMoneyFormatter $moneyFormatter,
+        private readonly PermissionAuthorizer $permissionAuthorizer,
     ) {}
 
     public function __invoke(Request $request): View
@@ -42,6 +45,10 @@ final class DashboardController extends Controller
             'administrationContext' => $administrationContext,
             'overview' => $overview,
             'moneyFormatter' => $this->moneyFormatter,
+            'canViewRelations' => $this->permissionAuthorizer->allows(
+                $administrationContext->permissionIds,
+                RelationsPermission::View->id(),
+            ),
         ]);
     }
 }

@@ -1,0 +1,63 @@
+<x-layouts.app :$domainUser :$administrationContext :$canViewRelations :title="$relation->displayName()->toString()">
+    <nav aria-label="Kruimelpad" class="text-sm text-slate-600">
+        <a href="{{ route('relations.index') }}" class="font-medium text-blue-700 underline-offset-4 hover:underline focus:ring-2 focus:ring-blue-700">Relaties</a>
+        <span aria-hidden="true"> / </span>
+        <span aria-current="page">{{ $relation->displayName()->toString() }}</span>
+    </nav>
+
+    <header class="mt-4 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-sm font-medium text-slate-600">{{ $relation->code()->toString() }}</p>
+                <h1 class="mt-1 text-2xl font-semibold">{{ $relation->displayName()->toString() }}</h1>
+            </div>
+            <span @class(['rounded-full px-3 py-1 text-sm font-medium', 'bg-emerald-100 text-emerald-900' => $relation->isActive(), 'bg-slate-200 text-slate-800' => ! $relation->isActive()])>{{ $relation->isActive() ? 'Actief' : 'Inactief' }}</span>
+        </div>
+        @if ($canUpdateRelations)<p class="mt-5"><a href="{{ route('relations.edit', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Bewerken</a></p>@endif
+    </header>
+
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="basisgegevens-heading">
+        <h2 id="basisgegevens-heading" class="text-lg font-semibold">Basisgegevens</h2>
+        <dl class="mt-4 grid gap-4 sm:grid-cols-2">
+            <div><dt class="text-sm font-medium text-slate-600">Code</dt><dd class="mt-1">{{ $relation->code()->toString() }}</dd></div>
+            <div><dt class="text-sm font-medium text-slate-600">Naam</dt><dd class="mt-1">{{ $relation->displayName()->toString() }}</dd></div>
+            <div><dt class="text-sm font-medium text-slate-600">Status</dt><dd class="mt-1">{{ $relation->isActive() ? 'Actief' : 'Inactief' }}</dd></div>
+            <div>
+                <dt class="text-sm font-medium text-slate-600">Classificatie</dt>
+                <dd class="mt-2 flex flex-wrap gap-2">
+                    @if ($relation->isCustomer())<span class="rounded-full bg-blue-100 px-2 py-1 text-xs font-medium text-blue-900">Klant</span>@endif
+                    @if ($relation->isSupplier())<span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">Leverancier</span>@endif
+                    @if (! $relation->isCustomer() && ! $relation->isSupplier())<span>Geen classificatie</span>@endif
+                </dd>
+            </div>
+        </dl>
+    </section>
+
+    @if ($canClassifyCustomer || $canClassifySupplier)
+        <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="classificaties-heading">
+            <h2 id="classificaties-heading" class="text-lg font-semibold">Classificaties beheren</h2>
+            <div class="mt-4 grid gap-5 sm:grid-cols-2">
+                @if ($canClassifyCustomer)
+                    <div><h3 class="font-semibold">Klant</h3><p class="mt-1 text-sm text-slate-600">{{ $relation->isCustomer() ? 'De klantclassificatie is actief.' : 'De klantclassificatie is niet actief.' }}</p>
+                        @if ($relation->isCustomer())
+                            <form method="POST" action="{{ route('relations.customer.destroy', $relation->id()->toString()) }}" class="mt-3">@csrf @method('DELETE')<button class="min-h-11 rounded-lg border border-red-300 px-4 font-semibold text-red-800 focus:ring-2 focus:ring-red-700">Klantclassificatie verwijderen</button></form>
+                        @else
+                            <form method="POST" action="{{ route('relations.customer.store', $relation->id()->toString()) }}" class="mt-3">@csrf<button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Als klant classificeren</button></form>
+                        @endif
+                    </div>
+                @endif
+                @if ($canClassifySupplier)
+                    <div><h3 class="font-semibold">Leverancier</h3><p class="mt-1 text-sm text-slate-600">{{ $relation->isSupplier() ? 'De leveranciersclassificatie is actief.' : 'De leveranciersclassificatie is niet actief.' }}</p>
+                        @if ($relation->isSupplier())
+                            <form method="POST" action="{{ route('relations.supplier.destroy', $relation->id()->toString()) }}" class="mt-3">@csrf @method('DELETE')<button class="min-h-11 rounded-lg border border-red-300 px-4 font-semibold text-red-800 focus:ring-2 focus:ring-red-700">Leveranciersclassificatie verwijderen</button></form>
+                        @else
+                            <form method="POST" action="{{ route('relations.supplier.store', $relation->id()->toString()) }}" class="mt-3">@csrf<button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Als leverancier classificeren</button></form>
+                        @endif
+                    </div>
+                @endif
+            </div>
+        </section>
+    @endif
+
+    <p class="mt-6"><a href="{{ route('relations.index') }}" class="inline-flex min-h-11 items-center rounded-lg px-3 font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Terug naar relaties</a></p>
+</x-layouts.app>

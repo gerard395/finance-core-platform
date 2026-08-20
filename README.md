@@ -47,6 +47,35 @@ Boost provides your agent 15+ tools and skills that help agents build Laravel ap
 - [Codex Execution Rules](.ai/CODEX_EXECUTION_RULES.md)
 - [Architecture Guard](.ai/ARCHITECTURE_GUARD.md)
 
+### Git workflow tooling
+
+Commit één story lokaal met expliciete bestandsscope:
+
+```bash
+bin/commit-story \
+  --story W2-001 \
+  --message "W2-001 Add relations index" \
+  --file .ai/stories/W2-001.md \
+  --file app/Http/Controllers/RelationController.php \
+  --file tests/Feature/Relations/RelationsIndexTest.php
+```
+
+`commit-story` pusht niet. Andere unstaged of untracked follow-upbestanden blijven onaangeraakt en worden zichtbaar gerapporteerd; reeds staged vreemde bestanden blokkeren.
+
+Capabilitygerichte Domain-batch:
+
+```bash
+bin/finish-batch --domain Reporting --base main --title "Complete reporting batch" --body-file /tmp/pr.md
+```
+
+Cross-cutting Application-, Infrastructure- of Presentation-batch:
+
+```bash
+bin/finish-batch --all --base main --title "Complete relations web batch" --body-file /tmp/pr.md
+```
+
+`finish-batch` valideert, pusht, maakt of hergebruikt een PR en verwerkt checks en merge. `--no-merge` stopt na push en PR. De bestaande `bin/validate-batch Accounting`- en `bin/finish-batch --domain Accounting ...`-vormen blijven ondersteund.
+
 ## Contributing
 
 Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).

@@ -41,7 +41,7 @@ Deze capability omvat gebruikers, administratielidmaatschappen, rollen en explic
 
 ## Capability 03 – Relations
 
-**Status:** Planned
+**Status:** Completed for first web iteration
 
 ## Capability 04 – Sales
 
@@ -201,6 +201,26 @@ De actieve Administration wordt server-side in de sessie bewaard als onvertrouwd
 - W1-005 – Web foundation security and architecture review
 
 W1-005 heeft de volledige flow zonder mergeblockers geaccepteerd. De standaard PHPUnit-command omvat nu ook Integration. Niet-blokkerend vervolg omvat auditlogging, password reset/MFA en productie-sessionbeleid, typed VAT-auditgetters, fiscale orchestrationconsolidatie en autoritatieve permissionmapping voordat nieuwe webmodules worden geactiveerd.
+
+### Batch W2 – Relations Web Module
+
+W2 realiseert de eerste administration-scoped beheerfunctionaliteit voor Relations en hun expliciete Customer-/Supplier-classificaties. De batch is afgerond met backend-afgedwongen permissions, tenant-veilige database-reads en writes, immutable RelationCode, active-only classificaties en transactioneel gelockte `C000001`-/`S000001`-nummerreeksen. Contacten, adressen en bankrekeningen blijven bewust buiten W2 zolang hun Relation-child persistence ontbreekt. Niet-blokkerend vervolg bestaat uit optimistic locking voor Relation-edits en mutation-auditlogging.
+
+- W2-000 – Relations web module design
+- W2-000T – Safe Git workflow automation
+- W2-000A0 – Relations permission identity and provisioning
+- W2-000A – Relations permission contracts
+- W2-000B – Relations web read contracts
+- W2-000C – Classification active/removal semantics
+- W2-001 – Relations index
+- W2-002 – Relation detail
+- W2-003A – Relation write contracts
+- W2-003 – Relation create/edit
+- W2-004A – Customer/Supplier number provisioning
+- W2-004 – Customer/Supplier classification UI
+- W2-005 – Relations web module review
+
+De aanbevolen vervolgbatch is Relations Child Data: tenant-veilige, aggregate-owned persistence en webflows voor Contacts, Addresses en BankAccounts. Deze basis voorkomt tijdelijke of gedupliceerde contact- en factuuradresmodellen wanneer daarna Sales Web wordt gebouwd.
 
 ## Releases
 

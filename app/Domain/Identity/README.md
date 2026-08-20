@@ -41,6 +41,12 @@ Permissions, gebruikerskoppelingen en wijzigingen aan AdministrationMembership v
 
 Permissioncodes bevatten 2 tot en met 64 ASCII-tekens uit letters, cijfers, punten en underscores en worden naar uppercase genormaliseerd. Koppelingen met Role of AdministrationMembership en technische autorisatiehandhaving vallen buiten deze story.
 
+### Relations authorization definitions
+
+`RelationsPermission` en `RelationsRole` vormen de frameworkonafhankelijke, autoritatieve Identity-definities voor de Relations-capability. Iedere definitie heeft een vaste UUID-identiteit, een canonical code volgens de bestaande uppercase value-objectsemantiek en een zakelijke displaynaam. De rollen zijn system-wide capabilityrollen; toekenning aan een gebruiker blijft uitsluitend mogelijk via een expliciete AdministrationMembership-scoped `MembershipRole`.
+
+De canonical permissions zijn `RELATIONS.VIEW`, `RELATIONS.CREATE`, `RELATIONS.UPDATE`, `RELATIONS.CLASSIFY_CUSTOMER` en `RELATIONS.CLASSIFY_SUPPLIER`. De rollen zijn `RELATIONS_VIEWER`, `RELATIONS_EDITOR` en `RELATIONS_MANAGER`. Infrastructure provisiont deze definities en hun RolePermission-koppelingen idempotent; Identity is niet afhankelijk van Laravel of persistence.
+
 ## RolePermission
 
 `RolePermission` modelleert de expliciete toekenning van één Permission aan één Role. De eigen identiteit, RoleId en PermissionId zijn onveranderlijk. Alleen de actieve status kan via idempotent domeingedrag wijzigen.

@@ -17,7 +17,8 @@ final class EloquentRelationClassificationReader implements RelationClassificati
     {
         $scope = static fn ($query) => $query
             ->where('administration_id', $administrationId->toString())
-            ->where('relation_id', $relationId->toString());
+            ->where('relation_id', $relationId->toString())
+            ->where('active', true);
 
         return new RelationClassification(
             $scope(CustomerRecord::query())->exists(),

@@ -4,14 +4,37 @@ set -Eeuo pipefail
 
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 
-[[ $# -eq 1 ]] || fail 'Usage: bin/validate-batch <Domain>'
+[[ $# -eq 1 ]] || fail 'Usage: bin/validate-batch <Domain> | bin/validate-batch --all'
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || fail 'Not inside a Git repository.'
 root="$(git rev-parse --show-toplevel)"
 [[ "$(pwd -P)" == "$(cd "$root" && pwd -P)" ]] || fail "Run from repository root: $root"
 
 bin/check-environment
 git diff --cached --quiet || fail 'Staged changes detected. Commit or unstage them before batch validation.'
-bin/validate-domain "$1"
+
+if [[ "$1" == --all ]]; then
+    printf 'Validation mode: all\n'
+    printf 'Running full test suite...\n'
+    ./vendor/bin/sail artisan test
+    printf 'Checking formatting...\n'
+    if ! ./vendor/bin/sail pint --test; then
+        printf 'ERROR: Pint failed. Run: ./vendor/bin/sail pint\n' >&2
+        exit 1
+    fi
+    if [[ -f package.json ]] && [[ -f package-lock.json || -f npm-shrinkwrap.json ]] \
+        && grep -Eq '"build"[[:space:]]*:' package.json; then
+        printf 'Running frontend build...\n'
+        ./vendor/bin/sail npm run build
+    else
+        printf 'Frontend build: skipped (no package manifest, lockfile, or build script).\n'
+    fi
+    printf 'Checking diff whitespace...\n'
+    git diff --check
+else
+    [[ "$1" != --* ]] || fail "Unknown validation mode: $1"
+    printf 'Validation mode: domain (%s)\n' "$1"
+    bin/validate-domain "$1"
+fi
 
 printf '\nGit status:\n'
 git status --short
