@@ -28,6 +28,7 @@ use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemSettlementRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -57,6 +58,10 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
                 $this->createPostedEntry($administration, $sequence);
             }
         }
+
+        $this->createRelation(self::ADMINISTRATION_A, 1);
+        $this->createRelation(self::ADMINISTRATION_A, 2);
+        $this->createRelation(self::ADMINISTRATION_B, 3);
     }
 
     public function test_open_item_basis_roundtrips_exactly_without_derived_state_columns(): void
@@ -118,7 +123,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             OpenItemRecord::query()->create([
                 'id' => '32000000-0000-4000-8000-000000000001',
                 'administration_id' => self::ADMINISTRATION_A,
-                'relation_id' => '42000000-0000-4000-8000-000000000001',
+                'relation_id' => '40000000-0000-4000-8000-000000000001',
                 'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
                 'open_item_type' => 'other',
                 'original_amount' => '100',
@@ -345,6 +350,17 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             'posting_date' => '2026-01-01',
             'reference' => 'OpenItem source '.$sequence,
             'status' => JournalEntryStatus::Posted->value,
+        ]);
+    }
+
+    private function createRelation(string $administration, int $sequence): void
+    {
+        RelationRecord::query()->create([
+            'id' => sprintf('40000000-0000-4000-8000-%012d', $sequence),
+            'administration_id' => $administration,
+            'code' => sprintf('REL-%02d', $sequence),
+            'display_name' => sprintf('Relation %02d', $sequence),
+            'active' => true,
         ]);
     }
 
