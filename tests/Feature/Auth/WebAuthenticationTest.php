@@ -45,7 +45,7 @@ final class WebAuthenticationTest extends TestCase
 
         $response->assertRedirect('/app');
         $this->assertAuthenticated();
-        $this->get('/app')->assertOk()->assertSee('Active User')->assertSee('Ingelogd');
+        $this->get('/app')->assertRedirect('/administrations/select');
         $this->get('/login')->assertRedirect('/app');
     }
 

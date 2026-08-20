@@ -1,0 +1,137 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Tests\Feature\Administration;
+
+use App\Application\Identity\ProvisionUserAccount;
+use App\Domain\Administration\Entities\Administration;
+use App\Domain\Administration\ValueObjects\AdministrationCode;
+use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Administration\ValueObjects\AdministrationName;
+use App\Domain\Administration\ValueObjects\AdministrationStatus;
+use App\Domain\Identity\Entities\AdministrationMembership;
+use App\Domain\Identity\ValueObjects\AdministrationMembershipId;
+use App\Domain\Identity\ValueObjects\DisplayName;
+use App\Domain\Identity\ValueObjects\EmailAddress;
+use App\Domain\Identity\ValueObjects\UserId;
+use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Identity\Uuid;
+use App\Http\Middleware\EnsureActiveAdministration;
+use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
+use DateTimeImmutable;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+final class ActiveAdministrationTest extends TestCase
+{
+    use RefreshDatabase;
+
+    public function test_selection_shows_only_active_accessible_administrations(): void
+    {
+        [$userId, $accessible, $inaccessible] = $this->setupContext();
+        $inactive = $this->administration('04', 'INACTIVE', 'Inactive Administration', AdministrationStatus::Inactive);
+        (new EloquentAdministrationRepository)->save($inactive);
+        (new EloquentAdministrationMembershipRepository)->save($this->membership('14', $userId, $inactive->id()));
+        $this->login();
+
+        $this->get('/administrations/select')->assertOk()
+            ->assertSee($accessible->name()->toString())
+            ->assertDontSee($inaccessible->name()->toString())
+            ->assertDontSee($inactive->name()->toString());
+    }
+
+    public function test_valid_selection_sets_session_and_exposes_request_context(): void
+    {
+        [, $administration] = $this->setupContext();
+        $this->login();
+
+        $this->post('/administrations/select', ['administration_id' => $administration->id()->toString()])
+            ->assertRedirect('/app')
+            ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $administration->id()->toString());
+        $this->get('/app')->assertOk()->assertSee($administration->name()->toString())->assertSee('Effectieve rechten geladen');
+    }
+
+    public function test_unauthorized_or_invalid_selection_never_replaces_context(): void
+    {
+        [, $accessible, $inaccessible] = $this->setupContext();
+        $this->login();
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => $accessible->id()->toString()]);
+
+        $this->post('/administrations/select', ['administration_id' => $inaccessible->id()->toString()])
+            ->assertSessionHasErrors('administration_id')
+            ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $accessible->id()->toString());
+        $this->post('/administrations/select', ['administration_id' => 'invalid'])
+            ->assertSessionHasErrors('administration_id')
+            ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $accessible->id()->toString());
+    }
+
+    public function test_invalid_session_revocation_and_inactive_administration_clear_context(): void
+    {
+        [$userId, $administration] = $this->setupContext();
+        $this->login();
+        $membershipRepository = new EloquentAdministrationMembershipRepository;
+        $membership = $membershipRepository->findByUserAndAdministration($userId, $administration->id());
+
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => 'invalid'])
+            ->get('/app')->assertRedirect('/administrations/select')->assertSessionMissing(EnsureActiveAdministration::SESSION_KEY);
+
+        $membership->deactivate();
+        $membershipRepository->save($membership);
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => $administration->id()->toString()])
+            ->get('/app')->assertRedirect('/administrations/select')->assertSessionMissing(EnsureActiveAdministration::SESSION_KEY);
+
+        $membership->activate();
+        $membershipRepository->save($membership);
+        $administration->deactivate();
+        (new EloquentAdministrationRepository)->save($administration);
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => $administration->id()->toString()])
+            ->get('/app')->assertRedirect('/administrations/select')->assertSessionMissing(EnsureActiveAdministration::SESSION_KEY);
+    }
+
+    public function test_switch_and_logout_are_safe(): void
+    {
+        [$userId, $first] = $this->setupContext();
+        $second = $this->administration('05', 'SECOND', 'Second Administration');
+        (new EloquentAdministrationRepository)->save($second);
+        (new EloquentAdministrationMembershipRepository)->save($this->membership('15', $userId, $second->id()));
+        $this->login();
+
+        $this->post('/administrations/select', ['administration_id' => $first->id()->toString()]);
+        $this->post('/administrations/select', ['administration_id' => $second->id()->toString()])
+            ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $second->id()->toString());
+        $this->post('/logout')->assertRedirect('/login')->assertSessionMissing(EnsureActiveAdministration::SESSION_KEY);
+        $this->get('/app')->assertRedirect('/login');
+    }
+
+    /** @return array{UserId, Administration, Administration} */
+    private function setupContext(): array
+    {
+        $userId = new UserId(new Uuid('550e8400-e29b-41d4-a716-446655440001'));
+        $this->app->make(ProvisionUserAccount::class)->execute($userId, new DisplayName('Tenant User'), new EmailAddress('tenant@example.com'), 'correct-secure-password');
+        $accessible = $this->administration('02', 'ACCESS', 'Accessible Administration');
+        $inaccessible = $this->administration('03', 'DENIED', 'Denied Administration');
+        $administrations = new EloquentAdministrationRepository;
+        $administrations->save($accessible);
+        $administrations->save($inaccessible);
+        (new EloquentAdministrationMembershipRepository)->save($this->membership('12', $userId, $accessible->id()));
+
+        return [$userId, $accessible, $inaccessible];
+    }
+
+    private function administration(string $suffix, string $code, string $name, AdministrationStatus $status = AdministrationStatus::Active): Administration
+    {
+        return new Administration(new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-4466554400'.$suffix)), new AdministrationCode($code), new AdministrationName($name), null, new Currency('EUR'), $status);
+    }
+
+    private function membership(string $suffix, UserId $userId, AdministrationId $administrationId): AdministrationMembership
+    {
+        return new AdministrationMembership(new AdministrationMembershipId(new Uuid('550e8400-e29b-41d4-a716-4466554400'.$suffix)), $userId, $administrationId, true, new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2027-01-01'));
+    }
+
+    private function login(): void
+    {
+        $this->post('/login', ['email' => 'tenant@example.com', 'password' => 'correct-secure-password'])->assertRedirect('/app');
+    }
+}

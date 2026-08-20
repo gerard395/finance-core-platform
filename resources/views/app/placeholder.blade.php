@@ -12,7 +12,12 @@
             <p class="text-sm font-semibold uppercase tracking-wider text-blue-700">Finance Core</p>
             <h1 class="mt-2 text-2xl font-semibold">Ingelogd</h1>
             <p class="mt-3 text-slate-600">Welkom, {{ $domainUser->displayName()->toString() }}.</p>
-            <p class="mt-2 text-sm text-slate-500">Administratieselectie volgt in een volgende stap.</p>
+            <p class="mt-2 text-slate-600">Actieve administratie: <strong>{{ $administrationContext->administration->name()->toString() }}</strong></p>
+            <p class="mt-2 text-sm text-slate-500">Effectieve rechten geladen: {{ count($administrationContext->permissionIds) }}</p>
+
+            <a href="{{ route('administrations.select') }}" class="mt-6 inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 py-2.5 font-semibold text-white focus:outline-none focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">
+                Administratie wisselen
+            </a>
 
             <form method="POST" action="{{ route('logout') }}" class="mt-8">
                 @csrf
