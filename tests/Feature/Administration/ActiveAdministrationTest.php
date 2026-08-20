@@ -50,7 +50,17 @@ final class ActiveAdministrationTest extends TestCase
         $this->post('/administrations/select', ['administration_id' => $administration->id()->toString()])
             ->assertRedirect('/app')
             ->assertSessionHas(EnsureActiveAdministration::SESSION_KEY, $administration->id()->toString());
-        $this->get('/app')->assertOk()->assertSee($administration->name()->toString())->assertSee('Effectieve rechten geladen');
+        $this->get('/app')->assertOk()
+            ->assertSee($administration->name()->toString())
+            ->assertSee('Dashboard')
+            ->assertSee('aria-current="page"', false)
+            ->assertSee('aria-controls="primary-navigation"', false)
+            ->assertSee('Administratie wisselen')
+            ->assertSee('Uitloggen')
+            ->assertSee('Nog geen data gekoppeld')
+            ->assertSee('Rapportages')
+            ->assertSee('aria-disabled="true"', false)
+            ->assertDontSee('€');
     }
 
     public function test_unauthorized_or_invalid_selection_never_replaces_context(): void
