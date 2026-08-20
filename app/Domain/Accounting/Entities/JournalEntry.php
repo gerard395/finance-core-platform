@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Enums\JournalEntryStatus;
+use App\Domain\Accounting\Requests\PostingRequest;
+use App\Domain\Accounting\Services\PostingValidation;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
@@ -26,6 +28,56 @@ final class JournalEntry
         private readonly JournalEntryReference $reference,
         private JournalEntryStatus $status,
     ) {}
+
+    /** @param list<JournalEntryLine> $lines */
+    public static function reconstitute(
+        JournalEntryId $id,
+        AdministrationId $administrationId,
+        JournalId $journalId,
+        PostingDate $postingDate,
+        JournalEntryReference $reference,
+        JournalEntryStatus $status,
+        array $lines,
+    ): self {
+        $indexedLines = [];
+        $currency = null;
+
+        foreach ($lines as $line) {
+            $lineId = $line->id()->toString();
+
+            if (isset($indexedLines[$lineId])) {
+                throw new DomainException('A journal entry line with this identity already exists.');
+            }
+
+            $lineCurrency = ($line->debit() ?? $line->credit())?->currency();
+
+            if ($currency !== null && $lineCurrency !== null && ! $currency->equals($lineCurrency)) {
+                throw new DomainException('All journal entry lines must use the same currency.');
+            }
+
+            $currency ??= $lineCurrency;
+            $indexedLines[$lineId] = $line;
+        }
+
+        if ($status === JournalEntryStatus::Posted) {
+            $validation = (new PostingValidation)->validate(new PostingRequest(
+                $administrationId,
+                $journalId,
+                $postingDate,
+                $reference,
+                $lines,
+            ));
+
+            if (! $validation->isValid()) {
+                throw new DomainException('A posted journal entry must contain a valid balanced posting.');
+            }
+        }
+
+        $entry = new self($id, $administrationId, $journalId, $postingDate, $reference, $status);
+        $entry->lines = $indexedLines;
+
+        return $entry;
+    }
 
     public function id(): JournalEntryId
     {

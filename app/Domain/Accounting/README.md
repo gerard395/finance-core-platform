@@ -12,6 +12,8 @@ Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Cor
 
 `OpenItem` bewaart immutable openingscontext en beheert immutable `OpenItemSettlement`-children. Applied settlements en Reversals worden uitsluitend toegevoegd. Actueel en historisch open bedrag en status worden steeds afgeleid uit `originalAmount` en deze historie; zij worden niet als zelfstandige financiële waarheid gemuteerd.
 
+Nieuwe `JournalEntry`-businessstate ontstaat via de bestaande constructor en lifecycle; `PostingEngine` valideert de posting, voegt regels toe aan Draft en post daarna. `JournalEntry::reconstitute()` is uitsluitend een hydration-grens voor reeds bestaande feitelijke state. Zij ontvangt alle typed state en regels tegelijk, simuleert geen lifecyclemethoden en behoudt de onveranderlijkheid van een herstelde Posted entry. Posted snapshots worden met de bestaande `PostingValidation` op minimumregels, Currency, unieke regelidentiteiten en balans gecontroleerd.
+
 `openAmountAt()` en `statusAt()` zijn de enige bron voor historische openstand en status. Reporting leest deze API's en reconstrueert geen settlementlogica.
 
 ## Invarianten
