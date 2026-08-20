@@ -455,6 +455,8 @@ Authentication en de actieve websessie zijn Presentation/Infrastructure-verantwo
 
 Een administration-scoped Application-use-case mag alleen worden uitgevoerd wanneer de geauthenticeerde gebruiker op het moment van de request een actief en geldig `AdministrationMembership` voor die Administration heeft en via actieve rol- en permissiontoekenningen de vereiste businessautorisatie bezit. Een in de sessie, route, query of form opgenomen `AdministrationId` is uitsluitend invoer en nooit zelfstandig bewijs van toegang. De Presentation-laag selecteert context en formatteert uitkomsten, maar muteert Domain uitsluitend via Application-use-cases. Een toekomstig systeembeheerpad moet expliciet geautoriseerd en geaudit zijn en blijft onderworpen aan dezelfde Administration-afbakening; globale impliciete tenant-bypass bestaat niet.
 
+Het Laravel-authaccount is een Infrastructure-authenticatierecord en blijft onderscheiden van de zakelijke Domain `User`. Ieder authaccount verwijst in v1 via exact één verplichte, unieke UUID-reference naar één `UserId`; e-mail is geen identiteitskoppeling. Passwordhashes, remember-tokens en resetgegevens blijven buiten Domain. `AdministrationMembership` blijft eigendom van Identity en mag de immutable `AdministrationId` kennen; Administration krijgt geen dependency op Identity. Rollen en permissions zijn systeemwijde definities, terwijl `MembershipRole` hun toekenning per AdministrationMembership afbakent. Directe User-permissions bestaan niet in v1.
+
 ## 9. Reporting
 
 | Naam | Doel | Korte beschrijving |

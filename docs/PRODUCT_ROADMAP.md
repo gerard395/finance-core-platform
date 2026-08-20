@@ -183,15 +183,18 @@ Niet-blokkerend vervolg: schaalbare queryprojecties, autorisatie, persistencecon
 
 ## Milestone M7 – Product / Presentation
 
-**Status:** Designed; implementation starts with W1-001
+**Status:** Designed; implementation starts with W1-001A
 
 ### Batch W1 – Web Foundation
 
 W1 levert de eerste veilige, responsive webdoorsnede: login, selectie van een geautoriseerde actieve Administration, een autorisatiebewuste application shell, een dashboard-placeholder en logout. De Presentation-laag gebruikt server-rendered Laravel Blade, Tailwind CSS en alleen beperkte native JavaScript-interactie. Zij roept Application-use-cases aan en bevat geen boekhoudkundige logica of geldberekeningen.
 
-De actieve Administration wordt server-side in de sessie bewaard als onvertrouwde selectie en bij iedere administration-scoped request opnieuw getoetst aan een op dat moment geldig `AdministrationMembership`. Rollen en permissions worden eveneens server-side vóór uitvoering van de use case gecontroleerd. De gedetailleerde architectuur, responsive patronen, beveiligingsmaatregelen en opgesplitste stories staan in `.ai/stories/W1-000.md`.
+De actieve Administration wordt server-side in de sessie bewaard als onvertrouwde selectie en bij iedere administration-scoped request opnieuw getoetst aan een op dat moment geldig `AdministrationMembership`. Rollen en permissions worden eveneens server-side vóór uitvoering van de use case gecontroleerd. De algemene architectuur staat in `.ai/stories/W1-000.md`; de Identity-/authbridge en noodzakelijke persistencevolgorde in `.ai/stories/W1-000A.md`.
 
-- W1-001 – Web authentication foundation
+- W1-001A – User & Administration persistence foundation
+- W1-001B – Membership & authorization persistence foundation
+- W1-001C – Auth account bridge & provisioning
+- W1-001D – Web authentication foundation
 - W1-002 – Administration access and active administration selection
 - W1-003 – Responsive application shell and navigation
 - W1-004 – Dashboard presentation foundation
