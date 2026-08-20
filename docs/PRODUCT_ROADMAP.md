@@ -202,6 +202,20 @@ De actieve Administration wordt server-side in de sessie bewaard als onvertrouwd
 
 W1-005 heeft de volledige flow zonder mergeblockers geaccepteerd. De standaard PHPUnit-command omvat nu ook Integration. Niet-blokkerend vervolg omvat auditlogging, password reset/MFA en productie-sessionbeleid, typed VAT-auditgetters, fiscale orchestrationconsolidatie en autoritatieve permissionmapping voordat nieuwe webmodules worden geactiveerd.
 
+### Batch W2 – Relations Web Module
+
+W2 ontwerpt en realiseert de eerste administration-scoped beheerfunctionaliteit voor Relations en hun expliciete Customer-/Supplier-classificaties. De ontwerpstory W2-000 heeft vastgesteld dat drie predecessors nodig zijn: autoritatieve mapping en provisioning van de reeds gecatalogiseerde Relations-permissions, schaalbare tenant-scoped readcontracten voor list/detail en een eenduidig besluit over actieve versus verwijderde classificatie. Contacten, adressen en bankrekeningen blijven buiten W2 zolang hun Relation-child persistence ontbreekt.
+
+- W2-000 – Relations web module design
+- W2-000A – Relations permission contracts
+- W2-000B – Relations web read contracts
+- W2-000C – Classification active/removal semantics
+- W2-001 – Relations index
+- W2-002 – Relation detail
+- W2-003 – Relation create/edit
+- W2-004 – Customer/Supplier classification UI
+- W2-005 – Relations web module review
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
