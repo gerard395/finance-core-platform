@@ -183,11 +183,11 @@ Niet-blokkerend vervolg: schaalbare queryprojecties, autorisatie, persistencecon
 
 ## Milestone M7 – Product / Presentation
 
-**Status:** Designed; implementation starts with W1-001A
+**Status:** W1 completed and security/architecture reviewed
 
 ### Batch W1 – Web Foundation
 
-W1 levert de eerste veilige, responsive webdoorsnede: login, selectie van een geautoriseerde actieve Administration, een autorisatiebewuste application shell, een dashboard-placeholder en logout. De Presentation-laag gebruikt server-rendered Laravel Blade, Tailwind CSS en alleen beperkte native JavaScript-interactie. Zij roept Application-use-cases aan en bevat geen boekhoudkundige logica of geldberekeningen.
+W1 levert de eerste veilige, responsive webdoorsnede: login, selectie van een geautoriseerde actieve Administration, een autorisatiebewuste application shell, echte read-only dashboardwaarden en logout. De Presentation-laag gebruikt server-rendered Laravel Blade, Tailwind CSS en alleen beperkte native JavaScript-interactie. Zij roept Application-use-cases aan en bevat geen boekhoudkundige logica of geldberekeningen.
 
 De actieve Administration wordt server-side in de sessie bewaard als onvertrouwde selectie en bij iedere administration-scoped request opnieuw getoetst aan een op dat moment geldig `AdministrationMembership`. Rollen en permissions worden eveneens server-side vóór uitvoering van de use case gecontroleerd. De algemene architectuur staat in `.ai/stories/W1-000.md`; de Identity-/authbridge en noodzakelijke persistencevolgorde in `.ai/stories/W1-000A.md`.
 
@@ -199,6 +199,8 @@ De actieve Administration wordt server-side in de sessie bewaard als onvertrouwd
 - W1-003 – Responsive application shell and navigation
 - W1-004 – Dashboard presentation foundation
 - W1-005 – Web foundation security and architecture review
+
+W1-005 heeft de volledige flow zonder mergeblockers geaccepteerd. De standaard PHPUnit-command omvat nu ook Integration. Niet-blokkerend vervolg omvat auditlogging, password reset/MFA en productie-sessionbeleid, typed VAT-auditgetters, fiscale orchestrationconsolidatie en autoritatieve permissionmapping voordat nieuwe webmodules worden geactiveerd.
 
 ## Releases
 

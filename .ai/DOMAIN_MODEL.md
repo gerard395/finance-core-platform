@@ -457,6 +457,8 @@ Een administration-scoped Application-use-case mag alleen worden uitgevoerd wann
 
 Het Laravel-authaccount is een Infrastructure-authenticatierecord en blijft onderscheiden van de zakelijke Domain `User`. Ieder authaccount verwijst in v1 via exact één verplichte, unieke UUID-reference naar één `UserId`; e-mail is geen identiteitskoppeling. Passwordhashes, remember-tokens en resetgegevens blijven buiten Domain. `AdministrationMembership` blijft eigendom van Identity en mag de immutable `AdministrationId` kennen; Administration krijgt geen dependency op Identity. Rollen en permissions zijn systeemwijde definities, terwijl `MembershipRole` hun toekenning per AdministrationMembership afbakent. Directe User-permissions bestaan niet in v1.
 
+W1 concretiseert deze grens met een per request opnieuw gevalideerde actieve Administration-context. Persistence kent tenantownership en samengestelde same-tenant constraints waar het Domain zelf geen AdministrationId draagt. Het read-only dashboard introduceert geen nieuwe financiële waarheid: omzet komt uit TrialBalance/ProfitAndLoss, openstaande debiteuren en crediteuren uit het immutable `OpenItemType` plus OpenItemsReport, en de BTW-positie uit VatOverview. Customer/Supplier-overlap staat los van de financiële OpenItem-classificatie. Presentation formatteert uitsluitend typed Money en verricht geen financiële berekening.
+
 ## 9. Reporting
 
 | Naam | Doel | Korte beschrijving |
