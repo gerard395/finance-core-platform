@@ -449,6 +449,12 @@ OpenItem append-only settlement
 | AdministrationMembership | Deelname aan een Administration vastleggen | De domeinrepresentatie van toegang van een gebruiker tot een administratieve eenheid. |
 | AuditRecord | Een relevante handeling traceerbaar maken | Een onveranderlijke registratie van een beveiligings- of bedrijfsrelevante actie. |
 
+### Webcontext en domeingrens
+
+Authentication en de actieve websessie zijn Presentation/Infrastructure-verantwoordelijkheden en geen nieuwe Domain-concepten. Het bestaande Identity Domain blijft eigenaar van `User`, `AdministrationMembership`, `MembershipRole`, `Role`, `RolePermission` en `Permission`.
+
+Een administration-scoped Application-use-case mag alleen worden uitgevoerd wanneer de geauthenticeerde gebruiker op het moment van de request een actief en geldig `AdministrationMembership` voor die Administration heeft en via actieve rol- en permissiontoekenningen de vereiste businessautorisatie bezit. Een in de sessie, route, query of form opgenomen `AdministrationId` is uitsluitend invoer en nooit zelfstandig bewijs van toegang. De Presentation-laag selecteert context en formatteert uitkomsten, maar muteert Domain uitsluitend via Application-use-cases. Een toekomstig systeembeheerpad moet expliciet geautoriseerd en geaudit zijn en blijft onderworpen aan dezelfde Administration-afbakening; globale impliciete tenant-bypass bestaat niet.
+
 ## 9. Reporting
 
 | Naam | Doel | Korte beschrijving |
