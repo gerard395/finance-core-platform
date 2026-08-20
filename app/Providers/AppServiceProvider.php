@@ -4,12 +4,17 @@ namespace App\Providers;
 
 use App\Application\Administration\AdministrationRepository;
 use App\Application\Identity\AdministrationMembershipRepository;
+use App\Application\Identity\AuthAccountStore;
 use App\Application\Identity\AuthorizationReadRepository;
 use App\Application\Identity\MembershipRoleRepository;
+use App\Application\Identity\PasswordHasher;
 use App\Application\Identity\PermissionRepository;
 use App\Application\Identity\RolePermissionRepository;
 use App\Application\Identity\RoleRepository;
 use App\Application\Identity\UserRepository;
+use App\Application\Shared\TransactionManager;
+use App\Infrastructure\Auth\EloquentAuthAccountStore;
+use App\Infrastructure\Auth\LaravelPasswordHasher;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAuthorizationReadRepository;
@@ -18,6 +23,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentPermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
+use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -35,6 +41,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(RolePermissionRepository::class, EloquentRolePermissionRepository::class);
         $this->app->bind(MembershipRoleRepository::class, EloquentMembershipRoleRepository::class);
         $this->app->bind(AuthorizationReadRepository::class, EloquentAuthorizationReadRepository::class);
+        $this->app->bind(AuthAccountStore::class, EloquentAuthAccountStore::class);
+        $this->app->bind(PasswordHasher::class, LaravelPasswordHasher::class);
+        $this->app->bind(TransactionManager::class, LaravelDatabaseTransactionManager::class);
     }
 
     /**
