@@ -10,11 +10,15 @@ use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
+use App\Domain\Fiscal\ValueObjects\TaxCodeName;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
@@ -23,6 +27,7 @@ use App\Domain\Reporting\VatOverview;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
+use App\Infrastructure\Persistence\Eloquent\EloquentTaxCodeRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryLineRecord;
@@ -100,6 +105,31 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         self::assertSame('0', $read->taxRate()->value());
         self::assertSame('0', $read->taxAmount()->amount());
         self::assertNull($read->taxJournalEntryLineId());
+    }
+
+    public function test_historical_snapshot_survives_current_rate_change_and_catalogue_deactivation(): void
+    {
+        $catalogue = new EloquentTaxCodeRepository;
+        $taxCode = new TaxCode(
+            new TaxCodeId(new Uuid('81000000-0000-4000-8000-000000000001')),
+            new TaxCodeCode('VATOUT'),
+            new TaxCodeName('Output tax'),
+            new TaxRate('21'),
+            TaxPostingDirection::Output,
+            TaxCodeStatus::Active,
+        );
+        $catalogue->save($this->administrationId(self::ADMINISTRATION_A), $taxCode);
+        $this->repository->append($this->posting(1, self::ADMINISTRATION_A, '2026-08-20', taxRate: '21'));
+
+        $taxCode->changeRate(new TaxRate('19.5'));
+        $taxCode->deactivate();
+        $catalogue->save($this->administrationId(self::ADMINISTRATION_A), $taxCode);
+
+        $historical = $this->read(self::ADMINISTRATION_A, '2026-08-20', '2026-08-20')[0];
+        self::assertSame('21', $historical->taxRate()->value());
+        self::assertSame(TaxPostingDirection::Output, $historical->direction());
+        self::assertSame('19.5', $catalogue->findByIdForAdministration($this->administrationId(self::ADMINISTRATION_A), $taxCode->id())?->rate()->value());
+        self::assertSame([], $catalogue->findActiveForAdministrationAndDirection($this->administrationId(self::ADMINISTRATION_A), TaxPostingDirection::Output));
     }
 
     public function test_reversal_roundtrips_without_mutating_original_and_uses_own_period(): void

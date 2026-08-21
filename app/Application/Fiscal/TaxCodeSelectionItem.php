@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace App\Domain\Fiscal\Entities;
+namespace App\Application\Fiscal;
 
+use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
@@ -11,14 +12,14 @@ use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 
-final class TaxCode
+final readonly class TaxCodeSelectionItem
 {
     public function __construct(
-        private readonly TaxCodeId $id,
-        private readonly TaxCodeCode $code,
+        private TaxCodeId $id,
+        private TaxCodeCode $code,
         private TaxCodeName $name,
         private TaxRate $rate,
-        private readonly TaxPostingDirection $direction,
+        private TaxPostingDirection $direction,
         private TaxCodeStatus $status,
     ) {}
 
@@ -42,38 +43,18 @@ final class TaxCode
         return $this->rate;
     }
 
-    public function status(): TaxCodeStatus
-    {
-        return $this->status;
-    }
-
     public function direction(): TaxPostingDirection
     {
         return $this->direction;
     }
 
-    public function isActive(): bool
+    public function status(): TaxCodeStatus
     {
-        return $this->status === TaxCodeStatus::Active;
+        return $this->status;
     }
 
-    public function rename(TaxCodeName $name): void
+    public function toTaxCode(): TaxCode
     {
-        $this->name = $name;
-    }
-
-    public function changeRate(TaxRate $rate): void
-    {
-        $this->rate = $rate;
-    }
-
-    public function activate(): void
-    {
-        $this->status = TaxCodeStatus::Active;
-    }
-
-    public function deactivate(): void
-    {
-        $this->status = TaxCodeStatus::Inactive;
+        return new TaxCode($this->id, $this->code, $this->name, $this->rate, $this->direction, $this->status);
     }
 }

@@ -306,6 +306,7 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
                 new TaxCodeCode('vat'.$rate),
                 new TaxCodeName('VAT '.$rate.'%'),
                 new TaxRate($rate),
+                TaxPostingDirection::Input,
                 TaxCodeStatus::Active,
             ),
             new LedgerAccountId($this->nextUuid('7')),

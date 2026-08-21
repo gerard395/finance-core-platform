@@ -8,7 +8,7 @@ Fiscal biedt capabilityneutrale fiscale classificatie, berekening en geposte fis
 
 ## TaxCode
 
-TaxCode beheert een immutable identiteit en code, een wijzigbare naam, precies één actueel immutable TaxRate en een actieve of inactieve status.
+TaxCode beheert een immutable identiteit, code en Input/Output-richting, een wijzigbare naam, precies één actueel immutable TaxRate en een actieve of inactieve status. Administration ownership ligt buiten de Domain entity en wordt door Application en persistence bewaakt.
 
 ## TaxPosting
 
@@ -17,9 +17,11 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 ## Invarianten
 
 - TaxCodeId en TaxCodeCode zijn immutable.
+- TaxCode-richting gebruikt `TaxPostingDirection`, is immutable en voorkomt selectie via code- of naamheuristiek.
 - TaxCodeName is verplicht en kan uitsluitend via `rename()` wijzigen.
 - TaxRate is een immutable decimal-stringpercentage tussen 0.0000 en 100.0000 met maximaal vier decimalen.
 - `changeRate()` vervangt het actuele tarief; historische tarieven vallen buiten F1-001.
+- TaxCodes hebben in v1 geen effective-dated rate history. Een wijziging beïnvloedt toekomstige selectie, nooit bestaande TaxPostings.
 - Activeren en deactiveren zijn idempotent.
 - TaxPosting-bedragen zijn niet-negatief en gebruiken exact dezelfde Currency.
 - TaxPosting bevat altijd een baseJournalEntryLineId.
@@ -44,4 +46,5 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.
+- De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden; er worden zonder autoritatieve configuratie geen fiscale defaults geprovisioned.
 - Globale, concurrency-safe uniciteit van TaxPostingId en dubbele-reversalpreventie worden later door persistenceconstraints en transacties afgedwongen; de huidige policies bewaken een volledig en consistent aangeleverde historie.
