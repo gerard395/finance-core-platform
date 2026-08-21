@@ -36,11 +36,15 @@ Dit document benoemt de businessautorisaties van Finance Core Platform. Het besc
 
 | Permission Name | Korte beschrijving |
 | --- | --- |
-| View Sales Documents | Offertes, verkooporders en verkoopfacturen raadplegen. |
-| Manage Quotations | Offertes opstellen, wijzigen en hun zakelijke status beheren. |
-| Manage Sales Orders | Verkooporders vastleggen, wijzigen en verwerken. |
-| Issue Sales Invoices | Verkoopfacturen definitief uitgeven. |
-| Issue Sales Credit Invoices | Verkoopcreditfacturen definitief uitgeven. |
+| View Sales Documents | Offertes, verkooporders, verkoopfacturen en verkoopcreditfacturen raadplegen. |
+| Manage Quotations | Offertes opstellen, wijzigen en via hun toegestane zakelijke statusovergangen beheren. |
+| Manage Sales Orders | Verkooporders vastleggen, wijzigen en via hun toegestane zakelijke statusovergangen verwerken. |
+| Manage Sales Invoice Drafts | Concept-verkoopfacturen aanmaken en wijzigen en hun regels beheren zolang de documentstatus dit toestaat; geeft geen finalisatie- of postingbevoegdheid. |
+| Issue Sales Invoices | Verkoopfacturen finaliseren en definitief uitgeven; geeft geen financiële of fiscale postingbevoegdheid. |
+| Post Sales Invoices | Reeds definitieve verkoopfacturen via de daarvoor bestemde Sales-, Accounting- en Fiscal-orchestratie financieel en fiscaal posten; geeft geen draftbeheer- of finalisatiebevoegdheid. |
+| Manage Sales Credit Invoice Drafts | Concept-verkoopcreditfacturen aanmaken en wijzigen en hun regels beheren zolang de documentstatus dit toestaat; geeft geen finalisatie-, posting- of reversalbevoegdheid. |
+| Issue Sales Credit Invoices | Verkoopcreditfacturen finaliseren en definitief uitgeven; geeft geen financiële posting- of fiscale reversalbevoegdheid. |
+| Post Sales Credit Invoices | Reeds definitieve verkoopcreditfacturen via de daarvoor bestemde creditposting-orchestratie financieel en fiscaal posten en uitsluitend daarbij de gekoppelde oorspronkelijke fiscale posting reversen; geeft geen draftbeheer, finalisatie of algemene reversalbevoegdheid. |
 
 ## Purchasing
 

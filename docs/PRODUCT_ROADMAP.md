@@ -244,6 +244,7 @@ W3 is afgerond met volledige Relation-aggregate-reconstitutie en tenant-veilige 
 W4 bouwt de eerste veilige verkoopdoorsnede voor Quotations, Orders, SalesInvoices en SalesCreditInvoices. De ontwerp-review stelt vast dat Domain-statusmachines en fiscale postingbouwstenen bestaan, maar dat permissionidentiteiten, duurzame nummering, aggregate-reconstitutie, snapshots/TaxCode-readiness en alle Sales-persistence eerst nodig zijn. Posting blijft uitsluitend via PostingEngine en fiscale Application-orchestratie verlopen en moet JournalEntry, TaxPostings, Receivable OpenItem en documentstatus transactioneel en replay-safe bewaren.
 
 - W4-000 – Sales web module design
+- W4-000A0 – Sales business permission catalogue
 - W4-000A – Sales permission identity & provisioning
 - W4-000B – Sales numbering persistence
 - W4-000C – Sales reconstitution & mutation contracts
