@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Identity\Definitions\RelationsPermission;
+use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
@@ -12,7 +13,11 @@ use App\Http\Controllers\Relations\RelationCreateController;
 use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
 use App\Http\Controllers\Relations\RelationShowController;
+use App\Http\Controllers\Sales\QuotationController;
+use App\Http\Controllers\Sales\QuotationLifecycleController;
+use App\Http\Controllers\Sales\QuotationLineController;
 use App\Http\Middleware\EnsureRelationsPermission;
+use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -140,3 +145,43 @@ Route::post('/relations/{relation}/supplier', [RelationClassificationController:
 Route::delete('/relations/{relation}/supplier', [RelationClassificationController::class, 'destroySupplier'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifySupplier)])
     ->name('relations.supplier.destroy');
+
+Route::get('/sales/quotations', [QuotationController::class, 'index'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])
+    ->name('sales.quotations.index');
+Route::get('/sales/quotations/create', [QuotationController::class, 'create'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.create');
+Route::post('/sales/quotations', [QuotationController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.store');
+Route::get('/sales/quotations/{quotation}', [QuotationController::class, 'show'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])
+    ->name('sales.quotations.show');
+Route::get('/sales/quotations/{quotation}/edit', [QuotationController::class, 'edit'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.edit');
+Route::put('/sales/quotations/{quotation}', [QuotationController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.update');
+Route::post('/sales/quotations/{quotation}/lines', [QuotationLineController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.store');
+Route::put('/sales/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.update');
+Route::delete('/sales/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'destroy'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.destroy');
+Route::post('/sales/quotations/{quotation}/send', [QuotationLifecycleController::class, 'send'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.send');
+Route::post('/sales/quotations/{quotation}/accept', [QuotationLifecycleController::class, 'accept'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.accept');
+Route::post('/sales/quotations/{quotation}/reject', [QuotationLifecycleController::class, 'reject'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.reject');
+Route::post('/sales/quotations/{quotation}/expire', [QuotationLifecycleController::class, 'expire'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.expire');
