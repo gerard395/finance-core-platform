@@ -63,3 +63,9 @@ De eerste Sales-domeiniteratie bevat geen:
 - journaalboekingen of Posting Engine; die horen bij Accounting;
 - betalingen of openstaande posten; die horen bij Banking respectievelijk Accounting;
 - Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+
+## Nummeruitgifte
+
+De vier documentconstructors vereisen hun businessnummer al bij het ontstaan van een Draft. Application alloceert daarom bij documentcreate een typed nummer uit een Administration-scoped, capability-owned Sales-sequence. V1 gebruikt `Q000001`, `O000001`, `F000001` en `C000001` voor respectievelijk Quotation, Order, SalesInvoice en SalesCreditInvoice. Deze persistenceverantwoordelijkheid verandert de frameworkonafhankelijke Sales-aggregates niet.
+
+Succesvol gecommitteerde nummers worden niet gerecycled. Allocation en toekomstige documentpersistence horen in dezelfde transaction boundary; een volledige rollback draait ook de sequence-increment terug. Configureerbare formaten, jaarreset en productievalidatie van actuele wettelijke/fiscale nummeringseisen zijn expliciet vervolgscope.

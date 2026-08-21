@@ -42,6 +42,8 @@ use App\Application\Relations\RelationUpdater;
 use App\Application\Relations\SupplierClassificationWriter;
 use App\Application\Relations\SupplierReadRepository;
 use App\Application\Relations\SupplierStore;
+use App\Application\Sales\SalesNumberAllocator;
+use App\Application\Sales\SalesNumberSequenceProvisioner;
 use App\Application\Shared\TransactionManager;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
@@ -71,6 +73,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
 use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use App\Infrastructure\Relations\LaravelRelationClassificationIdentityGenerator;
+use App\Infrastructure\Sales\DatabaseSalesNumberSequence;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -110,6 +113,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(RelationListReadRepository::class, EloquentRelationListReadRepository::class);
         $this->app->bind(RelationNumberAllocator::class, DatabaseRelationNumberSequence::class);
         $this->app->bind(RelationNumberSequenceProvisioner::class, DatabaseRelationNumberSequence::class);
+        $this->app->bind(SalesNumberAllocator::class, DatabaseSalesNumberSequence::class);
+        $this->app->bind(SalesNumberSequenceProvisioner::class, DatabaseSalesNumberSequence::class);
         $this->app->bind(RelationClassificationIdentityGenerator::class, LaravelRelationClassificationIdentityGenerator::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);
