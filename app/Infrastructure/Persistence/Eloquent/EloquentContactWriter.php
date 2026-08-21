@@ -57,7 +57,7 @@ final class EloquentContactWriter implements ContactWriter
 
     private function validatedContact(AdministrationId $administrationId, Relation $relation, ContactId $contactId): ?Contact
     {
-        if ($relation->addresses() !== [] || $relation->bankAccounts() !== []) {
+        if ($relation->bankAccounts() !== []) {
             throw new DomainException('Unsupported Relation child state cannot be discarded by Contact persistence.');
         }
         if (! RelationRecord::query()->whereKey($relation->id()->toString())->where('administration_id', $administrationId->toString())->exists()) {

@@ -137,13 +137,15 @@ final class ContactPersistenceTest extends TestCase
         DB::table('relations')->where('id', $this->relationId(1)->toString())->delete();
     }
 
-    public function test_contact_writer_rejects_future_loaded_child_state(): void
+    public function test_contact_writer_accepts_supported_loaded_address_state_without_removing_it(): void
     {
-        $relation = $this->relation(1, 'A-1');
+        $this->createContact(1, 'Address aware contact', null, null);
+        $relation = (new EloquentRelationRepository)->findByIdForAdministration($this->administrationId(self::ADMIN_A), $this->relationId(1));
+        self::assertNotNull($relation);
         $relation->addAddress(new Address($this->addressId(1), AddressType::Visiting, new AddressLine('Main Street 1'), null, new PostalCode('1234 AB'), new City('Amsterdam'), new CountryCode('NL'), true));
 
-        $this->expectException(DomainException::class);
-        (new EloquentContactWriter)->update($this->administrationId(self::ADMIN_A), $relation, $this->contactId(1));
+        self::assertSame(ContactWriteResult::Success, (new EloquentContactWriter)->update($this->administrationId(self::ADMIN_A), $relation, $this->contactId(1)));
+        self::assertTrue($relation->hasAddress($this->addressId(1)));
     }
 
     public function test_contact_writer_rejects_future_loaded_bank_account_state(): void
