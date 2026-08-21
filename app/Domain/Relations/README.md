@@ -8,6 +8,10 @@ Het Relations Domain beheert zakelijke relaties en hun expliciete commerciële c
 
 `Relation` is de Aggregate Root voor gedeelde relatiegegevens. Identiteit en code zijn onveranderlijk; de displaynaam en actieve status wijzigen uitsluitend via expliciet domeingedrag.
 
+Nieuwe Relations ontstaan via de constructor en nieuwe children worden uitsluitend via de bestaande `addContact()`, `addAddress()` en `addBankAccount()`-lifecycle toegevoegd. `Relation::reconstitute()` is uitsluitend de side-effectvrije hydrationgrens voor reeds bestaande feitelijke state. Zij ontvangt Relation-state en alle drie complete childcollecties ineens, behoudt identities en statussen exact en weigert dubbele childidentiteiten zonder `add*()`- of statusgedrag te replayen.
+
+Contact, Address en BankAccount dragen zelf geen RelationId. Hun ownership ontstaat binnen precies één Relation-aggregate en moet door de aanroepende persistencecontext met RelationId en AdministrationId worden afgedwongen. Collection `remove*()` betekent alleen verwijderen uit de in-memory aggregatecollectie en impliceert geen database-delete. De v1-duurzame lifecycle gebruikt voor alle drie children `deactivate()` en `activate()` met behoud van dezelfde identity.
+
 ## Customer
 
 `Customer` classificeert een bestaande Relation als klant. De classificatie bevat uitsluitend een eigen onveranderlijke identiteit, de onveranderlijke RelationId, een onveranderlijk CustomerNumber en een idempotent wijzigbare actieve status.
