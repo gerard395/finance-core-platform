@@ -222,6 +222,21 @@ W2 realiseert de eerste administration-scoped beheerfunctionaliteit voor Relatio
 
 De aanbevolen vervolgbatch is Relations Child Data: tenant-veilige, aggregate-owned persistence en webflows voor Contacts, Addresses en BankAccounts. Deze basis voorkomt tijdelijke of gedupliceerde contact- en factuuradresmodellen wanneer daarna Sales Web wordt gebouwd.
 
+### Batch W3 – Relations Child Data
+
+W3 maakt de bestaande Relation-owned Contacts, Addresses en BankAccounts duurzaam en tenant-veilig beschikbaar op Relation detail. Volledige aggregate-reconstitutie en expliciete loaded-childveiligheid gaan vooraf aan childwrites. De huidige immutable adresinhoud vereist daarnaast een expliciet mutationcontract voordat adresbewerking kan worden gebouwd. Childverwijdering gebruikt in v1 de bestaande deactivate/reactivate-lifecycle en geen hard delete; duplicate- en primarybeleid worden niet verzonnen.
+
+- W3-000 – Relations child data design
+- W3-000A – Relation child reconstitution & lifecycle contracts
+- W3-000B – Address mutation contract
+- W3-001 – Contact persistence & application contracts
+- W3-002 – Contact web UI
+- W3-003 – Address persistence & application contracts
+- W3-004 – Address web UI
+- W3-005 – BankAccount persistence & application contracts
+- W3-006 – BankAccount web UI
+- W3-007 – Relations child data review
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
