@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Relations;
 
 use App\Application\Identity\PermissionAuthorizer;
+use App\Application\Relations\ContactReadRepository;
 use App\Application\Relations\GetRelationDetail;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Relations\ValueObjects\RelationId;
@@ -19,6 +20,7 @@ final class RelationShowController extends Controller
 {
     public function __construct(
         private readonly GetRelationDetail $getRelationDetail,
+        private readonly ContactReadRepository $contacts,
         private readonly PermissionAuthorizer $permissionAuthorizer,
     ) {}
 
@@ -36,10 +38,16 @@ final class RelationShowController extends Controller
 
         abort_if($detail === null, 404);
 
+        $contacts = array_values(array_filter(array_map(
+            fn ($contact) => $this->contacts->findForRelation($context->administration->id(), $relationId, $contact->id),
+            $this->contacts->listForRelation($context->administration->id(), $relationId),
+        )));
+
         return view('relations.show', [
             'domainUser' => $context->user,
             'administrationContext' => $context,
             'relation' => $detail,
+            'contacts' => $contacts,
             'canViewRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::View->id()),
             'canUpdateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Update->id()),
             'canClassifyCustomer' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::ClassifyCustomer->id()),

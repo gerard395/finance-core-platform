@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Tests\Feature\Relations;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Relations\ContactWriteResult;
+use App\Application\Relations\CreateContact;
 use App\Application\Relations\RelationNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
@@ -30,9 +32,13 @@ use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Relations\Entities\Customer;
 use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\Entities\Supplier;
+use App\Domain\Relations\ValueObjects\ContactId;
+use App\Domain\Relations\ValueObjects\ContactName;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\CustomerNumber;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\EmailAddress as ContactEmailAddress;
+use App\Domain\Relations\ValueObjects\PhoneNumber;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Relations\ValueObjects\SupplierId;
@@ -193,6 +199,93 @@ final class RelationsIndexTest extends TestCase
         (new EloquentMembershipRoleRepository)->save($assignment);
         $this->get('/app')->assertDontSeeText('Alle relaties');
         $this->get('/relations')->assertForbidden();
+    }
+
+    public function test_relation_detail_renders_contact_section_empty_state_status_and_escaped_values(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 31);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationId = $this->relation(self::ADMIN_A, 31, 'CONTACT-31', 'Contact relation', true);
+
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSeeText('Contactpersonen')->assertSeeText('Nog geen contactpersonen.')->assertSeeText('Contactpersoon toevoegen');
+        $contactId = $this->contact($relationId, 31, '<Contact>', 'safe@example.com', '+31 20 123 4567');
+        $this->delete(route('relations.contacts.deactivate', [$relationId->toString(), $contactId->toString()]))->assertRedirect(route('relations.show', $relationId->toString()));
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSee('&lt;Contact&gt;', false)->assertDontSee('<Contact>', false)->assertSeeText('safe@example.com')->assertSeeText('+31 20 123 4567')->assertSeeText('Inactief');
+    }
+
+    public function test_view_only_is_read_only_and_update_permission_is_required_for_every_mutation(): void
+    {
+        $this->authorizedScenario();
+        $relationId = $this->relation(self::ADMIN_A, 32, 'CONTACT-32', 'Read only', true);
+        $contactId = $this->contact($relationId, 32, 'Read Person', null, null);
+
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertDontSeeText('Contactpersoon toevoegen')->assertDontSeeText('Bewerken');
+        $this->get(route('relations.contacts.show', [$relationId->toString(), $contactId->toString()]))->assertOk()->assertDontSeeText('Contactpersoon bewerken')->assertDontSeeText('Contactpersoon deactiveren');
+        $this->get(route('relations.contacts.create', $relationId->toString()))->assertForbidden();
+        $this->post(route('relations.contacts.store', $relationId->toString()), ['name' => 'Denied Person'])->assertForbidden();
+        $this->put(route('relations.contacts.update', [$relationId->toString(), $contactId->toString()]), ['name' => 'Denied Person'])->assertForbidden();
+        $this->delete(route('relations.contacts.deactivate', [$relationId->toString(), $contactId->toString()]))->assertForbidden();
+        $this->post(route('relations.contacts.activate', [$relationId->toString(), $contactId->toString()]))->assertForbidden();
+    }
+
+    public function test_create_update_optional_removal_and_lifecycle_use_tenant_scoped_contracts(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 33);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationId = $this->relation(self::ADMIN_A, 33, 'CONTACT-33', 'Mutable relation', true);
+
+        $this->post(route('relations.contacts.store', $relationId->toString()), ['name' => 'Created Person', 'email' => '', 'phone' => '', 'administration_id' => self::ADMIN_B, 'contact_id' => $this->uuid('f', 1)->toString()])
+            ->assertRedirect(route('relations.show', $relationId->toString()));
+        $record = DB::table('relation_contacts')->where('relation_id', $relationId->toString())->first();
+        self::assertNotNull($record);
+        self::assertSame(self::ADMIN_A, $record->administration_id);
+        self::assertNotSame($this->uuid('f', 1)->toString(), $record->contact_id);
+        self::assertNull($record->email);
+        self::assertNull($record->phone);
+
+        $url = route('relations.contacts.update', [$relationId->toString(), $record->contact_id]);
+        $this->put($url, ['name' => 'Changed Person', 'email' => 'changed@example.com', 'phone' => '+31 20 222 2222'])->assertRedirect(route('relations.show', $relationId->toString()));
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $record->contact_id, 'contact_name' => 'Changed Person', 'email' => 'changed@example.com', 'phone' => '+31 20 222 2222']);
+        $this->put($url, ['name' => 'Changed Person', 'email' => '', 'phone' => ''])->assertRedirect();
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $record->contact_id, 'email' => null, 'phone' => null]);
+        $this->delete(route('relations.contacts.deactivate', [$relationId->toString(), $record->contact_id]))->assertRedirect();
+        $this->delete(route('relations.contacts.deactivate', [$relationId->toString(), $record->contact_id]))->assertRedirect();
+        $this->post(route('relations.contacts.activate', [$relationId->toString(), $record->contact_id]))->assertRedirect();
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $record->contact_id, 'status' => 'active']);
+        $this->assertDatabaseCount('relation_contacts', 1);
+    }
+
+    public function test_contact_routes_validate_and_hide_malformed_cross_relation_and_cross_tenant_ids(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 34);
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_B, 35);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationA = $this->relation(self::ADMIN_A, 34, 'CONTACT-34', 'Tenant A', true);
+        $otherA = $this->relation(self::ADMIN_A, 35, 'CONTACT-35', 'Other A', true);
+        $relationB = $this->relation(self::ADMIN_B, 36, 'CONTACT-36', 'Tenant B', true);
+        $contactA = $this->contact($relationA, 34, 'Owned Contact', null, null);
+
+        $this->post(route('relations.contacts.store', $relationA->toString()), ['name' => 'x', 'email' => 'wrong', 'phone' => 'bad'])->assertSessionHasErrors(['name', 'email', 'phone']);
+        $this->get('/relations/not-a-uuid/contacts/create')->assertNotFound();
+        $this->get('/relations/'.$relationA->toString().'/contacts/not-a-uuid')->assertNotFound();
+        $this->get(route('relations.contacts.show', [$otherA->toString(), $contactA->toString()]))->assertNotFound();
+        $this->get(route('relations.contacts.show', [$relationB->toString(), $contactA->toString()]))->assertNotFound();
+        $this->put(route('relations.contacts.update', [$otherA->toString(), $contactA->toString()]), ['name' => 'Hidden Contact'])->assertNotFound();
+    }
+
+    public function test_update_only_mutations_redirect_safely_to_app(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Update, 36);
+        $relationId = $this->relation(self::ADMIN_A, 37, 'CONTACT-37', 'Update only', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $this->post(route('relations.contacts.store', $relationId->toString()), ['name' => 'Update Only Person'])
+            ->assertRedirect(route('app'));
+        $this->get(route('relations.show', $relationId->toString()))->assertForbidden();
     }
 
     public function test_empty_states_are_distinct(): void
@@ -550,6 +643,18 @@ final class RelationsIndexTest extends TestCase
         (new EloquentRelationRepository)->save(new AdministrationId(new Uuid($administrationId)), new Relation($id, new RelationCode($code), new DisplayName($name), $active));
 
         return $id;
+    }
+
+    private function contact(RelationId $relationId, int $sequence, string $name, ?string $email, ?string $phone): ContactId
+    {
+        $contactId = new ContactId($this->uuid('3', $sequence));
+        $result = $this->app->make(CreateContact::class)->execute(
+            new AdministrationId(new Uuid(self::ADMIN_A)), $relationId, $contactId, new ContactName($name),
+            $email === null ? null : new ContactEmailAddress($email), $phone === null ? null : new PhoneNumber($phone),
+        );
+        self::assertSame(ContactWriteResult::Success, $result);
+
+        return $contactId;
     }
 
     private function customer(string $administrationId, RelationId $relationId, int $sequence, bool $active = true): void
