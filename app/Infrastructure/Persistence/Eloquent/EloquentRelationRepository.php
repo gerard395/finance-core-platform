@@ -10,11 +10,33 @@ use App\Application\Relations\RelationStore;
 use App\Application\Relations\RelationUpdater;
 use App\Application\Relations\RelationWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Entities\Address;
+use App\Domain\Relations\Entities\BankAccount;
+use App\Domain\Relations\Entities\Contact;
 use App\Domain\Relations\Entities\Relation;
+use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\Enums\BankAccountStatus;
+use App\Domain\Relations\Enums\ContactStatus;
+use App\Domain\Relations\ValueObjects\AccountName;
+use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\BankAccountId;
+use App\Domain\Relations\ValueObjects\Bic;
+use App\Domain\Relations\ValueObjects\City;
+use App\Domain\Relations\ValueObjects\ContactId;
+use App\Domain\Relations\ValueObjects\ContactName;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\EmailAddress;
+use App\Domain\Relations\ValueObjects\Iban;
+use App\Domain\Relations\ValueObjects\PhoneNumber;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Identity\Uuid;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationBankAccountRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationContactRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -88,7 +110,6 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
 
     public function update(AdministrationId $administrationId, Relation $relation): RelationWriteResult
     {
-        $this->assertNoLoadedChildren($relation);
         $record = RelationRecord::query()
             ->whereKey($relation->id()->toString())
             ->where('administration_id', $administrationId->toString())
@@ -146,11 +167,47 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
 
     private function hydrate(RelationRecord $record): Relation
     {
-        return new Relation(
+        $contacts = RelationContactRecord::query()
+            ->where('administration_id', $record->getAttribute('administration_id'))
+            ->where('relation_id', $record->getAttribute('id'))
+            ->orderBy('contact_id')->get()
+            ->map(function (RelationContactRecord $contact): Contact {
+                $email = $contact->getAttribute('email');
+                $phone = $contact->getAttribute('phone');
+
+                return new Contact(
+                    new ContactId(new Uuid($contact->getAttribute('contact_id'))),
+                    new ContactName($contact->getAttribute('contact_name')),
+                    $email === null ? null : new EmailAddress($email),
+                    $phone === null ? null : new PhoneNumber($phone),
+                    ContactStatus::from($contact->getAttribute('status')),
+                );
+            })->all();
+
+        $addresses = RelationAddressRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('relation_id', $record->getAttribute('id'))->orderBy('address_id')->get()
+            ->map(function (RelationAddressRecord $address): Address {
+                $line2 = $address->getAttribute('address_line_2');
+
+                return new Address(new AddressId(new Uuid($address->getAttribute('address_id'))), AddressType::from($address->getAttribute('address_type')),
+                    new AddressLine($address->getAttribute('address_line_1')), $line2 === null ? null : new AddressLine($line2), new PostalCode($address->getAttribute('postal_code')),
+                    new City($address->getAttribute('city')), new CountryCode($address->getAttribute('country_code')), (bool) $address->getAttribute('active'));
+            })->all();
+
+        $bankAccounts = RelationBankAccountRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('relation_id', $record->getAttribute('id'))->orderBy('bank_account_id')->get()
+            ->map(function (RelationBankAccountRecord $record): BankAccount {
+                $bic = $record->getAttribute('bic');
+
+                return new BankAccount(new BankAccountId(new Uuid($record->getAttribute('bank_account_id'))), new Iban($record->getAttribute('iban')), $bic === null ? null : new Bic($bic), new AccountName($record->getAttribute('account_name')), (bool) $record->getAttribute('active') ? BankAccountStatus::Active : BankAccountStatus::Inactive);
+            })->all();
+
+        return Relation::reconstitute(
             new RelationId(new Uuid($record->getAttribute('id'))),
             new RelationCode($record->getAttribute('code')),
             new DisplayName($record->getAttribute('display_name')),
             (bool) $record->getAttribute('active'),
+            $contacts,
+            $addresses,
+            $bankAccounts,
         );
     }
 }

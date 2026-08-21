@@ -29,6 +29,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
 use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use ReflectionClass;
 use Tests\TestCase;
 
@@ -146,7 +147,7 @@ final class RelationWriteContractsTest extends TestCase
         $this->assertDatabaseMissing('relations', ['id' => $this->relationId(99)->toString()]);
     }
 
-    public function test_explicit_adapters_keep_loaded_child_guard_for_create_and_update(): void
+    public function test_create_keeps_loaded_child_guard(): void
     {
         $relation = $this->relation(1, 'REL-01', 'With child');
         $relation->addContact(new Contact(
@@ -158,16 +159,72 @@ final class RelationWriteContractsTest extends TestCase
         ));
         $repository = new EloquentRelationRepository;
 
-        foreach (['create', 'update'] as $operation) {
-            try {
-                $repository->{$operation}($this->administrationId(self::ADMINISTRATION_A), $relation);
-                self::fail('Loaded Relation children must never be silently discarded.');
-            } catch (DomainException $exception) {
-                self::assertSame('Relation child persistence is outside this repository contract.', $exception->getMessage());
-            }
+        try {
+            $repository->create($this->administrationId(self::ADMINISTRATION_A), $relation);
+            self::fail('Loaded Relation children must never be silently discarded during creation.');
+        } catch (DomainException $exception) {
+            self::assertSame('Relation child persistence is outside this repository contract.', $exception->getMessage());
         }
 
         $this->assertDatabaseCount('relations', 0);
+    }
+
+    public function test_relation_update_accepts_hydrated_children_and_preserves_every_child_type(): void
+    {
+        self::assertSame(RelationWriteResult::Success, $this->createRelation(1, 'REL-01', 'With children'));
+
+        DB::table('relation_contacts')->insert([
+            'contact_id' => $this->uuid('7', 1)->toString(),
+            'administration_id' => self::ADMINISTRATION_A,
+            'relation_id' => $this->relationId(1)->toString(),
+            'contact_name' => 'Contact Person',
+            'email' => 'contact@example.test',
+            'phone' => '+31612345678',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('relation_addresses')->insert([
+            'address_id' => $this->uuid('8', 1)->toString(),
+            'administration_id' => self::ADMINISTRATION_A,
+            'relation_id' => $this->relationId(1)->toString(),
+            'address_type' => 'invoice',
+            'address_line_1' => 'Reviewstraat 7',
+            'address_line_2' => null,
+            'postal_code' => '1234 AB',
+            'city' => 'Utrecht',
+            'country_code' => 'NL',
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('relation_bank_accounts')->insert([
+            'bank_account_id' => $this->uuid('9', 1)->toString(),
+            'administration_id' => self::ADMINISTRATION_A,
+            'relation_id' => $this->relationId(1)->toString(),
+            'iban' => 'NL91ABNA0417164300',
+            'bic' => 'ABNANL2A',
+            'account_name' => 'Review Account',
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $result = $this->update()->execute(
+            $this->administrationId(self::ADMINISTRATION_A),
+            $this->relationId(1),
+            new DisplayName('Renamed with children'),
+            false,
+        );
+
+        self::assertSame(RelationWriteResult::Success, $result);
+        $this->assertDatabaseHas('relations', ['id' => $this->relationId(1)->toString(), 'display_name' => 'Renamed with children', 'active' => false]);
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $this->uuid('7', 1)->toString(), 'contact_name' => 'Contact Person', 'status' => 'active']);
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $this->uuid('8', 1)->toString(), 'address_line_1' => 'Reviewstraat 7', 'active' => true]);
+        $this->assertDatabaseHas('relation_bank_accounts', ['bank_account_id' => $this->uuid('9', 1)->toString(), 'account_name' => 'Review Account', 'active' => true]);
+        $this->assertDatabaseCount('relation_contacts', 1);
+        $this->assertDatabaseCount('relation_addresses', 1);
+        $this->assertDatabaseCount('relation_bank_accounts', 1);
     }
 
     public function test_relation_code_has_no_mutation_api_and_write_contracts_are_bound(): void

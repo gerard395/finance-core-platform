@@ -16,11 +16,11 @@ final class Address
     public function __construct(
         private readonly AddressId $id,
         private readonly AddressType $type,
-        private readonly AddressLine $addressLine,
-        private readonly ?AddressLine $addressLine2,
-        private readonly PostalCode $postalCode,
-        private readonly City $city,
-        private readonly CountryCode $countryCode,
+        private AddressLine $addressLine,
+        private ?AddressLine $addressLine2,
+        private PostalCode $postalCode,
+        private City $city,
+        private CountryCode $countryCode,
         private bool $active,
     ) {}
 
@@ -62,6 +62,20 @@ final class Address
     public function isActive(): bool
     {
         return $this->active;
+    }
+
+    public function changeDetails(
+        AddressLine $addressLine,
+        ?AddressLine $addressLine2,
+        PostalCode $postalCode,
+        City $city,
+        CountryCode $countryCode,
+    ): void {
+        $this->addressLine = $addressLine;
+        $this->addressLine2 = $addressLine2;
+        $this->postalCode = $postalCode;
+        $this->city = $city;
+        $this->countryCode = $countryCode;
     }
 
     public function activate(): void

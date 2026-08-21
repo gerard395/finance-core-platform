@@ -33,6 +33,35 @@
         </dl>
     </section>
 
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="contactpersonen-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="contactpersonen-heading" class="text-lg font-semibold">Contactpersonen</h2>
+            @if ($canUpdateRelations)<a href="{{ route('relations.contacts.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Contactpersoon toevoegen</a>@endif
+        </div>
+        @if ($contacts === [])
+            <p class="mt-4 text-slate-600">Nog geen contactpersonen.</p>
+        @else
+            <div class="mt-4 hidden overflow-x-auto sm:block">
+                <table class="w-full text-left"><thead><tr class="border-b border-slate-200"><th class="px-3 py-2">Naam</th><th class="px-3 py-2">E-mail</th><th class="px-3 py-2">Telefoon</th><th class="px-3 py-2">Status</th><th class="px-3 py-2"><span class="sr-only">Acties</span></th></tr></thead>
+                    <tbody>@foreach ($contacts as $contact)<tr class="border-b border-slate-100"><td class="px-3 py-3"><a class="font-medium text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.contacts.show', [$relation->id()->toString(), $contact->id->toString()]) }}">{{ $contact->name->toString() }}</a></td><td class="px-3 py-3">{{ $contact->emailAddress?->toString() ?? '—' }}</td><td class="px-3 py-3">{{ $contact->phoneNumber?->toString() ?? '—' }}</td><td class="px-3 py-3">{{ $contact->status->value === 'active' ? 'Actief' : 'Inactief' }}</td><td class="px-3 py-3">@if ($canUpdateRelations)<a class="font-medium text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.contacts.edit', [$relation->id()->toString(), $contact->id->toString()]) }}">Bewerken</a>@endif</td></tr>@endforeach</tbody>
+                </table>
+            </div>
+            <div class="mt-4 grid gap-3 sm:hidden">@foreach ($contacts as $contact)<article class="rounded-lg border border-slate-200 p-4"><h3 class="font-semibold"><a class="text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.contacts.show', [$relation->id()->toString(), $contact->id->toString()]) }}">{{ $contact->name->toString() }}</a></h3><p class="mt-2 text-sm">{{ $contact->emailAddress?->toString() ?? 'Geen e-mail' }}</p><p class="mt-1 text-sm">{{ $contact->phoneNumber?->toString() ?? 'Geen telefoon' }}</p><p class="mt-2 font-medium">{{ $contact->status->value === 'active' ? 'Actief' : 'Inactief' }}</p>@if ($canUpdateRelations)<a class="mt-3 inline-flex min-h-11 items-center font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700" href="{{ route('relations.contacts.edit', [$relation->id()->toString(), $contact->id->toString()]) }}">Bewerken</a>@endif</article>@endforeach</div>
+        @endif
+    </section>
+
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="adressen-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="adressen-heading" class="text-lg font-semibold">Adressen</h2>@if($canUpdateRelations)<a href="{{ route('relations.addresses.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Adres toevoegen</a>@endif</div>
+        @if($addresses === [])<p class="mt-4 text-slate-600">Nog geen adressen.</p>@else
+            <div class="mt-4 grid gap-4 md:grid-cols-2">@foreach($addresses as $address)<article class="rounded-lg border border-slate-200 p-4"><div class="flex items-start justify-between gap-3"><h3 class="font-semibold"><a class="text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.addresses.show', [$relation->id()->toString(), $address->id->toString()]) }}">{{ $addressTypePresenter::label($address->type) }}</a></h3><span class="text-sm font-medium">{{ $address->active ? 'Actief' : 'Inactief' }}</span></div><p class="mt-2">{{ $address->addressLine->value() }}@if($address->addressLine2)<br>{{ $address->addressLine2->value() }}@endif<br>{{ $address->postalCode->value() }} {{ $address->city->value() }}<br>{{ $address->countryCode->value() }}</p>@if($canUpdateRelations)<a href="{{ route('relations.addresses.edit', [$relation->id()->toString(), $address->id->toString()]) }}" class="mt-3 inline-flex min-h-11 items-center font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Bewerken</a>@endif</article>@endforeach</div>
+        @endif
+    </section>
+
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="bankrekeningen-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="bankrekeningen-heading" class="text-lg font-semibold">Bankrekeningen</h2>@if($canUpdateRelations)<a href="{{ route('relations.bank-accounts.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Bankrekening toevoegen</a>@endif</div>
+        @if($bankAccounts === [])<p class="mt-4 text-slate-600">Nog geen bankrekeningen.</p>@else<div class="mt-4 grid gap-4 md:grid-cols-2">@foreach($bankAccounts as $bankAccount)<article class="rounded-lg border border-slate-200 p-4"><div class="flex items-start justify-between gap-3"><h3 class="font-semibold"><a class="text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.bank-accounts.show', [$relation->id()->toString(), $bankAccount->id->toString()]) }}">{{ $bankAccount->accountName->value() }}</a></h3><span class="text-sm font-medium">{{ $bankAccount->status->value === 'active' ? 'Actief' : 'Inactief' }}</span></div><p class="mt-2"><span class="font-medium">IBAN:</span> {{ $bankAccount->iban->value() }}</p><p class="mt-1"><span class="font-medium">BIC:</span> {{ $bankAccount->bic?->value() ?? 'Niet opgegeven' }}</p>@if($canUpdateRelations)<a href="{{ route('relations.bank-accounts.edit', [$relation->id()->toString(), $bankAccount->id->toString()]) }}" class="mt-3 inline-flex min-h-11 items-center font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Bewerken</a>@endif</article>@endforeach</div>@endif
+    </section>
+
     @if ($canClassifyCustomer || $canClassifySupplier)
         <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="classificaties-heading">
             <h2 id="classificaties-heading" class="text-lg font-semibold">Classificaties beheren</h2>

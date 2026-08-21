@@ -30,6 +30,28 @@ final class Relation
         private bool $active,
     ) {}
 
+    /**
+     * @param  list<Contact>  $contacts
+     * @param  list<Address>  $addresses
+     * @param  list<BankAccount>  $bankAccounts
+     */
+    public static function reconstitute(
+        RelationId $id,
+        RelationCode $code,
+        DisplayName $displayName,
+        bool $active,
+        array $contacts,
+        array $addresses,
+        array $bankAccounts,
+    ): self {
+        $relation = new self($id, $code, $displayName, $active);
+        $relation->contacts = self::indexContacts($contacts);
+        $relation->addresses = self::indexAddresses($addresses);
+        $relation->bankAccounts = self::indexBankAccounts($bankAccounts);
+
+        return $relation;
+    }
+
     public function id(): RelationId
     {
         return $this->id;
@@ -159,5 +181,68 @@ final class Relation
     public function deactivate(): void
     {
         $this->active = false;
+    }
+
+    /**
+     * @param  list<Contact>  $contacts
+     * @return array<string, Contact>
+     */
+    private static function indexContacts(array $contacts): array
+    {
+        $indexed = [];
+
+        foreach ($contacts as $contact) {
+            $key = $contact->id()->toString();
+
+            if (isset($indexed[$key])) {
+                throw new DomainException('Relation already contains a Contact with this identity.');
+            }
+
+            $indexed[$key] = $contact;
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param  list<Address>  $addresses
+     * @return array<string, Address>
+     */
+    private static function indexAddresses(array $addresses): array
+    {
+        $indexed = [];
+
+        foreach ($addresses as $address) {
+            $key = $address->id()->toString();
+
+            if (isset($indexed[$key])) {
+                throw new DomainException('Relation already contains an Address with this identity.');
+            }
+
+            $indexed[$key] = $address;
+        }
+
+        return $indexed;
+    }
+
+    /**
+     * @param  list<BankAccount>  $bankAccounts
+     * @return array<string, BankAccount>
+     */
+    private static function indexBankAccounts(array $bankAccounts): array
+    {
+        $indexed = [];
+
+        foreach ($bankAccounts as $bankAccount) {
+            $key = $bankAccount->id()->toString();
+
+            if (isset($indexed[$key])) {
+                throw new DomainException('Relation already contains a BankAccount with this identity.');
+            }
+
+            $indexed[$key] = $bankAccount;
+        }
+
+        return $indexed;
     }
 }
