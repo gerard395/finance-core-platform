@@ -237,6 +237,8 @@ W3 maakt de bestaande Relation-owned Contacts, Addresses en BankAccounts duurzaa
 - W3-006 – BankAccount web UI
 - W3-007 – Relations child data review
 
+W3 is afgerond met volledige Relation-aggregate-reconstitutie en tenant-veilige persistence en webflows voor Contacts, Addresses en BankAccounts. Alle childverwijdering is een deactivate/reactivate-lifecycle met behoud van identity; cross-tenant en cross-Relation ownership wordt in Application én database afgedwongen. De afsluitende review corrigeerde bovendien Relation-edit voor volledig gehydrateerde aggregates en bevestigde dat parent- en childwrites elkaars state behouden. Het aanbevolen vervolg is Sales Web, dat deze duurzame Relation-masterdata nu zonder tijdelijke of gedupliceerde klantmodellen kan gebruiken.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

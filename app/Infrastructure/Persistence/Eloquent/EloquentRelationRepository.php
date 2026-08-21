@@ -110,7 +110,6 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
 
     public function update(AdministrationId $administrationId, Relation $relation): RelationWriteResult
     {
-        $this->assertNoLoadedChildren($relation);
         $record = RelationRecord::query()
             ->whereKey($relation->id()->toString())
             ->where('administration_id', $administrationId->toString())
