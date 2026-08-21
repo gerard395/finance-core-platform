@@ -15,6 +15,12 @@ Sales beheert het commerciële documenttraject van offerte tot verkoopfactuur en
 
 Iedere Aggregate Root bewaakt de identiteit en ownership van zijn eigen regels. Regels worden uitsluitend via de Aggregate Root toegevoegd en verwijderd, en dubbele line-identiteiten worden geweigerd. Een document kan zijn relevante definitieve overgang alleen maken wanneer minimaal één regel bestaat. Na die overgang zijn line-mutaties geblokkeerd.
 
+`reconstitute()` is voor ieder aggregate de side-effectvrije hydrationgrens. Zij ontvangt alle bestaande headerstate, eindstatus en volledige linecollectie tegelijk, replayt geen lifecycle- of `addLine()`-commands en weigert duplicate line-identities, mixed currency en onmogelijke niet-Draft state zonder regels. Reconstitution veroorzaakt geen events en biedt geen mutatiebackdoor.
+
+In Draft kunnen bestaande lines via aggregate-owned `updateLine()` met behoud van line identity worden vervangen. Identity, businessnummer, AdministrationId, CustomerId, documentcurrency en bronverwijzingen blijven immutable. Alleen bestaande datumvelden zijn via samenhangende Draft-methoden wijzigbaar: Quotation-datum/expiry en Invoice-datum/due date worden atomair gevalideerd; Order- en CreditInvoice-datum hebben elk één expliciete mutatie. Na de eerste lifecycle-lock zijn ook headerwijzigingen verboden.
+
+Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en reconstitution. `total()` is uitsluitend de exacte afgeleide som van bestaande line totals in die currency en retourneert nul voor een lege Draft. Het is een pre-tax/netto documenttotaal; fiscale bedragen en snapshots blijven buiten dit contract.
+
 ## Statusmachines
 
 ```text

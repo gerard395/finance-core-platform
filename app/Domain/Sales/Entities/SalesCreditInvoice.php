@@ -12,6 +12,7 @@ use App\Domain\Sales\ValueObjects\SalesCreditInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceNumber;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
 use DomainException;
 
@@ -26,10 +27,32 @@ final class SalesCreditInvoice
         private readonly AdministrationId $administrationId,
         private readonly CustomerId $customerId,
         private readonly Currency $currency,
-        private readonly DateTimeImmutable $creditInvoiceDate,
+        private DateTimeImmutable $creditInvoiceDate,
         private readonly ?SalesInvoiceId $sourceInvoiceId,
         private SalesCreditInvoiceStatus $status,
     ) {}
+
+    /** @param list<SalesCreditInvoiceLine> $lines */
+    public static function reconstitute(
+        SalesCreditInvoiceId $id,
+        SalesCreditInvoiceNumber $number,
+        AdministrationId $administrationId,
+        CustomerId $customerId,
+        Currency $currency,
+        DateTimeImmutable $creditInvoiceDate,
+        ?SalesInvoiceId $sourceInvoiceId,
+        SalesCreditInvoiceStatus $status,
+        array $lines,
+    ): self {
+        $creditInvoice = new self($id, $number, $administrationId, $customerId, $currency, $creditInvoiceDate, $sourceInvoiceId, $status);
+        $creditInvoice->restoreLines($lines);
+
+        if (in_array($status, [SalesCreditInvoiceStatus::Finalized, SalesCreditInvoiceStatus::Posted], true) && $lines === []) {
+            throw new DomainException('A finalized or posted sales credit invoice must contain at least one line.');
+        }
+
+        return $creditInvoice;
+    }
 
     public function id(): SalesCreditInvoiceId
     {
@@ -90,6 +113,7 @@ final class SalesCreditInvoice
     public function addLine(SalesCreditInvoiceLine $line): void
     {
         $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
         $key = $line->id()->toString();
 
         if (isset($this->lines[$key])) {
@@ -99,10 +123,37 @@ final class SalesCreditInvoice
         $this->lines[$key] = $line;
     }
 
+    public function updateLine(SalesCreditInvoiceLine $line): void
+    {
+        $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
+        $key = $line->id()->toString();
+        if (! isset($this->lines[$key])) {
+            throw new DomainException('Sales credit invoice line to update does not exist.');
+        }
+        $this->lines[$key] = $line;
+    }
+
     public function removeLine(SalesCreditInvoiceLineId $lineId): void
     {
         $this->assertDraftForLineChanges();
         unset($this->lines[$lineId->toString()]);
+    }
+
+    public function changeCreditInvoiceDate(DateTimeImmutable $creditInvoiceDate): void
+    {
+        $this->assertDraftForLineChanges();
+        $this->creditInvoiceDate = $creditInvoiceDate;
+    }
+
+    public function total(): Money
+    {
+        $total = Money::zero($this->currency);
+        foreach ($this->lines as $line) {
+            $total = $total->add($line->lineTotal());
+        }
+
+        return $total;
     }
 
     public function finalize(): void
@@ -145,6 +196,26 @@ final class SalesCreditInvoice
     {
         if ($this->status !== SalesCreditInvoiceStatus::Draft) {
             throw new DomainException('Sales credit invoice lines can only be changed while the sales credit invoice is in draft.');
+        }
+    }
+
+    /** @param list<SalesCreditInvoiceLine> $lines */
+    private function restoreLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            $this->assertLineCurrency($line);
+            $key = $line->id()->toString();
+            if (isset($this->lines[$key])) {
+                throw new DomainException('Sales credit invoice already contains a line with this identity.');
+            }
+            $this->lines[$key] = $line;
+        }
+    }
+
+    private function assertLineCurrency(SalesCreditInvoiceLine $line): void
+    {
+        if (! $line->unitPrice()->currency()->equals($this->currency)) {
+            throw new DomainException('Sales credit invoice line currency must match document currency.');
         }
     }
 }

@@ -12,6 +12,7 @@ use App\Domain\Sales\ValueObjects\OrderLineId;
 use App\Domain\Sales\ValueObjects\OrderNumber;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
 use DomainException;
 
@@ -26,10 +27,32 @@ final class Order
         private readonly AdministrationId $administrationId,
         private readonly CustomerId $customerId,
         private readonly Currency $currency,
-        private readonly DateTimeImmutable $orderDate,
+        private DateTimeImmutable $orderDate,
         private readonly ?QuotationId $sourceQuotationId,
         private OrderStatus $status,
     ) {}
+
+    /** @param list<OrderLine> $lines */
+    public static function reconstitute(
+        OrderId $id,
+        OrderNumber $number,
+        AdministrationId $administrationId,
+        CustomerId $customerId,
+        Currency $currency,
+        DateTimeImmutable $orderDate,
+        ?QuotationId $sourceQuotationId,
+        OrderStatus $status,
+        array $lines,
+    ): self {
+        $order = new self($id, $number, $administrationId, $customerId, $currency, $orderDate, $sourceQuotationId, $status);
+        $order->restoreLines($lines);
+
+        if (in_array($status, [OrderStatus::Confirmed, OrderStatus::PartiallyInvoiced, OrderStatus::FullyInvoiced], true) && $lines === []) {
+            throw new DomainException('A confirmed or invoiced order must contain at least one line.');
+        }
+
+        return $order;
+    }
 
     public function id(): OrderId
     {
@@ -90,6 +113,7 @@ final class Order
     public function addLine(OrderLine $line): void
     {
         $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
         $key = $line->id()->toString();
 
         if (isset($this->lines[$key])) {
@@ -99,10 +123,37 @@ final class Order
         $this->lines[$key] = $line;
     }
 
+    public function updateLine(OrderLine $line): void
+    {
+        $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
+        $key = $line->id()->toString();
+        if (! isset($this->lines[$key])) {
+            throw new DomainException('Order line to update does not exist.');
+        }
+        $this->lines[$key] = $line;
+    }
+
     public function removeLine(OrderLineId $lineId): void
     {
         $this->assertDraftForLineChanges();
         unset($this->lines[$lineId->toString()]);
+    }
+
+    public function changeOrderDate(DateTimeImmutable $orderDate): void
+    {
+        $this->assertDraftForLineChanges();
+        $this->orderDate = $orderDate;
+    }
+
+    public function total(): Money
+    {
+        $total = Money::zero($this->currency);
+        foreach ($this->lines as $line) {
+            $total = $total->add($line->lineTotal());
+        }
+
+        return $total;
     }
 
     public function confirm(): void
@@ -153,6 +204,26 @@ final class Order
     {
         if ($this->status !== OrderStatus::Draft) {
             throw new DomainException('Order lines can only be changed while the order is in draft.');
+        }
+    }
+
+    /** @param list<OrderLine> $lines */
+    private function restoreLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            $this->assertLineCurrency($line);
+            $key = $line->id()->toString();
+            if (isset($this->lines[$key])) {
+                throw new DomainException('Order already contains a line with this identity.');
+            }
+            $this->lines[$key] = $line;
+        }
+    }
+
+    private function assertLineCurrency(OrderLine $line): void
+    {
+        if (! $line->unitPrice()->currency()->equals($this->currency)) {
+            throw new DomainException('Order line currency must match document currency.');
         }
     }
 }
