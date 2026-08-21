@@ -57,6 +57,11 @@
         @endif
     </section>
 
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="bankrekeningen-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="bankrekeningen-heading" class="text-lg font-semibold">Bankrekeningen</h2>@if($canUpdateRelations)<a href="{{ route('relations.bank-accounts.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Bankrekening toevoegen</a>@endif</div>
+        @if($bankAccounts === [])<p class="mt-4 text-slate-600">Nog geen bankrekeningen.</p>@else<div class="mt-4 grid gap-4 md:grid-cols-2">@foreach($bankAccounts as $bankAccount)<article class="rounded-lg border border-slate-200 p-4"><div class="flex items-start justify-between gap-3"><h3 class="font-semibold"><a class="text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.bank-accounts.show', [$relation->id()->toString(), $bankAccount->id->toString()]) }}">{{ $bankAccount->accountName->value() }}</a></h3><span class="text-sm font-medium">{{ $bankAccount->status->value === 'active' ? 'Actief' : 'Inactief' }}</span></div><p class="mt-2"><span class="font-medium">IBAN:</span> {{ $bankAccount->iban->value() }}</p><p class="mt-1"><span class="font-medium">BIC:</span> {{ $bankAccount->bic?->value() ?? 'Niet opgegeven' }}</p>@if($canUpdateRelations)<a href="{{ route('relations.bank-accounts.edit', [$relation->id()->toString(), $bankAccount->id->toString()]) }}" class="mt-3 inline-flex min-h-11 items-center font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Bewerken</a>@endif</article>@endforeach</div>@endif
+    </section>
+
     @if ($canClassifyCustomer || $canClassifySupplier)
         <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="classificaties-heading">
             <h2 id="classificaties-heading" class="text-lg font-semibold">Classificaties beheren</h2>

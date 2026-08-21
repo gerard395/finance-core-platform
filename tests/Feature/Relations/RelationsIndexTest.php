@@ -6,8 +6,10 @@ namespace Tests\Feature\Relations;
 
 use App\Application\Identity\ProvisionUserAccount;
 use App\Application\Relations\AddressWriteResult;
+use App\Application\Relations\BankAccountWriteResult;
 use App\Application\Relations\ContactWriteResult;
 use App\Application\Relations\CreateAddress;
+use App\Application\Relations\CreateBankAccount;
 use App\Application\Relations\CreateContact;
 use App\Application\Relations\RelationNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
@@ -35,8 +37,11 @@ use App\Domain\Relations\Entities\Customer;
 use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\Entities\Supplier;
 use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\ValueObjects\AccountName;
 use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\BankAccountId;
+use App\Domain\Relations\ValueObjects\Bic;
 use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\ContactName;
@@ -45,6 +50,7 @@ use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\CustomerNumber;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\EmailAddress as ContactEmailAddress;
+use App\Domain\Relations\ValueObjects\Iban;
 use App\Domain\Relations\ValueObjects\PhoneNumber;
 use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
@@ -362,6 +368,71 @@ final class RelationsIndexTest extends TestCase
         $relationId = $this->relation(self::ADMIN_A, 46, 'ADDRESS-46', 'Update only address', true);
         $this->loginWithAdministration(self::ADMIN_A);
         $this->post(route('relations.addresses.store', $relationId->toString()), ['type' => 'delivery', 'address_line_1' => 'Delivery line', 'postal_code' => '1000', 'city' => 'City', 'country_code' => 'NL'])->assertRedirect(route('app'));
+    }
+
+    public function test_relation_detail_renders_read_only_bank_accounts_and_escaped_state(): void
+    {
+        $this->authorizedScenario();
+        $relationId = $this->relation(self::ADMIN_A, 51, 'BANK-51', 'Bank relation', true);
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSeeText('Bankrekeningen')->assertSeeText('Nog geen bankrekeningen.')->assertDontSeeText('Bankrekening toevoegen');
+        $bankId = $this->bankAccount($relationId, 51, '<Unsafe Account>', 'NL91ABNA0417164300', 'ABNANL2A');
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSee('&lt;Unsafe Account&gt;', false)->assertDontSee('<Unsafe Account>', false)->assertSeeText('NL91ABNA0417164300')->assertSeeText('ABNANL2A')->assertSeeText('Actief');
+        $this->get(route('relations.bank-accounts.show', [$relationId->toString(), $bankId->toString()]))->assertOk()->assertDontSeeText('Bankrekening bewerken')->assertDontSeeText('Bankrekening deactiveren');
+        $this->get(route('relations.bank-accounts.create', $relationId->toString()))->assertForbidden();
+    }
+
+    public function test_bank_account_create_update_lifecycle_and_child_preservation(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 52);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationId = $this->relation(self::ADMIN_A, 52, 'BANK-52', 'Mutable bank relation', true);
+        $contactId = $this->contact($relationId, 52, 'Preserved Contact', null, null);
+        $addressId = $this->address($relationId, 52, AddressType::Visiting, 'Preserved Address', null, '1000', 'City', 'NL');
+        $fakeId = $this->uuid('f', 52)->toString();
+        $this->post(route('relations.bank-accounts.store', $relationId->toString()), ['account_name' => 'Created Account', 'iban' => 'NL91ABNA0417164300', 'bic' => 'ABNANL2A', 'administration_id' => self::ADMIN_B, 'bank_account_id' => $fakeId])->assertRedirect(route('relations.show', $relationId->toString()));
+        $record = DB::table('relation_bank_accounts')->first();
+        self::assertNotNull($record);
+        self::assertNotSame($fakeId, $record->bank_account_id);
+        self::assertSame(self::ADMIN_A, $record->administration_id);
+        $this->put(route('relations.bank-accounts.update', [$relationId->toString(), $record->bank_account_id]), ['account_name' => 'Renamed Account', 'iban' => 'DE89370400440532013000', 'bic' => 'MARKDEF1100'])->assertRedirect();
+        $this->assertDatabaseHas('relation_bank_accounts', ['bank_account_id' => $record->bank_account_id, 'account_name' => 'Renamed Account', 'iban' => 'NL91ABNA0417164300', 'bic' => 'ABNANL2A']);
+        $this->delete(route('relations.bank-accounts.deactivate', [$relationId->toString(), $record->bank_account_id]))->assertRedirect();
+        $this->delete(route('relations.bank-accounts.deactivate', [$relationId->toString(), $record->bank_account_id]))->assertRedirect();
+        $this->post(route('relations.bank-accounts.activate', [$relationId->toString(), $record->bank_account_id]))->assertRedirect();
+        $this->assertDatabaseCount('relation_bank_accounts', 1);
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $contactId->toString()]);
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $addressId->toString()]);
+    }
+
+    public function test_bank_account_routes_validate_and_hide_untrusted_ownership(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 53);
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_B, 54);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationA = $this->relation(self::ADMIN_A, 53, 'BANK-53', 'Tenant A', true);
+        $otherA = $this->relation(self::ADMIN_A, 54, 'BANK-54', 'Other A', true);
+        $relationB = $this->relation(self::ADMIN_B, 55, 'BANK-55', 'Tenant B', true);
+        $bankId = $this->bankAccount($relationA, 53, 'Owned Account', 'NL91ABNA0417164300', 'ABNANL2A');
+        $this->post(route('relations.bank-accounts.store', $relationA->toString()), ['account_name' => 'x', 'iban' => 'bad', 'bic' => 'bad'])->assertSessionHasErrors(['account_name', 'iban', 'bic']);
+        $this->get('/relations/not-a-uuid/bank-accounts/create')->assertNotFound();
+        $this->get('/relations/'.$relationA->toString().'/bank-accounts/not-a-uuid')->assertNotFound();
+        $this->get(route('relations.bank-accounts.show', [$otherA->toString(), $bankId->toString()]))->assertNotFound();
+        $this->get(route('relations.bank-accounts.show', [$relationB->toString(), $bankId->toString()]))->assertNotFound();
+        $this->put(route('relations.bank-accounts.update', [$otherA->toString(), $bankId->toString()]), ['account_name' => 'Hidden Account'])->assertNotFound();
+    }
+
+    public function test_update_only_bank_account_create_redirects_to_app_and_duplicate_iban_is_allowed(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Update, 56);
+        $relationId = $this->relation(self::ADMIN_A, 56, 'BANK-56', 'Update only bank', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+        foreach (['First Account', 'Second Account'] as $name) {
+            $this->post(route('relations.bank-accounts.store', $relationId->toString()), ['account_name' => $name, 'iban' => 'NL91ABNA0417164300', 'bic' => 'ABNANL2A'])->assertRedirect(route('app'));
+        }
+        $this->assertDatabaseCount('relation_bank_accounts', 2);
     }
 
     public function test_empty_states_are_distinct(): void
@@ -737,6 +808,14 @@ final class RelationsIndexTest extends TestCase
     {
         $id = new AddressId($this->uuid('2', $sequence));
         self::assertSame(AddressWriteResult::Success, $this->app->make(CreateAddress::class)->execute(new AdministrationId(new Uuid(self::ADMIN_A)), $relationId, $id, $type, new AddressLine($line1), $line2 === null ? null : new AddressLine($line2), new PostalCode($postal), new City($city), new CountryCode($country)));
+
+        return $id;
+    }
+
+    private function bankAccount(RelationId $relationId, int $sequence, string $name, string $iban, string $bic): BankAccountId
+    {
+        $id = new BankAccountId($this->uuid('1', $sequence));
+        self::assertSame(BankAccountWriteResult::Success, $this->app->make(CreateBankAccount::class)->execute(new AdministrationId(new Uuid(self::ADMIN_A)), $relationId, $id, new Iban($iban), new Bic($bic), new AccountName($name)));
 
         return $id;
     }

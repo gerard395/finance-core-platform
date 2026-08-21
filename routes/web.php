@@ -5,6 +5,7 @@ use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Relations\AddressController;
+use App\Http\Controllers\Relations\BankAccountController;
 use App\Http\Controllers\Relations\ContactController;
 use App\Http\Controllers\Relations\RelationClassificationController;
 use App\Http\Controllers\Relations\RelationCreateController;
@@ -118,6 +119,14 @@ Route::get('/relations/{relation}/addresses/{address}/edit', [AddressController:
 Route::put('/relations/{relation}/addresses/{address}', [AddressController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.update');
 Route::post('/relations/{relation}/addresses/{address}/activate', [AddressController::class, 'activate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.activate');
 Route::delete('/relations/{relation}/addresses/{address}', [AddressController::class, 'deactivate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.deactivate');
+
+Route::get('/relations/{relation}/bank-accounts/create', [BankAccountController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.create');
+Route::post('/relations/{relation}/bank-accounts', [BankAccountController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.store');
+Route::get('/relations/{relation}/bank-accounts/{bankAccount}', [BankAccountController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::View)])->name('relations.bank-accounts.show');
+Route::get('/relations/{relation}/bank-accounts/{bankAccount}/edit', [BankAccountController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.edit');
+Route::put('/relations/{relation}/bank-accounts/{bankAccount}', [BankAccountController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.update');
+Route::post('/relations/{relation}/bank-accounts/{bankAccount}/activate', [BankAccountController::class, 'activate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.activate');
+Route::delete('/relations/{relation}/bank-accounts/{bankAccount}', [BankAccountController::class, 'deactivate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.bank-accounts.deactivate');
 
 Route::post('/relations/{relation}/customer', [RelationClassificationController::class, 'storeCustomer'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifyCustomer)])

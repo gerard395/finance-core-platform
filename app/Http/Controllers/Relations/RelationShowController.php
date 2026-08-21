@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Relations;
 
 use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Relations\AddressReadRepository;
+use App\Application\Relations\BankAccountReadRepository;
 use App\Application\Relations\ContactReadRepository;
 use App\Application\Relations\GetRelationDetail;
 use App\Domain\Identity\Definitions\RelationsPermission;
@@ -24,6 +25,7 @@ final class RelationShowController extends Controller
         private readonly GetRelationDetail $getRelationDetail,
         private readonly ContactReadRepository $contacts,
         private readonly AddressReadRepository $addresses,
+        private readonly BankAccountReadRepository $bankAccounts,
         private readonly PermissionAuthorizer $permissionAuthorizer,
     ) {}
 
@@ -52,6 +54,7 @@ final class RelationShowController extends Controller
             'relation' => $detail,
             'contacts' => $contacts,
             'addresses' => $this->addresses->listForRelation($context->administration->id(), $relationId),
+            'bankAccounts' => $this->bankAccounts->listForRelation($context->administration->id(), $relationId),
             'addressTypePresenter' => AddressTypePresenter::class,
             'canViewRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::View->id()),
             'canUpdateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Update->id()),
