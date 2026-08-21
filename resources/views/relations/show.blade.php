@@ -50,6 +50,13 @@
         @endif
     </section>
 
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="adressen-heading">
+        <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="adressen-heading" class="text-lg font-semibold">Adressen</h2>@if($canUpdateRelations)<a href="{{ route('relations.addresses.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Adres toevoegen</a>@endif</div>
+        @if($addresses === [])<p class="mt-4 text-slate-600">Nog geen adressen.</p>@else
+            <div class="mt-4 grid gap-4 md:grid-cols-2">@foreach($addresses as $address)<article class="rounded-lg border border-slate-200 p-4"><div class="flex items-start justify-between gap-3"><h3 class="font-semibold"><a class="text-blue-700 hover:underline focus:ring-2 focus:ring-blue-700" href="{{ route('relations.addresses.show', [$relation->id()->toString(), $address->id->toString()]) }}">{{ $addressTypePresenter::label($address->type) }}</a></h3><span class="text-sm font-medium">{{ $address->active ? 'Actief' : 'Inactief' }}</span></div><p class="mt-2">{{ $address->addressLine->value() }}@if($address->addressLine2)<br>{{ $address->addressLine2->value() }}@endif<br>{{ $address->postalCode->value() }} {{ $address->city->value() }}<br>{{ $address->countryCode->value() }}</p>@if($canUpdateRelations)<a href="{{ route('relations.addresses.edit', [$relation->id()->toString(), $address->id->toString()]) }}" class="mt-3 inline-flex min-h-11 items-center font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Bewerken</a>@endif</article>@endforeach</div>
+        @endif
+    </section>
+
     @if ($canClassifyCustomer || $canClassifySupplier)
         <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="classificaties-heading">
             <h2 id="classificaties-heading" class="text-lg font-semibold">Classificaties beheren</h2>

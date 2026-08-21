@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Relations;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Relations\AddressWriteResult;
 use App\Application\Relations\ContactWriteResult;
+use App\Application\Relations\CreateAddress;
 use App\Application\Relations\CreateContact;
 use App\Application\Relations\RelationNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
@@ -32,13 +34,19 @@ use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Relations\Entities\Customer;
 use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\Entities\Supplier;
+use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\ContactName;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\CustomerNumber;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\EmailAddress as ContactEmailAddress;
 use App\Domain\Relations\ValueObjects\PhoneNumber;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Relations\ValueObjects\SupplierId;
@@ -286,6 +294,74 @@ final class RelationsIndexTest extends TestCase
         $this->post(route('relations.contacts.store', $relationId->toString()), ['name' => 'Update Only Person'])
             ->assertRedirect(route('app'));
         $this->get(route('relations.show', $relationId->toString()))->assertForbidden();
+    }
+
+    public function test_relation_detail_renders_read_only_address_section_labels_status_and_escaped_fields(): void
+    {
+        $this->authorizedScenario();
+        $relationId = $this->relation(self::ADMIN_A, 41, 'ADDRESS-41', 'Address relation', true);
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSeeText('Adressen')->assertSeeText('Nog geen adressen.')->assertDontSeeText('Adres toevoegen');
+        $addressId = $this->address($relationId, 41, AddressType::Invoice, '<Unsafe line>', null, '1234 AB', 'Amsterdam', 'NL');
+        $this->get(route('relations.show', $relationId->toString()))->assertOk()->assertSeeText('Factuuradres')->assertSee('&lt;Unsafe line&gt;', false)->assertDontSee('<Unsafe line>', false)->assertSeeText('Actief')->assertDontSeeText('Adres toevoegen');
+        $this->get(route('relations.addresses.show', [$relationId->toString(), $addressId->toString()]))->assertOk()->assertDontSeeText('Adres bewerken')->assertDontSeeText('Adres deactiveren');
+        $this->get(route('relations.addresses.create', $relationId->toString()))->assertForbidden();
+    }
+
+    public function test_address_create_update_lifecycle_and_immutable_type_use_application_contracts(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 42);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationId = $this->relation(self::ADMIN_A, 42, 'ADDRESS-42', 'Mutable address relation', true);
+        $contactId = $this->contact($relationId, 42, 'Preserved Contact', null, null);
+
+        foreach (['visiting', 'postal', 'invoice', 'delivery'] as $index => $type) {
+            $this->post(route('relations.addresses.store', $relationId->toString()), ['type' => $type, 'address_line_1' => 'Line '.($index + 1), 'address_line_2' => '', 'postal_code' => '100'.$index, 'city' => 'City', 'country_code' => 'nl', 'administration_id' => self::ADMIN_B, 'address_id' => $this->uuid('f', $index + 1)->toString()])->assertRedirect(route('relations.show', $relationId->toString()));
+        }
+        $this->assertDatabaseCount('relation_addresses', 4);
+        $record = DB::table('relation_addresses')->where('address_type', 'visiting')->first();
+        self::assertNotNull($record);
+        self::assertSame(self::ADMIN_A, $record->administration_id);
+        self::assertNull($record->address_line_2);
+
+        $url = route('relations.addresses.update', [$relationId->toString(), $record->address_id]);
+        $this->put($url, ['type' => 'delivery', 'address_line_1' => 'Changed line', 'address_line_2' => 'Unit 2', 'postal_code' => '2000 XY', 'city' => 'Changed City', 'country_code' => 'BE'])->assertRedirect(route('relations.show', $relationId->toString()));
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $record->address_id, 'address_type' => 'visiting', 'address_line_2' => 'Unit 2', 'country_code' => 'BE']);
+        $this->put($url, ['type' => 'postal', 'address_line_1' => 'Final line', 'address_line_2' => '', 'postal_code' => '3000', 'city' => 'Final City', 'country_code' => 'DE'])->assertRedirect();
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $record->address_id, 'address_type' => 'visiting', 'address_line_2' => null]);
+        $this->delete(route('relations.addresses.deactivate', [$relationId->toString(), $record->address_id]))->assertRedirect();
+        $this->delete(route('relations.addresses.deactivate', [$relationId->toString(), $record->address_id]))->assertRedirect();
+        $this->post(route('relations.addresses.activate', [$relationId->toString(), $record->address_id]))->assertRedirect();
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $record->address_id, 'address_type' => 'visiting', 'active' => true]);
+        $this->assertDatabaseHas('relation_contacts', ['contact_id' => $contactId->toString()]);
+    }
+
+    public function test_address_routes_validate_permissions_and_hide_untrusted_ownership_ids(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 43);
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_B, 44);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationA = $this->relation(self::ADMIN_A, 43, 'ADDRESS-43', 'Tenant A', true);
+        $otherA = $this->relation(self::ADMIN_A, 44, 'ADDRESS-44', 'Other A', true);
+        $relationB = $this->relation(self::ADMIN_B, 45, 'ADDRESS-45', 'Tenant B', true);
+        $addressId = $this->address($relationA, 43, AddressType::Postal, 'Owned line', null, '1000', 'City', 'NL');
+
+        $this->post(route('relations.addresses.store', $relationA->toString()), ['type' => 'other', 'address_line_1' => 'x', 'postal_code' => '*', 'city' => 'x', 'country_code' => 'NLD'])->assertSessionHasErrors(['type', 'address_line_1', 'postal_code', 'city', 'country_code']);
+        $this->get('/relations/not-a-uuid/addresses/create')->assertNotFound();
+        $this->get('/relations/'.$relationA->toString().'/addresses/not-a-uuid')->assertNotFound();
+        $this->get(route('relations.addresses.show', [$otherA->toString(), $addressId->toString()]))->assertNotFound();
+        $this->get(route('relations.addresses.show', [$relationB->toString(), $addressId->toString()]))->assertNotFound();
+        $this->put(route('relations.addresses.update', [$otherA->toString(), $addressId->toString()]), ['address_line_1' => 'Hidden', 'postal_code' => '1000', 'city' => 'City', 'country_code' => 'NL'])->assertNotFound();
+    }
+
+    public function test_update_only_address_create_redirects_to_app(): void
+    {
+        $this->provisionScenario();
+        $this->assignPermissionOnly(RelationsPermission::Update, 46);
+        $relationId = $this->relation(self::ADMIN_A, 46, 'ADDRESS-46', 'Update only address', true);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $this->post(route('relations.addresses.store', $relationId->toString()), ['type' => 'delivery', 'address_line_1' => 'Delivery line', 'postal_code' => '1000', 'city' => 'City', 'country_code' => 'NL'])->assertRedirect(route('app'));
     }
 
     public function test_empty_states_are_distinct(): void
@@ -655,6 +731,14 @@ final class RelationsIndexTest extends TestCase
         self::assertSame(ContactWriteResult::Success, $result);
 
         return $contactId;
+    }
+
+    private function address(RelationId $relationId, int $sequence, AddressType $type, string $line1, ?string $line2, string $postal, string $city, string $country): AddressId
+    {
+        $id = new AddressId($this->uuid('2', $sequence));
+        self::assertSame(AddressWriteResult::Success, $this->app->make(CreateAddress::class)->execute(new AdministrationId(new Uuid(self::ADMIN_A)), $relationId, $id, $type, new AddressLine($line1), $line2 === null ? null : new AddressLine($line2), new PostalCode($postal), new City($city), new CountryCode($country)));
+
+        return $id;
     }
 
     private function customer(string $administrationId, RelationId $relationId, int $sequence, bool $active = true): void

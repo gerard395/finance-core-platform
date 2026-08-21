@@ -4,6 +4,7 @@ use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Relations\AddressController;
 use App\Http\Controllers\Relations\ContactController;
 use App\Http\Controllers\Relations\RelationClassificationController;
 use App\Http\Controllers\Relations\RelationCreateController;
@@ -109,6 +110,14 @@ Route::post('/relations/{relation}/contacts/{contact}/activate', [ContactControl
 Route::delete('/relations/{relation}/contacts/{contact}', [ContactController::class, 'deactivate'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])
     ->name('relations.contacts.deactivate');
+
+Route::get('/relations/{relation}/addresses/create', [AddressController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.create');
+Route::post('/relations/{relation}/addresses', [AddressController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.store');
+Route::get('/relations/{relation}/addresses/{address}', [AddressController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::View)])->name('relations.addresses.show');
+Route::get('/relations/{relation}/addresses/{address}/edit', [AddressController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.edit');
+Route::put('/relations/{relation}/addresses/{address}', [AddressController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.update');
+Route::post('/relations/{relation}/addresses/{address}/activate', [AddressController::class, 'activate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.activate');
+Route::delete('/relations/{relation}/addresses/{address}', [AddressController::class, 'deactivate'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.deactivate');
 
 Route::post('/relations/{relation}/customer', [RelationClassificationController::class, 'storeCustomer'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifyCustomer)])
