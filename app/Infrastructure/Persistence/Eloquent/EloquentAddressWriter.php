@@ -12,7 +12,6 @@ use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\ValueObjects\AddressId;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
-use DomainException;
 use Illuminate\Database\QueryException;
 
 final class EloquentAddressWriter implements AddressWriter
@@ -53,9 +52,6 @@ final class EloquentAddressWriter implements AddressWriter
 
     private function validatedAddress(AdministrationId $administrationId, Relation $relation, AddressId $addressId): ?Address
     {
-        if ($relation->bankAccounts() !== []) {
-            throw new DomainException('Unsupported Relation BankAccount state cannot be discarded by Address persistence.');
-        }
         if (! RelationRecord::query()->whereKey($relation->id()->toString())->where('administration_id', $administrationId->toString())->exists()) {
             return null;
         }

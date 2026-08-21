@@ -41,7 +41,6 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentContactWriter;
 use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
-use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -148,13 +147,13 @@ final class ContactPersistenceTest extends TestCase
         self::assertTrue($relation->hasAddress($this->addressId(1)));
     }
 
-    public function test_contact_writer_rejects_future_loaded_bank_account_state(): void
+    public function test_contact_writer_accepts_loaded_bank_account_state_without_removing_it(): void
     {
         $relation = $this->relation(1, 'A-1');
         $relation->addBankAccount(new BankAccount($this->bankAccountId(1), new Iban('NL91ABNA0417164300'), null, new AccountName('Relation account'), BankAccountStatus::Active));
 
-        $this->expectException(DomainException::class);
-        (new EloquentContactWriter)->update($this->administrationId(self::ADMIN_A), $relation, $this->contactId(1));
+        self::assertSame(ContactWriteResult::NotFound, (new EloquentContactWriter)->update($this->administrationId(self::ADMIN_A), $relation, $this->contactId(1)));
+        self::assertTrue($relation->hasBankAccount($this->bankAccountId(1)));
     }
 
     private function createContact(int $sequence, string $name, ?string $email, ?string $phone): void

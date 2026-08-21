@@ -12,7 +12,6 @@ use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationContactRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
-use DomainException;
 use Illuminate\Database\QueryException;
 
 final class EloquentContactWriter implements ContactWriter
@@ -57,9 +56,6 @@ final class EloquentContactWriter implements ContactWriter
 
     private function validatedContact(AdministrationId $administrationId, Relation $relation, ContactId $contactId): ?Contact
     {
-        if ($relation->bankAccounts() !== []) {
-            throw new DomainException('Unsupported Relation child state cannot be discarded by Contact persistence.');
-        }
         if (! RelationRecord::query()->whereKey($relation->id()->toString())->where('administration_id', $administrationId->toString())->exists()) {
             return null;
         }

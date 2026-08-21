@@ -39,7 +39,6 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentAddressWriter;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
-use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -122,12 +121,12 @@ final class AddressPersistenceTest extends TestCase
         DB::table('relations')->where('id', $this->relationId(1)->toString())->delete();
     }
 
-    public function test_address_writer_rejects_loaded_bank_account_state(): void
+    public function test_address_writer_accepts_loaded_bank_account_state_without_removing_it(): void
     {
         $relation = $this->relation(1);
         $relation->addBankAccount(new BankAccount(new BankAccountId($this->uuid('9', 1)), new Iban('NL91ABNA0417164300'), null, new AccountName('Account name'), BankAccountStatus::Active));
-        $this->expectException(DomainException::class);
-        (new EloquentAddressWriter)->update($this->admin(self::ADMIN_A), $relation, $this->addressId(1));
+        self::assertSame(AddressWriteResult::NotFound, (new EloquentAddressWriter)->update($this->admin(self::ADMIN_A), $relation, $this->addressId(1)));
+        self::assertTrue($relation->hasBankAccount(new BankAccountId($this->uuid('9', 1))));
     }
 
     private function createAddress(int $sequence, AddressType $type, string $line1, ?string $line2, string $postalCode, string $city, string $country): void
