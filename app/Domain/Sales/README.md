@@ -69,6 +69,8 @@ Sales gebruikt de gedeelde `Money` en `Currency` value objects uit Shared Financ
 
 Aggregates muteren elkaar niet. Een geaccepteerde Quotation kan later door de Application-laag naar een Order worden vertaald; dezelfde laag orkestreert Order naar SalesInvoice. Bronidentiteiten leggen alleen herkomst vast.
 
+Voor W4-v1 maakt de generieke `CreateSalesInvoice` uitsluitend directe facturen en zet zij `sourceOrderId` altijd op null. Alleen een afzonderlijke toekomstige `CreateSalesInvoiceFromOrder` mag een bron-Order vastleggen. Confirmed en PartiallyInvoiced zijn daarvoor noodzakelijke maar niet voldoende statusvoorwaarden: factureerbaarheid vereist per OrderLine immutable, traceerbare waarheid over ordered, reeds gefactureerde en resterende Quantity. Draft, FullyInvoiced en Cancelled zijn niet factureerbaar. De toekomstige orchestration moet allocations, nummering, invoicewrites en Orderstatus atomair en concurrency-safe bewaren; tot die capability bestaat is er geen Order→Invoice-conversie of source-input in Web.
+
 De eerste Sales-domeiniteratie bevat geen:
 
 - een eigen btw-rekenengine; berekening blijft bij Fiscal `TaxCalculation`;

@@ -253,9 +253,11 @@ W4 bouwt de eerste veilige verkoopdoorsnede voor Quotations, Orders, SalesInvoic
 - W4-002 – Quotation web UI
 - W4-003 – Order persistence & application contracts
 - W4-004 – Order web UI
+- W4-005A – Order invoicing source contract
 - W4-005 – Sales invoice persistence & application contracts
 - W4-006 – Sales invoice web UI
 - W4-007 – Sales invoice posting orchestration & UI
+- W4-007A – Order invoicing allocation & conversion contract
 - W4-008 – Sales credit invoice persistence & application contracts
 - W4-009 – Sales credit reversal web flow
 - W4-010 – Sales web review
