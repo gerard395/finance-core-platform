@@ -13,6 +13,9 @@ use App\Http\Controllers\Relations\RelationCreateController;
 use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
 use App\Http\Controllers\Relations\RelationShowController;
+use App\Http\Controllers\Sales\OrderController;
+use App\Http\Controllers\Sales\OrderLifecycleController;
+use App\Http\Controllers\Sales\OrderLineController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\QuotationLifecycleController;
 use App\Http\Controllers\Sales\QuotationLineController;
@@ -185,3 +188,15 @@ Route::post('/sales/quotations/{quotation}/reject', [QuotationLifecycleControlle
 Route::post('/sales/quotations/{quotation}/expire', [QuotationLifecycleController::class, 'expire'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
     ->name('sales.quotations.expire');
+
+Route::get('/sales/orders', [OrderController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.orders.index');
+Route::get('/sales/orders/create', [OrderController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.create');
+Route::post('/sales/orders', [OrderController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.store');
+Route::get('/sales/orders/{order}', [OrderController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.orders.show');
+Route::get('/sales/orders/{order}/edit', [OrderController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.edit');
+Route::put('/sales/orders/{order}', [OrderController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.update');
+Route::post('/sales/orders/{order}/lines', [OrderLineController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.store');
+Route::put('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.update');
+Route::delete('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.destroy');
+Route::post('/sales/orders/{order}/confirm', [OrderLifecycleController::class, 'confirm'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.confirm');
+Route::post('/sales/orders/{order}/cancel', [OrderLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.cancel');

@@ -21,7 +21,10 @@
                 @if ($canViewSales)
                     <x-navigation.item label="Offertes" :href="route('sales.quotations.index')" :active="request()->routeIs('sales.quotations.*')" />
                 @endif
-                <x-navigation.item label="Orders" disabled /><x-navigation.item label="Facturen" disabled /><x-navigation.item label="Creditfacturen" disabled />
+                @if ($canViewSales)
+                    <x-navigation.item label="Orders" :href="route('sales.orders.index')" :active="request()->routeIs('sales.orders.*')" />
+                @endif
+                <x-navigation.item label="Facturen" disabled /><x-navigation.item label="Creditfacturen" disabled />
             </x-navigation.section>
             <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" disabled /><x-navigation.item label="Inkoopcreditfacturen" disabled /></x-navigation.section>
             <x-navigation.section title="Financieel"><x-navigation.item label="Bank" disabled /><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>
