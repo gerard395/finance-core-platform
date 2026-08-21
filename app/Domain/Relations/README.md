@@ -42,6 +42,10 @@ Customer-/Supplier-status verandert nooit de historische financiële aard van ee
 
 Address ondersteunt bezoek-, post-, factuur- en afleveradressen. Provincie, GPS, BAG, geocoding en inhoudelijke internationale adresvalidatie vallen buiten deze story.
 
+AddressId en AddressType blijven onveranderlijk. `changeDetails()` wijzigt de twee adresregels, postcode, plaats en landcode als één expliciete businessoperatie met bestaande immutable value objects. De operatie is idempotent en staat los van `activate()`/`deactivate()`: contentwijziging verandert de status niet en lifecyclewijziging verandert de content niet. Een Relation beheert de bestaande Address via `address(AddressId)`; een gewone edit vervangt identity of ownership niet en maakt geen tweede Address.
+
+Address is mutable masterdata zonder ingebouwde versiehistorie. V1 gebruikt geen hard delete voor duurzame removal; deactivatie behoudt identity en huidige content. Mutation-auditlogging en eventuele historische documentsnapshots blijven afzonderlijke vervolgscope.
+
 ## BankAccount
 
 `BankAccount` is een child-entity van Relation. Relation bewaakt ownership, unieke BankAccountId-waarden en alle toevoeg- en verwijderhandelingen. De identiteit en IBAN zijn onveranderlijk; de rekeningnaam en actieve status wijzigen via expliciet domeingedrag.
