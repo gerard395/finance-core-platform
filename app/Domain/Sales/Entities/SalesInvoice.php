@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace App\Domain\Sales\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Enums\AddressType;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\OrderId;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
+use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
@@ -32,8 +35,11 @@ final class SalesInvoice
         private DateTimeImmutable $dueDate,
         private readonly ?OrderId $sourceOrderId,
         private SalesInvoiceStatus $status,
+        private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
+        private readonly ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
     ) {
         self::assertDates($invoiceDate, $dueDate);
+        self::assertSnapshots($customerId, $customerSnapshot, $invoiceAddressSnapshot);
     }
 
     /** @param list<SalesInvoiceLine> $lines */
@@ -48,8 +54,10 @@ final class SalesInvoice
         ?OrderId $sourceOrderId,
         SalesInvoiceStatus $status,
         array $lines,
+        ?SalesCustomerSnapshot $customerSnapshot = null,
+        ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
     ): self {
-        $invoice = new self($id, $number, $administrationId, $customerId, $currency, $invoiceDate, $dueDate, $sourceOrderId, $status);
+        $invoice = new self($id, $number, $administrationId, $customerId, $currency, $invoiceDate, $dueDate, $sourceOrderId, $status, $customerSnapshot, $invoiceAddressSnapshot);
         $invoice->restoreLines($lines);
 
         if (in_array($status, [SalesInvoiceStatus::Finalized, SalesInvoiceStatus::Posted, SalesInvoiceStatus::Paid], true) && $lines === []) {
@@ -77,6 +85,16 @@ final class SalesInvoice
     public function customerId(): CustomerId
     {
         return $this->customerId;
+    }
+
+    public function customerSnapshot(): ?SalesCustomerSnapshot
+    {
+        return $this->customerSnapshot;
+    }
+
+    public function invoiceAddressSnapshot(): ?SalesAddressSnapshot
+    {
+        return $this->invoiceAddressSnapshot;
     }
 
     public function currency(): Currency
@@ -240,6 +258,16 @@ final class SalesInvoice
     {
         if ($dueDate < $invoiceDate) {
             throw new InvalidArgumentException('Due date cannot precede invoice date.');
+        }
+    }
+
+    private static function assertSnapshots(CustomerId $customerId, ?SalesCustomerSnapshot $customer, ?SalesAddressSnapshot $address): void
+    {
+        if ($customer !== null && ! $customer->customerId()->equals($customerId)) {
+            throw new DomainException('Sales invoice customer snapshot must match CustomerId.');
+        }
+        if ($address !== null && $address->type() !== AddressType::Invoice) {
+            throw new DomainException('Sales invoice requires an Invoice address snapshot.');
         }
     }
 }

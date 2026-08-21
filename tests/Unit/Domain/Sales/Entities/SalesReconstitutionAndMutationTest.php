@@ -113,7 +113,7 @@ final class SalesReconstitutionAndMutationTest extends TestCase
         self::assertSame('50', $draft->total()->amount());
     }
 
-    public function test_credit_reconstitution_and_draft_mutations_preserve_nullable_source_contract(): void
+    public function test_credit_reconstitution_and_draft_mutations_preserve_required_source_contract(): void
     {
         $source = $this->invoiceId('9');
         $line = $this->creditLine('1', '2', '10');
@@ -127,8 +127,8 @@ final class SalesReconstitutionAndMutationTest extends TestCase
         $this->assertLocked(fn () => $credit->updateLine($this->creditLine('1', '3', '10')));
         $this->assertLocked(fn () => $credit->changeCreditInvoiceDate(new DateTimeImmutable('2026-08-02')));
 
-        $draft = SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, SalesCreditInvoiceStatus::Draft, []);
-        self::assertNull($draft->sourceInvoiceId());
+        $draft = SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), $source, SalesCreditInvoiceStatus::Draft, []);
+        self::assertSame($source, $draft->sourceInvoiceId());
         $draft->addLine($line);
         $replacement = $this->creditLine('1', '6', '10');
         $draft->updateLine($replacement);
@@ -151,9 +151,9 @@ final class SalesReconstitutionAndMutationTest extends TestCase
         $this->assertInvalid(fn () => SalesInvoice::reconstitute($this->invoiceId(), new SalesInvoiceNumber('F000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), new DateTimeImmutable('2026-08-31'), null, SalesInvoiceStatus::Draft, [$this->invoiceLine('1', currency: 'USD')]));
         $this->assertInvalid(fn () => SalesInvoice::reconstitute($this->invoiceId(), new SalesInvoiceNumber('F000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), new DateTimeImmutable('2026-08-31'), null, SalesInvoiceStatus::Finalized, []));
 
-        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, SalesCreditInvoiceStatus::Draft, [$this->creditLine('1'), $this->creditLine('1')]));
-        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, SalesCreditInvoiceStatus::Draft, [$this->creditLine('1', currency: 'USD')]));
-        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, SalesCreditInvoiceStatus::Posted, []));
+        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), $this->invoiceId(), SalesCreditInvoiceStatus::Draft, [$this->creditLine('1'), $this->creditLine('1')]));
+        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), $this->invoiceId(), SalesCreditInvoiceStatus::Draft, [$this->creditLine('1', currency: 'USD')]));
+        $this->assertInvalid(fn () => SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), $this->invoiceId(), SalesCreditInvoiceStatus::Posted, []));
     }
 
     public function test_all_draft_line_paths_reject_currency_mismatch_and_unknown_update(): void
@@ -161,7 +161,7 @@ final class SalesReconstitutionAndMutationTest extends TestCase
         $quotation = Quotation::reconstitute($this->quotationId(), new QuotationNumber('Q000001'), $this->administrationId(), $this->customerId(), $this->eur(), QuotationStatus::Draft, new DateTimeImmutable('2026-08-01'), null, []);
         $order = Order::reconstitute($this->orderId(), new OrderNumber('O000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, OrderStatus::Draft, []);
         $invoice = SalesInvoice::reconstitute($this->invoiceId(), new SalesInvoiceNumber('F000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), new DateTimeImmutable('2026-08-31'), null, SalesInvoiceStatus::Draft, []);
-        $credit = SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), null, SalesCreditInvoiceStatus::Draft, []);
+        $credit = SalesCreditInvoice::reconstitute($this->creditId(), new SalesCreditInvoiceNumber('C000001'), $this->administrationId(), $this->customerId(), $this->eur(), new DateTimeImmutable('2026-08-01'), $this->invoiceId(), SalesCreditInvoiceStatus::Draft, []);
 
         $this->assertInvalid(fn () => $quotation->addLine($this->quotationLine('1', currency: 'USD')));
         $this->assertInvalid(fn () => $order->updateLine($this->orderLine('1')));

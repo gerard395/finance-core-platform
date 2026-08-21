@@ -10,6 +10,7 @@ use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
@@ -30,8 +31,10 @@ final class Quotation
         private QuotationStatus $status,
         private DateTimeImmutable $quotationDate,
         private ?DateTimeImmutable $expiryDate,
+        private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
     ) {
         self::assertDates($quotationDate, $expiryDate);
+        self::assertCustomerSnapshot($customerId, $customerSnapshot);
     }
 
     /** @param list<QuotationLine> $lines */
@@ -45,8 +48,9 @@ final class Quotation
         DateTimeImmutable $quotationDate,
         ?DateTimeImmutable $expiryDate,
         array $lines,
+        ?SalesCustomerSnapshot $customerSnapshot = null,
     ): self {
-        $quotation = new self($id, $number, $administrationId, $customerId, $currency, $status, $quotationDate, $expiryDate);
+        $quotation = new self($id, $number, $administrationId, $customerId, $currency, $status, $quotationDate, $expiryDate, $customerSnapshot);
         $quotation->restoreLines($lines);
 
         if (in_array($status, [QuotationStatus::Sent, QuotationStatus::Accepted, QuotationStatus::Rejected], true) && $lines === []) {
@@ -74,6 +78,18 @@ final class Quotation
     public function customerId(): CustomerId
     {
         return $this->customerId;
+    }
+
+    public function customerSnapshot(): ?SalesCustomerSnapshot
+    {
+        return $this->customerSnapshot;
+    }
+
+    private static function assertCustomerSnapshot(CustomerId $customerId, ?SalesCustomerSnapshot $snapshot): void
+    {
+        if ($snapshot !== null && ! $snapshot->customerId()->equals($customerId)) {
+            throw new DomainException('Quotation customer snapshot must match CustomerId.');
+        }
     }
 
     public function currency(): Currency

@@ -5,11 +5,14 @@ declare(strict_types=1);
 namespace App\Domain\Sales\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Enums\AddressType;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\SalesCreditInvoiceStatus;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
@@ -28,9 +31,18 @@ final class SalesCreditInvoice
         private readonly CustomerId $customerId,
         private readonly Currency $currency,
         private DateTimeImmutable $creditInvoiceDate,
-        private readonly ?SalesInvoiceId $sourceInvoiceId,
+        private readonly SalesInvoiceId $sourceInvoiceId,
         private SalesCreditInvoiceStatus $status,
-    ) {}
+        private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
+        private readonly ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
+    ) {
+        if ($customerSnapshot !== null && ! $customerSnapshot->customerId()->equals($customerId)) {
+            throw new DomainException('Sales credit invoice customer snapshot must match CustomerId.');
+        }
+        if ($invoiceAddressSnapshot !== null && $invoiceAddressSnapshot->type() !== AddressType::Invoice) {
+            throw new DomainException('Sales credit invoice requires an Invoice address snapshot.');
+        }
+    }
 
     /** @param list<SalesCreditInvoiceLine> $lines */
     public static function reconstitute(
@@ -40,11 +52,13 @@ final class SalesCreditInvoice
         CustomerId $customerId,
         Currency $currency,
         DateTimeImmutable $creditInvoiceDate,
-        ?SalesInvoiceId $sourceInvoiceId,
+        SalesInvoiceId $sourceInvoiceId,
         SalesCreditInvoiceStatus $status,
         array $lines,
+        ?SalesCustomerSnapshot $customerSnapshot = null,
+        ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
     ): self {
-        $creditInvoice = new self($id, $number, $administrationId, $customerId, $currency, $creditInvoiceDate, $sourceInvoiceId, $status);
+        $creditInvoice = new self($id, $number, $administrationId, $customerId, $currency, $creditInvoiceDate, $sourceInvoiceId, $status, $customerSnapshot, $invoiceAddressSnapshot);
         $creditInvoice->restoreLines($lines);
 
         if (in_array($status, [SalesCreditInvoiceStatus::Finalized, SalesCreditInvoiceStatus::Posted], true) && $lines === []) {
@@ -84,9 +98,19 @@ final class SalesCreditInvoice
         return $this->creditInvoiceDate;
     }
 
-    public function sourceInvoiceId(): ?SalesInvoiceId
+    public function sourceInvoiceId(): SalesInvoiceId
     {
         return $this->sourceInvoiceId;
+    }
+
+    public function customerSnapshot(): ?SalesCustomerSnapshot
+    {
+        return $this->customerSnapshot;
+    }
+
+    public function invoiceAddressSnapshot(): ?SalesAddressSnapshot
+    {
+        return $this->invoiceAddressSnapshot;
     }
 
     public function status(): SalesCreditInvoiceStatus

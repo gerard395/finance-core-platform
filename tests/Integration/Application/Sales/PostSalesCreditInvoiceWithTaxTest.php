@@ -127,6 +127,16 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
         $this->execute($invoice, [$this->input($invoice->lines()[0], $input)], [$input]);
     }
 
+    public function test_original_tax_posting_must_belong_to_credit_source_invoice(): void
+    {
+        $invoice = $this->creditInvoice([['100']]);
+        $wrongSource = new SalesInvoiceId(new Uuid('40000000-0000-4000-8000-000000000099'));
+        $original = $this->original('100', '21', '21', sourceInvoiceId: $wrongSource);
+
+        $this->expectException(DomainException::class);
+        $this->execute($invoice, [$this->input($invoice->lines()[0], $original)], [$original]);
+    }
+
     public function test_draft_is_rejected_and_failed_posting_returns_no_reversals(): void
     {
         $draft = $this->creditInvoice([['100']], false);
@@ -155,7 +165,7 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
 
     private function creditInvoice(array $amounts, bool $finalize = true): SalesCreditInvoice
     {
-        $invoice = new SalesCreditInvoice(new SalesCreditInvoiceId($this->uuid('1')), new SalesCreditInvoiceNumber('sc-1'), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new CustomerId($this->uuid('3')), new Currency('EUR'), new DateTimeImmutable('2026-08-19'), new SalesInvoiceId($this->uuid('4')), SalesCreditInvoiceStatus::Draft);
+        $invoice = new SalesCreditInvoice(new SalesCreditInvoiceId($this->uuid('1')), new SalesCreditInvoiceNumber('sc-1'), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new CustomerId($this->uuid('3')), new Currency('EUR'), new DateTimeImmutable('2026-08-19'), $this->sourceInvoiceId(), SalesCreditInvoiceStatus::Draft);
         foreach ($amounts as [$amount]) {
             $invoice->addLine(new SalesCreditInvoiceLine(new SalesCreditInvoiceLineId($this->uuid('5')), new LineDescription('credit'), new Quantity('1'), new Money($amount, new Currency('EUR'))));
         }
@@ -166,9 +176,14 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
         return $invoice;
     }
 
-    private function original(string $base, string $tax, string $rate, TaxPostingDirection $direction = TaxPostingDirection::Output): TaxPosting
-    {
-        return new TaxPosting(new TaxPostingId($this->uuid('6')), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, new Currency('EUR')), new Money($tax, new Currency('EUR')), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId($this->uuid('8')), new TaxSourceLineId($this->uuid('9')), new PostingDate(new DateTimeImmutable('2026-08-01')), new JournalEntryId($this->uuid('d')), $this->lineId(), $tax === '0' ? null : $this->lineId(), TaxPostingType::Original);
+    private function original(
+        string $base,
+        string $tax,
+        string $rate,
+        TaxPostingDirection $direction = TaxPostingDirection::Output,
+        ?SalesInvoiceId $sourceInvoiceId = null,
+    ): TaxPosting {
+        return new TaxPosting(new TaxPostingId($this->uuid('6')), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, new Currency('EUR')), new Money($tax, new Currency('EUR')), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId(($sourceInvoiceId ?? $this->sourceInvoiceId())->uuid()), new TaxSourceLineId($this->uuid('9')), new PostingDate(new DateTimeImmutable('2026-08-01')), new JournalEntryId($this->uuid('d')), $this->lineId(), $tax === '0' ? null : $this->lineId(), TaxPostingType::Original);
     }
 
     private function reversal(TaxPosting $original): TaxPosting
@@ -184,6 +199,11 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
     private function lineId(): JournalEntryLineId
     {
         return new JournalEntryLineId($this->uuid('e'));
+    }
+
+    private function sourceInvoiceId(): SalesInvoiceId
+    {
+        return new SalesInvoiceId(new Uuid('40000000-0000-4000-8000-000000000001'));
     }
 
     private function uuid(string $prefix): Uuid

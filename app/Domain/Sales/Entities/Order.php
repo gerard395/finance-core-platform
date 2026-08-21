@@ -11,6 +11,7 @@ use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\OrderLineId;
 use App\Domain\Sales\ValueObjects\OrderNumber;
 use App\Domain\Sales\ValueObjects\QuotationId;
+use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
@@ -30,7 +31,10 @@ final class Order
         private DateTimeImmutable $orderDate,
         private readonly ?QuotationId $sourceQuotationId,
         private OrderStatus $status,
-    ) {}
+        private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
+    ) {
+        self::assertCustomerSnapshot($customerId, $customerSnapshot);
+    }
 
     /** @param list<OrderLine> $lines */
     public static function reconstitute(
@@ -43,8 +47,9 @@ final class Order
         ?QuotationId $sourceQuotationId,
         OrderStatus $status,
         array $lines,
+        ?SalesCustomerSnapshot $customerSnapshot = null,
     ): self {
-        $order = new self($id, $number, $administrationId, $customerId, $currency, $orderDate, $sourceQuotationId, $status);
+        $order = new self($id, $number, $administrationId, $customerId, $currency, $orderDate, $sourceQuotationId, $status, $customerSnapshot);
         $order->restoreLines($lines);
 
         if (in_array($status, [OrderStatus::Confirmed, OrderStatus::PartiallyInvoiced, OrderStatus::FullyInvoiced], true) && $lines === []) {
@@ -72,6 +77,18 @@ final class Order
     public function customerId(): CustomerId
     {
         return $this->customerId;
+    }
+
+    public function customerSnapshot(): ?SalesCustomerSnapshot
+    {
+        return $this->customerSnapshot;
+    }
+
+    private static function assertCustomerSnapshot(CustomerId $customerId, ?SalesCustomerSnapshot $snapshot): void
+    {
+        if ($snapshot !== null && ! $snapshot->customerId()->equals($customerId)) {
+            throw new DomainException('Order customer snapshot must match CustomerId.');
+        }
     }
 
     public function currency(): Currency

@@ -19,7 +19,13 @@ Iedere Aggregate Root bewaakt de identiteit en ownership van zijn eigen regels. 
 
 In Draft kunnen bestaande lines via aggregate-owned `updateLine()` met behoud van line identity worden vervangen. Identity, businessnummer, AdministrationId, CustomerId, documentcurrency en bronverwijzingen blijven immutable. Alleen bestaande datumvelden zijn via samenhangende Draft-methoden wijzigbaar: Quotation-datum/expiry en Invoice-datum/due date worden atomair gevalideerd; Order- en CreditInvoice-datum hebben elk één expliciete mutatie. Na de eerste lifecycle-lock zijn ook headerwijzigingen verboden.
 
-Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en reconstitution. `total()` is uitsluitend de exacte afgeleide som van bestaande line totals in die currency en retourneert nul voor een lege Draft. Het is een pre-tax/netto documenttotaal; fiscale bedragen en snapshots blijven buiten dit contract.
+Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en reconstitution. `total()` is uitsluitend de exacte afgeleide som van bestaande line totals in die currency en retourneert nul voor een lege Draft. Het is een pre-tax/netto documenttotaal. SalesInvoiceLine kan daarnaast een immutable output-taxsnapshot dragen; exacte tax- en gross-totalen worden in Application via de bestaande Fiscal `TaxCalculation` afgeleid.
+
+## Historische snapshots
+
+Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation en Order hebben in v1 geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
+
+Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
 ## Statusmachines
 
@@ -65,7 +71,7 @@ Aggregates muteren elkaar niet. Een geaccepteerde Quotation kan later door de Ap
 
 De eerste Sales-domeiniteratie bevat geen:
 
-- btw-logica; die hoort bij Tax;
+- een eigen btw-rekenengine; berekening blijft bij Fiscal `TaxCalculation`;
 - journaalboekingen of Posting Engine; die horen bij Accounting;
 - betalingen of openstaande posten; die horen bij Banking respectievelijk Accounting;
 - Laravel-, database-, repository- of infrastructuurafhankelijkheden.
