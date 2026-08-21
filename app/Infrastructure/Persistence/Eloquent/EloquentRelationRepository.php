@@ -10,11 +10,18 @@ use App\Application\Relations\RelationStore;
 use App\Application\Relations\RelationUpdater;
 use App\Application\Relations\RelationWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Entities\Contact;
 use App\Domain\Relations\Entities\Relation;
+use App\Domain\Relations\Enums\ContactStatus;
+use App\Domain\Relations\ValueObjects\ContactId;
+use App\Domain\Relations\ValueObjects\ContactName;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\EmailAddress;
+use App\Domain\Relations\ValueObjects\PhoneNumber;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Identity\Uuid;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationContactRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DomainException;
 use Illuminate\Database\QueryException;
@@ -146,11 +153,31 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
 
     private function hydrate(RelationRecord $record): Relation
     {
-        return new Relation(
+        $contacts = RelationContactRecord::query()
+            ->where('administration_id', $record->getAttribute('administration_id'))
+            ->where('relation_id', $record->getAttribute('id'))
+            ->orderBy('contact_id')->get()
+            ->map(function (RelationContactRecord $contact): Contact {
+                $email = $contact->getAttribute('email');
+                $phone = $contact->getAttribute('phone');
+
+                return new Contact(
+                    new ContactId(new Uuid($contact->getAttribute('contact_id'))),
+                    new ContactName($contact->getAttribute('contact_name')),
+                    $email === null ? null : new EmailAddress($email),
+                    $phone === null ? null : new PhoneNumber($phone),
+                    ContactStatus::from($contact->getAttribute('status')),
+                );
+            })->all();
+
+        return Relation::reconstitute(
             new RelationId(new Uuid($record->getAttribute('id'))),
             new RelationCode($record->getAttribute('code')),
             new DisplayName($record->getAttribute('display_name')),
             (bool) $record->getAttribute('active'),
+            $contacts,
+            [],
+            [],
         );
     }
 }
