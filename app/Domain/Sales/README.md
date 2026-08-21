@@ -89,3 +89,9 @@ Succesvol gecommitteerde nummers worden niet gerecycled. Allocation en toekomsti
 Quotations worden Administration-scoped duurzaam opgeslagen met hun immutable customer snapshot en aggregate-owned lines. Create alloceert nummer en insert in één transaction; updates laden tenant-scoped en zijn nooit upsert. Listreads filteren/sorteren/pagineren headers SQL-side en detail/aggregate hydration gebruikt uitsluitend `Quotation::reconstitute()`.
 
 De database bewaakt tenant-unieke quotationnummers en same-tenant Customer- en line→Quotation-relaties. Algemene optimistic locking bestaat nog niet. Quotation Web UI, PDF/e-mail, automatische expiry en Order-conversie blijven vervolgscope.
+
+## Sales invoice persistence
+
+Generic `CreateSalesInvoice` maakt uitsluitend directe facturen, heeft geen source Order-input en bewaart `sourceOrderId = null`. Persistence en `SalesInvoice::reconstitute()` behouden wel een nullable feitelijke source voor de toekomstige afzonderlijke Order-conversieflow.
+
+Customer, expliciet geselecteerde Invoice address en Output-taxdata zijn immutable snapshots. Draft header/line-mutaties, finalize en cancel gebruiken uitsluitend de Domain-lifecycle; exacte net/tax/gross-bedragen gebruiken de bestaande Fiscal-berekening zonder Infrastructure-aritmetiek of rounding. Posted/Paid zijn hier alleen feitelijke persistence/read-statussen: transactionele posting en settlement-owned Paid-commands blijven buiten deze grens.
