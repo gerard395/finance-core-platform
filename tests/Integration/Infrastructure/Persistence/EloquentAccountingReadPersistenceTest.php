@@ -31,6 +31,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentLedgerAccountRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryLineRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use DateTimeImmutable;
 use DomainException;
@@ -57,6 +58,8 @@ final class EloquentAccountingReadPersistenceTest extends TestCase
         $this->entries = new EloquentJournalEntryRepository;
         $this->createAdministration(self::ADMINISTRATION_A, 'A');
         $this->createAdministration(self::ADMINISTRATION_B, 'B');
+        $this->createJournal(self::ADMINISTRATION_A);
+        $this->createJournal(self::ADMINISTRATION_B);
     }
 
     public function test_ledger_accounts_roundtrip_with_explicit_tenant_ownership(): void
@@ -255,6 +258,25 @@ final class EloquentAccountingReadPersistenceTest extends TestCase
         ));
     }
 
+    private function createJournal(string $administration): void
+    {
+        JournalRecord::query()->create([
+            'id' => $this->journalId($administration),
+            'administration_id' => $administration,
+            'code' => 'TEST',
+            'name' => 'Accounting test journal',
+            'type' => 'general',
+            'status' => 'active',
+        ]);
+    }
+
+    private function journalId(string $administration): string
+    {
+        return $administration === self::ADMINISTRATION_A
+            ? '60000000-0000-4000-8000-000000000001'
+            : '61000000-0000-4000-8000-000000000001';
+    }
+
     private function entry(string $id, string $administration, string $date, string $amount = '100'): JournalEntry
     {
         $isA = $administration === self::ADMINISTRATION_A;
@@ -262,7 +284,7 @@ final class EloquentAccountingReadPersistenceTest extends TestCase
         return JournalEntry::reconstitute(
             new JournalEntryId(new Uuid($id)),
             $this->administrationId($administration),
-            new JournalId(new Uuid('60000000-0000-4000-8000-000000000001')),
+            new JournalId(new Uuid($this->journalId($administration))),
             $this->date($date),
             new JournalEntryReference('Persistence '.substr($id, 0, 8)),
             JournalEntryStatus::Posted,

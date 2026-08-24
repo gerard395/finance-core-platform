@@ -32,6 +32,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryLineRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\TaxPostingRecord;
 use DateTimeImmutable;
@@ -336,10 +337,18 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         ]);
 
         for ($entry = 1; $entry <= 8; $entry++) {
+            JournalRecord::query()->create([
+                'id' => $this->journalId($administration, $entry),
+                'administration_id' => $administration,
+                'code' => 'TEST'.$entry,
+                'name' => 'Tax posting test journal '.$entry,
+                'type' => 'general',
+                'status' => 'active',
+            ]);
             JournalEntryRecord::query()->create([
                 'id' => $this->journalEntryId($administration, $entry)->toString(),
                 'administration_id' => $administration,
-                'journal_id' => sprintf('70000000-0000-4000-8000-%012d', $entry),
+                'journal_id' => $this->journalId($administration, $entry),
                 'posting_date' => '2026-08-01',
                 'reference' => 'Tax source '.$entry,
                 'status' => 'posted',
@@ -357,6 +366,16 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
                 ]);
             }
         }
+    }
+
+    private function journalId(string $administration, int $entry): string
+    {
+        return sprintf(
+            $administration === self::ADMINISTRATION_A
+                ? '70000000-0000-4000-8000-%012d'
+                : '71000000-0000-4000-8000-%012d',
+            $entry,
+        );
     }
 
     private function journalEntryId(string $administration, int $entry): JournalEntryId

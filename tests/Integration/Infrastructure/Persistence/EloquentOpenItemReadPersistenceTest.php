@@ -26,6 +26,7 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentOpenItemRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemSettlementRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
@@ -343,14 +344,32 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
 
     private function createPostedEntry(string $administration, int $sequence): void
     {
+        JournalRecord::query()->create([
+            'id' => $this->journalId($administration, $sequence),
+            'administration_id' => $administration,
+            'code' => 'TEST'.$sequence,
+            'name' => 'Open item test journal '.$sequence,
+            'type' => 'general',
+            'status' => 'active',
+        ]);
         JournalEntryRecord::query()->create([
             'id' => $this->journalEntryId($administration, $sequence)->toString(),
             'administration_id' => $administration,
-            'journal_id' => sprintf('70000000-0000-4000-8000-%012d', $sequence),
+            'journal_id' => $this->journalId($administration, $sequence),
             'posting_date' => '2026-01-01',
             'reference' => 'OpenItem source '.$sequence,
             'status' => JournalEntryStatus::Posted->value,
         ]);
+    }
+
+    private function journalId(string $administration, int $sequence): string
+    {
+        return sprintf(
+            $administration === self::ADMINISTRATION_A
+                ? '70000000-0000-4000-8000-%012d'
+                : '71000000-0000-4000-8000-%012d',
+            $sequence,
+        );
     }
 
     private function createRelation(string $administration, int $sequence): void

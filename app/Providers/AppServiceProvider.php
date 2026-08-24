@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Application\Accounting\JournalEntryReadRepository;
 use App\Application\Accounting\JournalEntryStore;
+use App\Application\Accounting\JournalReadRepository;
+use App\Application\Accounting\JournalStore;
 use App\Application\Accounting\LedgerAccountReadRepository;
 use App\Application\Accounting\LedgerAccountStore;
 use App\Application\Accounting\OpenItemReadRepository;
@@ -76,6 +78,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentContactReadRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentContactWriter;
 use App\Infrastructure\Persistence\Eloquent\EloquentCustomerRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentJournalEntryRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentJournalRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentLedgerAccountRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentMembershipRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentOpenItemRepository;
@@ -114,6 +117,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(LedgerAccountStore::class, EloquentLedgerAccountRepository::class);
         $this->app->bind(JournalEntryReadRepository::class, EloquentJournalEntryRepository::class);
         $this->app->bind(JournalEntryStore::class, EloquentJournalEntryRepository::class);
+        $this->app->bind(JournalReadRepository::class, EloquentJournalRepository::class);
+        $this->app->bind(JournalStore::class, EloquentJournalRepository::class);
         $this->app->bind(OpenItemReadRepository::class, EloquentOpenItemRepository::class);
         $this->app->bind(OpenItemStore::class, EloquentOpenItemRepository::class);
         $this->app->bind(OpenItemSettlementStore::class, EloquentOpenItemRepository::class);
