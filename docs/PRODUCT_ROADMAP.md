@@ -376,6 +376,20 @@ creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export v
 daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
 rapportage leest immutable fiscale facts en herclassificeert facturen niet achteraf.
 
+### Batch W4D – Accounting Configuration Readiness
+
+W4D-000 levert een expliciete, transactionele en idempotente development-entrypoint
+waarmee uitsluitend een aangewezen Demo Administration een Sales Journal, Debiteuren-,
+Omzet- en Output-VAT-rekening plus SalesPostingConfiguration krijgt. Deze kleine set
+is demo-masterdata en nadrukkelijk geen production default chart of accounts.
+
+- W4D-000 – Development Accounting Master Data Provisioning
+- W4D-001 – Sales Posting Configuration Settings UI
+
+Latere afzonderlijke productcapabilities beheren Journalmasterdata en het
+LedgerAccount-rekeningschema. W4D-001 kiest geen accounts heuristisch en maakt geen
+financiële defaults; het onderhoudt alleen expliciete tenant-owned references.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

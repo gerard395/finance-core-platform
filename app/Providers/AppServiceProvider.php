@@ -17,6 +17,7 @@ use App\Application\Administration\AdministrationFiscalPartyReader;
 use App\Application\Administration\AdministrationRepository;
 use App\Application\Administration\AdministrationSettingsReader;
 use App\Application\Administration\AdministrationSettingsUpdater;
+use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Fiscal\TaxCodeReadRepository;
 use App\Application\Fiscal\TaxCodeStore;
@@ -112,6 +113,7 @@ use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Infrastructure\Accounting\LaravelOpenItemMatchIdentityGenerator;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
+use App\Infrastructure\Development\DemoAccountingProvisioner;
 use App\Infrastructure\Fiscal\DutchTaxCodeCatalogueProvisioner;
 use App\Infrastructure\Persistence\Eloquent\EloquentAddressReadRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAddressWriter;
@@ -293,6 +295,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AuthAccountStore::class, EloquentAuthAccountStore::class);
         $this->app->bind(PasswordHasher::class, LaravelPasswordHasher::class);
         $this->app->bind(TransactionManager::class, LaravelDatabaseTransactionManager::class);
+        $this->app->bind(DevelopmentAccountingMasterDataProvisioner::class, DemoAccountingProvisioner::class);
     }
 
     /**
