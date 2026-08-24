@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Sales\SalesCreditInvoiceCreator;
+use App\Application\Sales\SalesCreditInvoicePostingSource;
 use App\Application\Sales\SalesCreditInvoiceReadRepository;
 use App\Application\Sales\SalesCreditInvoiceUpdater;
 use App\Application\Sales\SalesCreditInvoiceWriteResult;
@@ -39,11 +40,18 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentSalesCreditInvoiceRepository implements SalesCreditInvoiceCreator, SalesCreditInvoiceReadRepository, SalesCreditInvoiceUpdater
+final class EloquentSalesCreditInvoiceRepository implements SalesCreditInvoiceCreator, SalesCreditInvoicePostingSource, SalesCreditInvoiceReadRepository, SalesCreditInvoiceUpdater
 {
     public function findForAdministration(AdministrationId $administrationId, SalesCreditInvoiceId $invoiceId): ?SalesCreditInvoice
     {
         $record = SalesCreditInvoiceRecord::query()->where('administration_id', $administrationId->toString())->whereKey($invoiceId->toString())->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function findLockedForAdministration(AdministrationId $administrationId, SalesCreditInvoiceId $creditInvoiceId): ?SalesCreditInvoice
+    {
+        $record = SalesCreditInvoiceRecord::query()->where('administration_id', $administrationId->toString())->whereKey($creditInvoiceId->toString())->lockForUpdate()->first();
 
         return $record === null ? null : $this->hydrate($record);
     }

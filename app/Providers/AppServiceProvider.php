@@ -55,6 +55,7 @@ use App\Application\Sales\OrderDetailReadRepository;
 use App\Application\Sales\OrderListReadRepository;
 use App\Application\Sales\OrderReadRepository;
 use App\Application\Sales\OrderUpdater;
+use App\Application\Sales\PostSalesCreditInvoiceWithTax;
 use App\Application\Sales\PostSalesInvoiceWithTax;
 use App\Application\Sales\QuotationCreator;
 use App\Application\Sales\QuotationDetailReadRepository;
@@ -65,6 +66,10 @@ use App\Application\Sales\SalesCreditInvoiceCreator;
 use App\Application\Sales\SalesCreditInvoiceDetailReadRepository;
 use App\Application\Sales\SalesCreditInvoiceIdentityGenerator;
 use App\Application\Sales\SalesCreditInvoiceListReadRepository;
+use App\Application\Sales\SalesCreditInvoicePostingClock;
+use App\Application\Sales\SalesCreditInvoicePostingIdentityGenerator;
+use App\Application\Sales\SalesCreditInvoicePostingRepository;
+use App\Application\Sales\SalesCreditInvoicePostingSource;
 use App\Application\Sales\SalesCreditInvoiceReadRepository;
 use App\Application\Sales\SalesCreditInvoiceUpdater;
 use App\Application\Sales\SalesCreditSourceReader;
@@ -87,6 +92,7 @@ use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Accounting\Services\PostingValidation;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
+use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Infrastructure\Accounting\LaravelOpenItemMatchIdentityGenerator;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
@@ -129,11 +135,14 @@ use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use App\Infrastructure\Relations\LaravelRelationClassificationIdentityGenerator;
 use App\Infrastructure\Sales\DatabaseSalesNumberSequence;
+use App\Infrastructure\Sales\EloquentSalesCreditInvoicePostingRepository;
 use App\Infrastructure\Sales\EloquentSalesCustomerContextReader;
 use App\Infrastructure\Sales\EloquentSalesInvoicePostingRepository;
 use App\Infrastructure\Sales\EloquentSalesPostingConfiguration;
 use App\Infrastructure\Sales\LaravelSalesCreditInvoiceIdentityGenerator;
+use App\Infrastructure\Sales\LaravelSalesCreditInvoicePostingIdentityGenerator;
 use App\Infrastructure\Sales\LaravelSalesInvoicePostingIdentityGenerator;
+use App\Infrastructure\Sales\SystemSalesCreditInvoicePostingClock;
 use App\Infrastructure\Sales\SystemSalesInvoicePostingClock;
 use Illuminate\Support\ServiceProvider;
 
@@ -207,6 +216,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SalesCreditInvoiceReadRepository::class, EloquentSalesCreditInvoiceRepository::class);
         $this->app->bind(SalesCreditInvoiceCreator::class, EloquentSalesCreditInvoiceRepository::class);
         $this->app->bind(SalesCreditInvoiceUpdater::class, EloquentSalesCreditInvoiceRepository::class);
+        $this->app->bind(SalesCreditInvoicePostingSource::class, EloquentSalesCreditInvoiceRepository::class);
+        $this->app->bind(SalesCreditInvoicePostingRepository::class, EloquentSalesCreditInvoicePostingRepository::class);
+        $this->app->bind(SalesCreditInvoicePostingIdentityGenerator::class, LaravelSalesCreditInvoicePostingIdentityGenerator::class);
+        $this->app->bind(SalesCreditInvoicePostingClock::class, SystemSalesCreditInvoicePostingClock::class);
         $this->app->bind(SalesCreditInvoiceListReadRepository::class, EloquentSalesCreditInvoiceReadRepository::class);
         $this->app->bind(SalesCreditInvoiceDetailReadRepository::class, EloquentSalesCreditInvoiceReadRepository::class);
         $this->app->bind(SalesCreditSourceReader::class, EloquentSalesCreditSourceReader::class);
@@ -220,6 +233,15 @@ class AppServiceProvider extends ServiceProvider
                 new TaxPostingIdentityPolicy,
                 new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
                 new CreateSalesInvoicePostingRequest,
+            );
+        });
+        $this->app->bind(PostSalesCreditInvoiceWithTax::class, function ($app): PostSalesCreditInvoiceWithTax {
+            $identities = $app->make(SalesCreditInvoicePostingIdentityGenerator::class);
+
+            return new PostSalesCreditInvoiceWithTax(
+                new TaxPostingReversalPolicy,
+                new TaxPostingIdentityPolicy,
+                new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
             );
         });
         $this->app->bind(RelationClassificationIdentityGenerator::class, LaravelRelationClassificationIdentityGenerator::class);

@@ -12,6 +12,7 @@ use App\Application\Sales\EligibleSalesCreditSourceReadRepository;
 use App\Application\Sales\EligibleSalesCreditSourceSortField;
 use App\Application\Sales\FinalizeSalesCreditInvoice;
 use App\Application\Sales\PostSalesCreditInvoice;
+use App\Application\Sales\PostSalesCreditInvoiceStatus;
 use App\Application\Sales\PostSalesInvoice;
 use App\Application\Sales\PostSalesInvoiceStatus;
 use App\Application\Sales\SalesCreditInvoiceConsistency;
@@ -34,6 +35,7 @@ use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Identity\Uuid;
+use App\Infrastructure\Persistence\Eloquent\Models\SalesCreditInvoicePostingRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\SalesCreditInvoiceRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\SalesInvoiceRecord;
 use DateTimeImmutable;
@@ -123,6 +125,98 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         self::assertSame(SalesCreditInvoiceStatus::Cancelled, $this->app->make(SalesCreditInvoiceReadRepository::class)->findForAdministration($this->admin(self::A), $this->creditId())?->status());
     }
 
+    public function test_finalized_credit_posts_reversals_credit_receivable_and_matches_the_source_atomically(): void
+    {
+        $source = $this->postedSource(self::A, 1, 1);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
+        DB::table('relations')->where('administration_id', self::A)->update(['display_name' => 'Changed after finalization']);
+        DB::table('customers')->where('administration_id', self::A)->update(['active' => false]);
+        DB::table('tax_codes')->where('administration_id', self::A)->update(['rate' => '0', 'status' => 'inactive']);
+
+        $result = $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId());
+
+        self::assertSame(PostSalesCreditInvoiceStatus::Success, $result->status());
+        self::assertSame('posted', SalesCreditInvoiceRecord::query()->findOrFail($this->creditId()->toString())->getAttribute('status'));
+        self::assertCount(2, $result->taxPostingIds());
+        self::assertSame(2, DB::table('tax_postings')->where('source_document_type', 'sales_credit_invoice')->where('type', 'reversal')->count());
+        $creditOpenItem = DB::table('open_items')->where('id', $result->openItemId()?->toString())->first();
+        self::assertNotNull($creditOpenItem);
+        self::assertSame('receivable', $creditOpenItem->open_item_type);
+        self::assertSame('credit', $creditOpenItem->side);
+        self::assertSame('175.5', (string) $creditOpenItem->original_amount);
+        self::assertSame(1, DB::table('open_item_matches')->count());
+        self::assertSame('175.5', (string) DB::table('open_item_matches')->value('amount'));
+        $linkage = SalesCreditInvoicePostingRecord::query()->where('sales_credit_invoice_id', $this->creditId()->toString())->firstOrFail();
+        self::assertSame($result->journalEntryId()?->toString(), $linkage->getAttribute('journal_entry_id'));
+        self::assertSame($result->openItemId()?->toString(), $linkage->getAttribute('open_item_id'));
+
+        $counts = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()];
+        self::assertSame(PostSalesCreditInvoiceStatus::AlreadyPosted, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId())->status());
+        self::assertSame($counts, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
+        self::assertSame(PostSalesCreditInvoiceStatus::NotFound, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::B), $this->creditId())->status());
+    }
+
+    public function test_credit_matches_only_partial_source_balance_and_leaves_receivable_credit_remainder(): void
+    {
+        $source = $this->postedSource(self::A, 1, 1);
+        $sourcePosting = DB::table('sales_invoice_postings')->where('sales_invoice_id', $source->toString())->first();
+        DB::table('open_item_settlements')->insert([
+            'id' => $this->id(1, 91, 1), 'administration_id' => self::A, 'open_item_id' => $sourcePosting->open_item_id,
+            'effective_date' => '2026-08-21', 'amount' => '40', 'currency' => 'EUR',
+            'source_journal_entry_id' => $sourcePosting->journal_entry_id, 'type' => 'applied', 'reversed_settlement_id' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
+
+        $result = $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId());
+
+        self::assertSame(PostSalesCreditInvoiceStatus::Success, $result->status());
+        self::assertSame('135.5', (string) DB::table('open_item_matches')->value('amount'));
+        self::assertSame('175.5', (string) DB::table('open_items')->where('id', $result->openItemId()?->toString())->value('original_amount'));
+        self::assertSame('credit', DB::table('open_items')->where('id', $result->openItemId()?->toString())->value('side'));
+        self::assertSame('receivable', DB::table('open_items')->where('id', $result->openItemId()?->toString())->value('open_item_type'));
+    }
+
+    public function test_paid_source_creates_full_open_customer_credit_without_zero_match_or_refund(): void
+    {
+        $source = $this->postedSource(self::A, 1, 1);
+        $sourcePosting = DB::table('sales_invoice_postings')->where('sales_invoice_id', $source->toString())->first();
+        DB::table('open_item_settlements')->insert([
+            'id' => $this->id(1, 91, 1), 'administration_id' => self::A, 'open_item_id' => $sourcePosting->open_item_id,
+            'effective_date' => '2026-08-21', 'amount' => '175.5', 'currency' => 'EUR',
+            'source_journal_entry_id' => $sourcePosting->journal_entry_id, 'type' => 'applied', 'reversed_settlement_id' => null,
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        SalesInvoiceRecord::query()->whereKey($source->toString())->update(['status' => 'paid']);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
+
+        $result = $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId());
+
+        self::assertSame(PostSalesCreditInvoiceStatus::Success, $result->status());
+        self::assertSame(0, DB::table('open_item_matches')->count());
+        self::assertSame('credit', DB::table('open_items')->where('id', $result->openItemId()?->toString())->value('side'));
+    }
+
+    public function test_credit_posting_rejects_invalid_and_inconsistent_lifecycle_states_without_writes(): void
+    {
+        $source = $this->postedSource(self::A, 1, 1);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        $posting = $this->app->make(PostSalesCreditInvoice::class);
+
+        self::assertSame(PostSalesCreditInvoiceStatus::InvalidState, $posting->execute($this->admin(self::A), $this->creditId())->status());
+        SalesCreditInvoiceRecord::query()->whereKey($this->creditId()->toString())->update(['status' => 'cancelled']);
+        self::assertSame(PostSalesCreditInvoiceStatus::InvalidState, $posting->execute($this->admin(self::A), $this->creditId())->status());
+        SalesCreditInvoiceRecord::query()->whereKey($this->creditId()->toString())->update(['status' => 'posted']);
+        self::assertSame(PostSalesCreditInvoiceStatus::FinancialStateInconsistent, $posting->execute($this->admin(self::A), $this->creditId())->status());
+        self::assertSame(1, DB::table('journal_entries')->count());
+        self::assertSame(2, DB::table('tax_postings')->count());
+        self::assertSame(1, DB::table('open_items')->count());
+        self::assertSame(0, DB::table('sales_credit_invoice_postings')->count());
+    }
+
     public function test_database_constraints_and_failed_create_roll_back_number(): void
     {
         $source = $this->postedSource(self::A, 1, 1);
@@ -130,7 +224,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         $useCase = new CreateSalesCreditInvoiceFromInvoice($this->app->make(SalesCreditSourceReader::class), $this->app->make(SalesNumberAllocator::class), new FixedCreditIdentity, new FailingCreditCreator, new SalesCreditInvoiceConsistency, $this->app->make(TransactionManager::class));
         self::assertSame(SalesCreditInvoiceWriteResult::DuplicateIdentity, $useCase->execute($this->admin(self::A), $source, new DateTimeImmutable('2026-08-24'))->status());
         self::assertSame($before, DB::table('sales_number_sequences')->where('administration_id', self::A)->where('sequence_type', 'sales_credit_invoice')->value('next_value'));
-        self::assertFalse(class_exists(PostSalesCreditInvoice::class));
+        self::assertTrue(class_exists(PostSalesCreditInvoice::class));
 
         self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
         $this->expectException(QueryException::class);

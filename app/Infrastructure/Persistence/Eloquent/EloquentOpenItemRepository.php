@@ -105,6 +105,18 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
             : null;
     }
 
+    public function findLocked(AdministrationId $administrationId, OpenItemId $openItemId): ?OpenItem
+    {
+        $record = OpenItemRecord::query()
+            ->with('settlements')
+            ->where('administration_id', $administrationId->toString())
+            ->whereKey($openItemId->toString())
+            ->lockForUpdate()
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
     public function appendMatch(OpenItemMatch $match): OpenItemMatchAppendResult
     {
         if (OpenItemMatchRecord::query()->whereKey($match->id()->toString())->exists()) {
@@ -145,6 +157,18 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
 
             if ($record === null || $record->getAttribute('administration_id') !== $openItem->administrationId()->toString()) {
                 throw new DomainException('The persisted OpenItem does not belong to this Administration.');
+            }
+
+            $record->load('settlements');
+            $current = $this->hydrate($record);
+            if ($settlement->type() === OpenItemSettlementType::Applied) {
+                $current->applySettlement($settlement->id(), $settlement->effectiveDate(), $settlement->amount(), $settlement->sourceJournalEntryId());
+            } else {
+                $reversedSettlementId = $settlement->reversedSettlementId();
+                if ($reversedSettlementId === null) {
+                    throw new DomainException('A reversal must reference an applied settlement.');
+                }
+                $current->reverseSettlement($settlement->id(), $settlement->effectiveDate(), $reversedSettlementId, $settlement->sourceJournalEntryId());
             }
 
             if (OpenItemSettlementRecord::query()->whereKey($settlement->id()->toString())->exists()) {
