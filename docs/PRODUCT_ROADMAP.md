@@ -353,34 +353,24 @@ zijn ontworpen. De aanbevolen volgende productbatch is **Sales Document Delivery
 PDF & Email**. Centrale Administration-bootstrap en verdere Draft-concurrency-
 hardening blijven afzonderlijke platformvervolgen.
 
-W4B-004A ondersteunt expliciet Nederlandse BTW21, BTW9 en BTW0; BTW0 is uitsluitend
-zero-rated en nooit een shortcut voor verlegging, vrijstelling of outside-scope.
-International VAT vereist typed VAT/jurisdictionmasterdata, TaxTreatment plus
-VAT-return/ICP-classificatie, immutable party- en line-snapshots, supply date en
-fiscale posting/creditreversaltruth. Tot W4B-004B1–B6 zijn voltooid is het productlabel
-**domestic NL Sales VAT supported; international reverse-charge invoicing not
-supported** en blijft de batch mergeblocked.
+W4B-004B1–B6 sluiten de internationale fiscale predecessor af. BTW21, BTW9 en BTW0
+blijven afzonderlijke domestic treatments; BTW0 is nooit een shortcut voor
+verlegging, vrijstelling of outside-scope. EU-diensten, intracommunautaire goederen,
+outside-scope en vrijstelling hebben eigen expliciete TaxTreatments, VAT-return-/ICP-
+classificaties en selectorlabels. Customer/supplier VAT-ID, jurisdiction en
+prestatiedatum worden immutable gesnapshot; posting en credits bewaren ook bij nul-btw
+de taxable base en classificaties als duurzame TaxPosting-truth.
 
-W4B-004B2 legt inmiddels de typed fiscale betekenis duurzaam vast: BTW21 is domestic
-standard, BTW9 domestic reduced en BTW0 domestic zero-rated, alle met ICP `none`.
-TaxCalculation verandert daardoor niet; ook 0%-postings behouden taxable base en
-rapportageclassificatie. Internationale treatments bestaan in het domeinmodel maar
-worden nog niet door de Sales-selector aangeboden.
-
-W4B-004B3 legt customer/supplier VAT-ID en jurisdiction immutable vast bij invoice
-create, bewaart een expliciete prestatiedatum zonder InvoiceDate-/OrderDate-fallback
-en laat credits die oorspronkelijke context erven. Treatment-specifieke readiness en
-typed factuurwording zijn aanwezig; internationale TaxCodes en Webselectie blijven
-uitgeschakeld tot W4B-004B4.
-
-W4B-004B4 maakt de vier expliciete Output-treatments voor EU-diensten,
-intracommunautaire goederen, outside-scope en vrijstelling selecteerbaar in directe en
-Order-derived SalesInvoices. De keuze blijft volledig handmatig, tenant-scoped en
-readiness-guarded; VIES, fiscale decision support en ICP-reporting blijven deferred.
+De W4B-004B6-review bevestigt dat domestic NL Sales VAT, expliciete EU B2B-service-
+verlegging en de internationale invoice-/posting-/creditclassificaties end-to-end
+veilig zijn. Er zijn geen fiscale mergeblockers. Automatische treatmentselectie,
+VIES, PDF/e-mail en officiële VAT-/ICP-rapportage blijven afzonderlijke capabilities.
+Niet-EUR officiële reporting vereist eerst een expliciete FX→EUR-policy en historische
+koersfacts.
 
 ### Toekomstige batch – Dutch VAT & ICP Reporting
 
-Na W4B-004B6 volgt een afzonderlijke reportingcapability voor reportingperioden,
+Na W4B-004B6 is de volgende fiscale batch een afzonderlijke reportingcapability voor reportingperioden,
 btw-aangifterubrieken, ICP-aggregatie per klant-btw-ID en goods/services,
 creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export volgt
 daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
