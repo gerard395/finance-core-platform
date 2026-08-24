@@ -203,6 +203,7 @@ final class SalesInvoiceController extends Controller
             'canViewSales' => $this->can($context, SalesPermission::View),
             'canManageInvoiceDrafts' => $this->can($context, SalesPermission::ManageInvoiceDrafts),
             'canIssueInvoices' => $this->can($context, SalesPermission::IssueInvoices),
+            'canPostInvoices' => $this->can($context, SalesPermission::PostInvoices),
             'statusPresenter' => SalesInvoiceStatusPresenter::class,
             'moneyFormatter' => $this->money,
         ];

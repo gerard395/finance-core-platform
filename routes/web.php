@@ -22,6 +22,7 @@ use App\Http\Controllers\Sales\QuotationLineController;
 use App\Http\Controllers\Sales\SalesInvoiceController;
 use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceLineController;
+use App\Http\Controllers\Sales\SalesInvoicePostingController;
 use App\Http\Middleware\EnsureRelationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
@@ -215,3 +216,4 @@ Route::put('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController
 Route::delete('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.destroy');
 Route::post('/sales/invoices/{invoice}/finalize', [SalesInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueInvoices)])->name('sales.invoices.finalize');
 Route::post('/sales/invoices/{invoice}/cancel', [SalesInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.invoices.cancel');
+Route::post('/sales/invoices/{invoice}/post', SalesInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::PostInvoices)])->name('sales.invoices.post');

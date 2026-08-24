@@ -34,6 +34,7 @@ use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
+use App\Http\Middleware\EnsureSalesPermission;
 use App\Infrastructure\Identity\SalesAuthorizationProvisioner;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
@@ -87,7 +88,7 @@ final class SalesInvoiceWebTest extends TestCase
         $this->provision();
     }
 
-    public function test_authorization_navigation_empty_states_and_no_post_or_paid_routes(): void
+    public function test_authorization_navigation_empty_states_and_no_paid_route(): void
     {
         $this->get('/sales/invoices')->assertRedirect('/login');
         $this->login();
@@ -95,9 +96,9 @@ final class SalesInvoiceWebTest extends TestCase
         $this->assign(SalesRole::Viewer, 1);
         $this->get('/sales/invoices')->assertOk()->assertSee('Nog geen verkoopfacturen.')->assertSee('Facturen')->assertDontSee('Nieuwe factuur');
         $this->get('/sales/invoices/create')->assertForbidden();
-        self::assertFalse(Route::has('sales.invoices.post'));
+        self::assertTrue(Route::has('sales.invoices.post'));
         self::assertFalse(Route::has('sales.invoices.paid'));
-        $this->post('/sales/invoices/not-a-uuid/post')->assertNotFound();
+        $this->post('/sales/invoices/not-a-uuid/post')->assertForbidden();
     }
 
     public function test_direct_create_uses_tenant_customer_unique_invoice_address_and_server_owned_fields(): void
@@ -209,8 +210,145 @@ final class SalesInvoiceWebTest extends TestCase
         $invoice = SalesInvoiceRecord::query()->firstOrFail();
         $this->post('/sales/invoices/'.$invoice->getAttribute('id').'/finalize')->assertForbidden();
 
-        self::assertFalse(Route::has('sales.invoices.post'));
+        self::assertTrue(Route::has('sales.invoices.post'));
         self::assertFalse(Route::has('sales.invoices.paid'));
+    }
+
+    public function test_view_issue_and_manager_permissions_cannot_post_without_post_permission(): void
+    {
+        $invoice = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 20);
+        $this->assign(SalesRole::Viewer, 20);
+        $this->login();
+        $this->get('/sales/invoices/'.$invoice->toString())->assertOk()->assertDontSee('Factuur boeken');
+        $this->post('/sales/invoices/'.$invoice->toString().'/post')->assertForbidden();
+
+        $this->assignPermissionOnly(SalesPermission::IssueInvoices, 'ISSUE_ONLY', 21);
+        $this->post('/sales/invoices/'.$invoice->toString().'/post')->assertForbidden();
+        $this->assign(SalesRole::Manager, 22);
+        $this->post('/sales/invoices/'.$invoice->toString().'/post')->assertForbidden();
+    }
+
+    public function test_poster_without_view_can_post_from_context_and_redirects_to_app(): void
+    {
+        $invoice = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 21);
+        $this->assign(SalesRole::Poster, 23);
+        $this->login();
+
+        $this->post('/sales/invoices/'.$invoice->toString().'/post', ['administration_id' => self::ADMIN_B])
+            ->assertRedirect('/app')
+            ->assertSessionHas('status', 'Factuur is geboekt.');
+
+        $this->assertDatabaseHas('sales_invoices', ['id' => $invoice->toString(), 'administration_id' => self::ADMIN_A, 'status' => 'posted']);
+        $this->assertDatabaseHas('journal_entries', ['administration_id' => self::ADMIN_A, 'journal_id' => $this->journalId(1)]);
+        $this->assertDatabaseHas('sales_invoice_postings', ['administration_id' => self::ADMIN_A, 'sales_invoice_id' => $invoice->toString()]);
+    }
+
+    public function test_post_button_is_visible_only_for_finalized_invoice_with_permission(): void
+    {
+        $this->assign(SalesRole::Viewer, 24);
+        $this->assign(SalesRole::Poster, 25);
+        $finalized = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 22);
+        $draft = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 23, 'draft');
+        $posted = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 24, 'posted');
+        $paid = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 25, 'paid');
+        $cancelled = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 26, 'cancelled');
+        $this->login();
+
+        $this->get('/sales/invoices/'.$finalized->toString())->assertOk()->assertSee('Factuur boeken');
+        foreach ([$draft, $posted, $paid, $cancelled] as $invoice) {
+            $this->get('/sales/invoices/'.$invoice->toString())->assertOk()->assertDontSee('Factuur boeken');
+        }
+        $this->get('/sales/invoices/'.$paid->toString())->assertDontSee('Betaald markeren');
+    }
+
+    public function test_success_redirects_to_detail_and_second_post_is_safe_and_idempotent(): void
+    {
+        $this->assign(SalesRole::Viewer, 26);
+        $this->assign(SalesRole::Poster, 27);
+        $invoice = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 27);
+        $this->login();
+
+        $this->post('/sales/invoices/'.$invoice->toString().'/post')
+            ->assertRedirect('/sales/invoices/'.$invoice->toString())
+            ->assertSessionHas('status', 'Factuur is geboekt.');
+        $counts = $this->postingCounts();
+        $this->get('/sales/invoices/'.$invoice->toString())->assertOk()->assertSee('Geboekt')->assertDontSee('Factuur boeken')->assertDontSee('Betaald markeren');
+
+        $this->post('/sales/invoices/'.$invoice->toString().'/post')
+            ->assertRedirect('/sales/invoices/'.$invoice->toString())
+            ->assertSessionHas('status', 'Deze factuur is al geboekt.');
+        self::assertSame($counts, $this->postingCounts());
+    }
+
+    public function test_typed_safe_error_messages_cover_configuration_state_and_inconsistency(): void
+    {
+        $this->assign(SalesRole::Viewer, 28);
+        $this->assign(SalesRole::Poster, 29);
+        $missing = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 28);
+        $invalid = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 29);
+        $draft = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 30, 'draft');
+        $inconsistent = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 31, 'posted');
+        $this->login();
+
+        DB::table('sales_posting_configurations')->where('administration_id', self::ADMIN_A)->delete();
+        $this->post('/sales/invoices/'.$missing->toString().'/post')->assertSessionHas('error', 'De verkoopboekingsconfiguratie is nog niet volledig ingesteld.');
+        $this->postingConfiguration(self::ADMIN_A, 1);
+        DB::table('journals')->where('id', $this->journalId(1))->update(['status' => 'inactive']);
+        $this->post('/sales/invoices/'.$invalid->toString().'/post')->assertSessionHas('error', 'De verkoopboekingsconfiguratie is ongeldig of niet meer beschikbaar.');
+        DB::table('journals')->where('id', $this->journalId(1))->update(['status' => 'active']);
+        $this->post('/sales/invoices/'.$draft->toString().'/post')->assertSessionHas('error', 'Deze factuur kan in de huidige status niet worden geboekt.');
+        $this->post('/sales/invoices/'.$inconsistent->toString().'/post')->assertSessionHas('error', 'De financiële status van deze factuur is niet consistent. Controle is vereist.');
+        self::assertSame([0, 0, 0, 0], $this->postingCounts());
+    }
+
+    public function test_post_route_is_tenant_isolated_revocable_and_ignores_body_administration(): void
+    {
+        $assignmentSequence = 30;
+        $this->assign(SalesRole::Poster, $assignmentSequence);
+        $invoiceA = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 32);
+        $invoiceAAfterRevocation = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 33);
+        $invoiceB = $this->finalizedInvoice(self::ADMIN_B, self::CUSTOMER_B, self::ADDRESS_B, 34);
+        $this->login();
+
+        $this->post('/sales/invoices/'.$invoiceB->toString().'/post')->assertNotFound();
+        $this->post('/sales/invoices/not-a-uuid/post')->assertNotFound();
+        $this->post('/sales/invoices/'.$invoiceA->toString().'/post', ['administration_id' => self::ADMIN_B])->assertRedirect('/app');
+        $this->assertDatabaseHas('sales_invoice_postings', ['administration_id' => self::ADMIN_A, 'sales_invoice_id' => $invoiceA->toString()]);
+
+        $assignmentId = new MembershipRoleId(new Uuid(sprintf('8c000000-0000-4000-8000-%012d', $assignmentSequence)));
+        $repository = new EloquentMembershipRoleRepository;
+        $assignment = $repository->findById($assignmentId);
+        self::assertNotNull($assignment);
+        $assignment->deactivate();
+        $repository->save($assignment);
+        $this->post('/sales/invoices/'.$invoiceAAfterRevocation->toString().'/post')->assertForbidden();
+
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_B]);
+        $this->post('/sales/invoices/'.$invoiceB->toString().'/post')->assertForbidden();
+    }
+
+    public function test_post_route_is_post_only_csrf_protected_and_has_no_paid_peer(): void
+    {
+        $route = Route::getRoutes()->getByName('sales.invoices.post');
+        self::assertNotNull($route);
+        self::assertSame(['POST'], $route->methods());
+        self::assertContains('web', $route->gatherMiddleware());
+        self::assertContains(EnsureSalesPermission::using(SalesPermission::PostInvoices), $route->gatherMiddleware());
+        self::assertFalse(Route::has('sales.invoices.paid'));
+
+        $this->get('/sales/invoices/8d000000-0000-4000-8000-000000000001/post')->assertMethodNotAllowed();
+    }
+
+    public function test_posting_presentation_contains_no_financial_persistence_or_calculation_logic(): void
+    {
+        $controller = (string) file_get_contents(app_path('Http/Controllers/Sales/SalesInvoicePostingController.php'));
+        $blade = (string) file_get_contents(resource_path('views/sales/invoices/show.blade.php'));
+        foreach (['Eloquent', 'JournalEntryStore', 'TaxPostingStore', 'OpenItemStore', 'PostingEngine', 'SalesPostingConfigurationReader'] as $forbidden) {
+            self::assertStringNotContainsString($forbidden, $controller);
+            self::assertStringNotContainsString($forbidden, $blade);
+        }
+        self::assertStringNotContainsString('markPaid', $controller.$blade);
+        self::assertStringNotContainsString('Betaald markeren', $blade);
     }
 
     private function provision(): void
@@ -231,6 +369,8 @@ final class SalesInvoiceWebTest extends TestCase
         $this->tax(self::ADMIN_A, self::TAX_INACTIVE, 'VAT09', 'Inactieve btw', '9', 'output', 'inactive');
         $this->tax(self::ADMIN_A, self::TAX_INPUT, 'INPUT', 'Inkoop btw', '21', 'input', 'active');
         $this->tax(self::ADMIN_B, self::TAX_B, 'VATB', 'Andere tenant', '21', 'output', 'active');
+        $this->postingMasterdata(self::ADMIN_A, 1);
+        $this->postingMasterdata(self::ADMIN_B, 2);
     }
 
     private function customer(string $admin, string $customer, string $address, string $code, string $name): void
@@ -252,6 +392,46 @@ final class SalesInvoiceWebTest extends TestCase
         self::assertSame('Success', $this->app->make(CreateSalesInvoice::class)->execute($this->admin($admin), $id, new CustomerId(new Uuid($customer)), new AddressId(new Uuid($address)), new DateTimeImmutable('2026-08-24'), new DateTimeImmutable('2026-09-24'))->name);
 
         return $id;
+    }
+
+    private function finalizedInvoice(string $admin, string $customer, string $address, int $sequence, string $status = 'finalized'): SalesInvoiceId
+    {
+        $invoice = $this->invoice($admin, $customer, $address, $sequence);
+        $tenant = $admin === self::ADMIN_A ? 1 : 2;
+        $tax = $tenant === 1 ? self::TAX_ACTIVE : self::TAX_B;
+        DB::table('sales_invoice_lines')->insert(['id' => sprintf('8f000000-0000-4000-8000-%012d', $sequence), 'administration_id' => $admin, 'sales_invoice_id' => $invoice->toString(), 'description' => 'Posting service', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'tax_code_id_snapshot' => $tax, 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'Snapshot VAT', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output', 'created_at' => now(), 'updated_at' => now()]);
+        SalesInvoiceRecord::query()->whereKey($invoice->toString())->update(['status' => $status]);
+
+        return $invoice;
+    }
+
+    private function postingMasterdata(string $administration, int $tenant): void
+    {
+        DB::table('journals')->insert(['id' => $this->journalId($tenant), 'administration_id' => $administration, 'code' => 'WEBPOST', 'name' => 'Web posting journal', 'type' => 'sales', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        foreach ([1 => 'asset', 2 => 'revenue', 3 => 'liability'] as $sequence => $type) {
+            DB::table('ledger_accounts')->insert(['id' => $this->accountId($tenant, $sequence), 'administration_id' => $administration, 'code' => 'WP'.$sequence, 'name' => 'Web posting account '.$sequence, 'type' => $type, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $this->postingConfiguration($administration, $tenant);
+    }
+
+    private function postingConfiguration(string $administration, int $tenant): void
+    {
+        DB::table('sales_posting_configurations')->updateOrInsert(['administration_id' => $administration], ['sales_journal_id' => $this->journalId($tenant), 'accounts_receivable_ledger_account_id' => $this->accountId($tenant, 1), 'revenue_ledger_account_id' => $this->accountId($tenant, 2), 'output_vat_ledger_account_id' => $this->accountId($tenant, 3), 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    private function postingCounts(): array
+    {
+        return [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('sales_invoice_postings')->count()];
+    }
+
+    private function journalId(int $tenant): string
+    {
+        return sprintf('8%d000000-0000-4000-8000-000000000010', $tenant + 2);
+    }
+
+    private function accountId(int $tenant, int $sequence): string
+    {
+        return sprintf('8%d000000-0000-4000-8000-%012d', $tenant + 4, $sequence);
     }
 
     private function login(): void
