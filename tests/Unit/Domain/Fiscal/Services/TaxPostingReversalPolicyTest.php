@@ -9,9 +9,12 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
@@ -88,6 +91,10 @@ final class TaxPostingReversalPolicyTest extends TestCase
             'tax amount' => $arguments['taxAmount'] = '22',
             'currency' => $arguments['currency'] = 'USD',
             'administration' => $arguments['administration'] = 2,
+            'classification' => [
+                $arguments['treatment'] = TaxTreatment::ZeroRated,
+                $arguments['vatReturnClassification'] = VatReturnClassification::DomesticZeroRated,
+            ],
         };
 
         $this->expectException(DomainException::class);
@@ -109,6 +116,7 @@ final class TaxPostingReversalPolicyTest extends TestCase
             'taxAmount mismatch' => ['tax amount'],
             'Currency mismatch' => ['currency'],
             'Administration mismatch' => ['administration'],
+            'reporting classification mismatch' => ['classification'],
         ];
     }
 
@@ -168,6 +176,9 @@ final class TaxPostingReversalPolicyTest extends TestCase
         string $taxAmount = '21',
         string $currency = 'EUR',
         int $administration = 1,
+        TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        IcpClassification $icpClassification = IcpClassification::None,
     ): TaxPosting {
         $moneyCurrency = new Currency($currency);
 
@@ -188,6 +199,9 @@ final class TaxPostingReversalPolicyTest extends TestCase
             new JournalEntryLineId($this->uuid('8', $id)),
             $type,
             $reversedTaxPostingId,
+            $treatment,
+            $vatReturnClassification,
+            $icpClassification,
         );
     }
 

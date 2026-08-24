@@ -4,8 +4,12 @@ declare(strict_types=1);
 
 namespace App\Domain\Fiscal\Entities;
 
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\TaxClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -20,7 +24,12 @@ final class TaxCode
         private TaxRate $rate,
         private readonly TaxPostingDirection $direction,
         private TaxCodeStatus $status,
-    ) {}
+        private readonly TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        private readonly VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        private readonly IcpClassification $icpClassification = IcpClassification::None,
+    ) {
+        new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
+    }
 
     public function id(): TaxCodeId
     {
@@ -50,6 +59,21 @@ final class TaxCode
     public function direction(): TaxPostingDirection
     {
         return $this->direction;
+    }
+
+    public function treatment(): TaxTreatment
+    {
+        return $this->treatment;
+    }
+
+    public function vatReturnClassification(): VatReturnClassification
+    {
+        return $this->vatReturnClassification;
+    }
+
+    public function icpClassification(): IcpClassification
+    {
+        return $this->icpClassification;
     }
 
     public function isActive(): bool

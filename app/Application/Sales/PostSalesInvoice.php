@@ -32,6 +32,7 @@ final readonly class PostSalesInvoice
         private OpenItemStore $openItems,
         private SalesInvoicePostingIdentityGenerator $identities,
         private SalesInvoicePostingClock $clock,
+        private SalesInvoiceReadinessChecker $readiness,
     ) {}
 
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): PostSalesInvoiceResult
@@ -60,6 +61,10 @@ final readonly class PostSalesInvoice
 
                 if ($invoice->status() !== SalesInvoiceStatus::Finalized) {
                     return PostSalesInvoiceResult::forStatus(PostSalesInvoiceStatus::InvalidState);
+                }
+
+                if ($this->readiness->check($invoice)->status() !== SalesInvoiceReadinessStatus::Ready) {
+                    return PostSalesInvoiceResult::forStatus(PostSalesInvoiceStatus::FinancialStateInconsistent);
                 }
 
                 $configurationResult = $this->configurationReader->read($administrationId);

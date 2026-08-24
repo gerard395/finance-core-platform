@@ -9,9 +9,12 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
@@ -66,6 +69,21 @@ final class VatOverviewTest extends TestCase
         self::assertCount(2, $r->taxCodeSummaries());
     }
 
+    public function test_reporting_classifications_form_separate_zero_tax_groups(): void
+    {
+        $id = new TaxCodeId($this->uuid('7'));
+        $domestic = $this->posting('2026-01-01', '100', '0', '0', taxCode: $id, treatment: TaxTreatment::ZeroRated, vatReturnClassification: VatReturnClassification::DomesticZeroRated);
+        $euService = $this->posting('2026-01-02', '250', '0', '0', taxCode: $id, treatment: TaxTreatment::ReverseChargeEuService, vatReturnClassification: VatReturnClassification::EuServices, icpClassification: IcpClassification::Service);
+
+        $summaries = $this->report([$domestic, $euService])->taxCodeSummaries();
+
+        self::assertCount(2, $summaries);
+        self::assertSame('350', $this->report([$domestic, $euService])->totalOutputTaxableBase()->amount());
+        $classifications = array_map(static fn ($summary) => $summary->vatReturnClassification()->value, $summaries);
+        sort($classifications);
+        self::assertSame(['domestic_zero_rated', 'eu_services'], $classifications);
+    }
+
     public function test_filters_and_inclusive_boundaries(): void
     {
         $r = $this->report([$this->posting('2025-12-31', '1', '0.21', '21'), $this->posting('2026-01-01', '2', '0.42', '21'), $this->posting('2026-02-28', '3', '0.63', '21'), $this->posting('2026-03-01', '4', '0.84', '21')]);
@@ -89,11 +107,11 @@ final class VatOverviewTest extends TestCase
         return (new VatOverview)->calculate($p, $this->admin(), new Currency('EUR'), new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-02-28'));
     }
 
-    private function posting(string $date, string $base, string $tax, string $rate, TaxPostingDirection $direction = TaxPostingDirection::Output, TaxPostingType $type = TaxPostingType::Original, ?TaxPostingId $reversed = null, ?TaxCodeId $taxCode = null, ?AdministrationId $administration = null, string $currency = 'EUR'): TaxPosting
+    private function posting(string $date, string $base, string $tax, string $rate, TaxPostingDirection $direction = TaxPostingDirection::Output, TaxPostingType $type = TaxPostingType::Original, ?TaxPostingId $reversed = null, ?TaxCodeId $taxCode = null, ?AdministrationId $administration = null, string $currency = 'EUR', TaxTreatment $treatment = TaxTreatment::DomesticStandard, VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard, IcpClassification $icpClassification = IcpClassification::None): TaxPosting
     {
         $c = new Currency($currency);
 
-        return new TaxPosting(new TaxPostingId($this->uuid('1')), $administration ?? $this->admin(), $taxCode ?? new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, $c), new Money($tax, $c), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId($this->uuid('2')), new TaxSourceLineId($this->uuid('3')), new PostingDate(new DateTimeImmutable($date)), new JournalEntryId($this->uuid('4')), new JournalEntryLineId($this->uuid('5')), $tax === '0' ? null : new JournalEntryLineId($this->uuid('6')), $type, $reversed);
+        return new TaxPosting(new TaxPostingId($this->uuid('1')), $administration ?? $this->admin(), $taxCode ?? new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, $c), new Money($tax, $c), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId($this->uuid('2')), new TaxSourceLineId($this->uuid('3')), new PostingDate(new DateTimeImmutable($date)), new JournalEntryId($this->uuid('4')), new JournalEntryLineId($this->uuid('5')), $tax === '0' ? null : new JournalEntryLineId($this->uuid('6')), $type, $reversed, $treatment, $vatReturnClassification, $icpClassification);
     }
 
     private function admin(): AdministrationId

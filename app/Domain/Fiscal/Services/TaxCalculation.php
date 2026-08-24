@@ -27,6 +27,9 @@ final class TaxCalculation
             $grossAmount,
             $taxCode->id(),
             $taxCode->rate(),
+            $taxCode->treatment(),
+            $taxCode->vatReturnClassification(),
+            $taxCode->icpClassification(),
         );
     }
 

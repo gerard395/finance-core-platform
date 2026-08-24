@@ -9,8 +9,11 @@ use App\Application\Fiscal\TaxCodeSelectionItem;
 use App\Application\Fiscal\TaxCodeStore;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -65,6 +68,9 @@ final class EloquentTaxCodeRepository implements TaxCodeReadRepository, TaxCodeS
                 'rate' => $taxCode->rate()->toString(),
                 'direction' => $taxCode->direction()->value,
                 'status' => $taxCode->status()->value,
+                'treatment' => $taxCode->treatment()->value,
+                'vat_return_classification' => $taxCode->vatReturnClassification()->value,
+                'icp_classification' => $taxCode->icpClassification()->value,
             ],
         );
     }
@@ -78,6 +84,9 @@ final class EloquentTaxCodeRepository implements TaxCodeReadRepository, TaxCodeS
             new TaxRate($record->getAttribute('rate')),
             TaxPostingDirection::from($record->getAttribute('direction')),
             TaxCodeStatus::from($record->getAttribute('status')),
+            TaxTreatment::from($record->getAttribute('treatment')),
+            VatReturnClassification::from($record->getAttribute('vat_return_classification')),
+            IcpClassification::from($record->getAttribute('icp_classification')),
         );
     }
 }

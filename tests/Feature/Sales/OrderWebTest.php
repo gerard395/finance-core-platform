@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Sales;
 
+use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Identity\ProvisionUserAccount;
 use App\Application\Sales\AddOrderLine;
+use App\Application\Sales\ConfirmOrder;
 use App\Application\Sales\CreateOrder;
 use App\Application\Sales\SalesNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
@@ -47,7 +49,10 @@ use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OrderRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\SalesInvoiceRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\TaxCodeRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -71,6 +76,12 @@ final class OrderWebTest extends TestCase
     private const CUSTOMER_A = 'a1000000-0000-4000-8000-000000000004';
 
     private const CUSTOMER_B = 'b1000000-0000-4000-8000-000000000004';
+
+    private const ADDRESS_A = 'a1000000-0000-4000-8000-000000000024';
+
+    private const TAX_A = 'a1000000-0000-4000-8000-000000000034';
+
+    private const TAX_B = 'b1000000-0000-4000-8000-000000000034';
 
     protected function setUp(): void
     {
@@ -184,6 +195,122 @@ final class OrderWebTest extends TestCase
         $this->get('/sales/orders')->assertForbidden();
         $this->get('/sales/orders/create')->assertOk()->assertDontSee('href="'.route('sales.orders.index').'"', false);
         $this->post('/sales/orders', ['customer_id' => self::CUSTOMER_A, 'order_date' => '2026-08-21'])->assertRedirect('/app');
+        $this->get('/sales/orders/d1000000-0000-4000-8000-000000000001/invoice/create')->assertForbidden();
+    }
+
+    public function test_order_invoice_web_flow_shows_exact_progress_replays_and_reaches_partial_then_full(): void
+    {
+        $this->assign(SalesRole::Manager, 10);
+        $this->login();
+        $this->invoiceCatalogue();
+        $this->app->make(TaxCodeCatalogueProvisioner::class)->ensureDutchBasicOutputForAdministration($this->admin(self::ADMIN_A));
+        $order = $this->order(self::ADMIN_A, self::CUSTOMER_A, 10);
+        $line = $this->lineWithQuantity(10, '10', '<script>Service</script>');
+        $secondLine = $this->lineWithQuantity(110, '5', 'Second service');
+        $this->app->make(AddOrderLine::class)->execute($this->admin(self::ADMIN_A), $order, $line);
+        $this->app->make(AddOrderLine::class)->execute($this->admin(self::ADMIN_A), $order, $secondLine);
+        $this->post('/sales/orders/'.$order->toString().'/confirm')->assertRedirect();
+
+        $this->get('/sales/orders/'.$order->toString())->assertOk()->assertSee('Factuur maken')->assertSee('Besteld')->assertSee('Gereserveerd')->assertSee('Gefactureerd')->assertSee('Beschikbaar')->assertSee('&lt;script&gt;Service&lt;/script&gt;', false)->assertDontSee('<script>Service</script>', false);
+        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('10')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertSee('Btw verlegd - dienst EU')->assertSee('Intracommunautaire levering goederen')->assertSee('Buiten Nederlandse btw-heffing')->assertSee('Vrijgesteld')->assertSee('Prestatiedatum')->assertSee('name="supply_date"', false)->assertSee('Invoice &lt;b&gt;A&lt;/b&gt;', false)->assertDontSee('INPUT')->assertDontSee('BTW-B');
+        $token = $page->viewData('draftRequestToken');
+        self::assertIsString($token);
+        $payload = $this->invoicePayload($token, $line->id()->toString(), '4');
+        $payload['lines'][$secondLine->id()->toString()] = ['quantity' => '5', 'tax_code_id' => self::TAX_A];
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $payload)->assertRedirect();
+        $invoice = SalesInvoiceRecord::query()->where('source_order_id', $order->toString())->firstOrFail();
+        self::assertSame('draft', $invoice->getAttribute('status'));
+        self::assertSame(self::ADMIN_A, $invoice->getAttribute('administration_id'));
+        self::assertSame('Customer <script>alert(1)</script>', $invoice->getAttribute('customer_name_snapshot'));
+        $this->assertDatabaseHas('order_invoice_reservations', ['sales_invoice_id' => $invoice->getAttribute('id'), 'order_line_id' => $line->id()->toString(), 'quantity' => '4']);
+        $this->assertDatabaseHas('order_invoice_reservations', ['sales_invoice_id' => $invoice->getAttribute('id'), 'order_line_id' => $secondLine->id()->toString(), 'quantity' => '5']);
+        $this->get('/sales/orders/'.$order->toString())->assertSee('Factuur maken');
+        $this->get('/sales/invoices/'.$invoice->getAttribute('id'))->assertOk()->assertSee('Bekijk order')->assertDontSee('Regel toevoegen')->assertDontSee('Regel bewerken');
+
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $payload)->assertRedirect('/sales/invoices/'.$invoice->getAttribute('id'))->assertSessionHas('status', 'Deze factuur is al aangemaakt.');
+        self::assertSame(1, SalesInvoiceRecord::query()->where('source_order_id', $order->toString())->count());
+        $this->post('/sales/invoices/'.$invoice->getAttribute('id').'/finalize')->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->toString(), 'status' => 'partially_invoiced']);
+        $this->assertDatabaseHas('order_invoice_allocations', ['sales_invoice_id' => $invoice->getAttribute('id'), 'quantity' => '4']);
+        $this->assertDatabaseHas('order_invoice_allocations', ['sales_invoice_id' => $invoice->getAttribute('id'), 'order_line_id' => $secondLine->id()->toString(), 'quantity' => '5']);
+
+        $secondPage = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('6');
+        $secondPayload = $this->invoicePayload($secondPage->viewData('draftRequestToken'), $line->id()->toString(), '6');
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $secondPayload)->assertRedirect();
+        $second = SalesInvoiceRecord::query()->where('source_order_id', $order->toString())->where('id', '!=', $invoice->getAttribute('id'))->firstOrFail();
+        $this->post('/sales/invoices/'.$second->getAttribute('id').'/finalize')->assertRedirect();
+        $this->assertDatabaseHas('orders', ['id' => $order->toString(), 'status' => 'fully_invoiced']);
+        $this->get('/sales/orders/'.$order->toString())->assertOk()->assertDontSee('Factuur maken');
+        $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertStatus(409);
+    }
+
+    public function test_draft_cancel_restores_available_and_web_rejects_stale_tenant_tax_address_and_empty_input(): void
+    {
+        $this->assign(SalesRole::Manager, 11);
+        $this->login();
+        $this->invoiceCatalogue();
+        $order = $this->order(self::ADMIN_A, self::CUSTOMER_A, 11);
+        $line = $this->lineWithQuantity(11, '10', 'Cancel service');
+        $this->app->make(AddOrderLine::class)->execute($this->admin(self::ADMIN_A), $order, $line);
+        $this->post('/sales/orders/'.$order->toString().'/confirm');
+        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create');
+        $token = $page->viewData('draftRequestToken');
+
+        $empty = $this->invoicePayload($token, $line->id()->toString(), '0');
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $empty)->assertSessionHasErrors('invoice');
+        $foreignTax = $this->invoicePayload($token, $line->id()->toString(), '1');
+        $foreignTax['lines'][$line->id()->toString()]['tax_code_id'] = self::TAX_B;
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $foreignTax)->assertSessionHasErrors('invoice');
+        $foreignAddress = $this->invoicePayload($token, $line->id()->toString(), '1');
+        $foreignAddress['invoice_address_id'] = 'b1000000-0000-4000-8000-000000000024';
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $foreignAddress)->assertSessionHasErrors('invoice');
+        $stale = $this->invoicePayload($token, $line->id()->toString(), '11');
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $stale)->assertSessionHasErrors('invoice');
+        $forged = $this->invoicePayload('forged', $line->id()->toString(), '1');
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $forged)->assertSessionHasErrors('draft_request_token');
+
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $this->invoicePayload($token, $line->id()->toString(), '6'))->assertRedirect();
+        $invoice = SalesInvoiceRecord::query()->where('source_order_id', $order->toString())->firstOrFail();
+        $this->get('/sales/orders/'.$order->toString())->assertSee('6')->assertSee('4');
+        $this->post('/sales/invoices/'.$invoice->getAttribute('id').'/cancel')->assertRedirect();
+        $this->assertDatabaseHas('order_invoice_reservation_releases', ['administration_id' => self::ADMIN_A]);
+        $this->get('/sales/orders/'.$order->toString())->assertSee('10');
+
+        $retryPage = $this->get('/sales/orders/'.$order->toString().'/invoice/create');
+        DB::table('sales_number_sequences')->where('administration_id', self::ADMIN_A)->where('sequence_type', 'sales_invoice')->update(['active' => false]);
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $this->invoicePayload($retryPage->viewData('draftRequestToken'), $line->id()->toString(), '1'))->assertSessionHasErrors('invoice');
+        DB::table('sales_number_sequences')->where('administration_id', self::ADMIN_A)->where('sequence_type', 'sales_invoice')->update(['active' => true]);
+        TaxCodeRecord::query()->where('administration_id', self::ADMIN_A)->update(['status' => 'inactive']);
+        $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertSee('Geen btw-codes beschikbaar.')->assertSee('disabled', false);
+        RelationAddressRecord::query()->where('administration_id', self::ADMIN_A)->update(['active' => false]);
+        $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertSee('Geen geldig factuuradres beschikbaar.');
+
+        $other = $this->order(self::ADMIN_B, self::CUSTOMER_B, 12);
+        $this->get('/sales/orders/'.$other->toString().'/invoice/create')->assertNotFound();
+        $this->post('/sales/orders/not-a-uuid/invoice', $this->invoicePayload($token, $line->id()->toString(), '1'))->assertNotFound();
+    }
+
+    public function test_invoice_create_requires_exact_draft_permission_and_mutation_only_redirects_to_app(): void
+    {
+        $this->invoiceCatalogue();
+        $order = $this->order(self::ADMIN_A, self::CUSTOMER_A, 13);
+        $line = $this->lineWithQuantity(13, '2', 'Permission service');
+        $this->app->make(AddOrderLine::class)->execute($this->admin(self::ADMIN_A), $order, $line);
+        $this->app->make(ConfirmOrder::class)->execute($this->admin(self::ADMIN_A), $order);
+
+        $this->assign(SalesRole::Viewer, 13);
+        $this->login();
+        $this->get('/sales/orders/'.$order->toString())->assertOk()->assertDontSee('Factuur maken');
+        $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertForbidden();
+
+        $roleId = new RoleId(new Uuid('f2000000-0000-4000-8000-000000000001'));
+        (new EloquentRoleRepository)->save(new Role($roleId, new RoleCode('INVOICE_DRAFT_ONLY'), new RoleName('Invoice draft only'), null, RoleStatus::Active));
+        (new EloquentRolePermissionRepository)->save(new RolePermission(new RolePermissionId(new Uuid('f2000000-0000-4000-8000-000000000002')), $roleId, SalesPermission::ManageInvoiceDrafts->id(), true));
+        (new EloquentMembershipRoleRepository)->save(new MembershipRole(new MembershipRoleId(new Uuid('f2000000-0000-4000-8000-000000000003')), new AdministrationMembershipId(new Uuid(self::MEMBERSHIP_A)), $roleId, true));
+        DB::table('administration_membership_roles')->where('id', 'c1000000-0000-4000-8000-000000000013')->delete();
+        $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk();
+        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create');
+        $this->post('/sales/orders/'.$order->toString().'/invoice', $this->invoicePayload($page->viewData('draftRequestToken'), $line->id()->toString(), '2'))->assertRedirect('/app');
     }
 
     private function provision(): void
@@ -232,6 +359,25 @@ final class OrderWebTest extends TestCase
     private function line(int $sequence): OrderLine
     {
         return new OrderLine(new OrderLineId(new Uuid(sprintf('e1000000-0000-4000-8000-%012d', $sequence))), new LineDescription('Service line'), new Quantity('2'), new Money('10', new Currency('EUR')));
+    }
+
+    private function lineWithQuantity(int $sequence, string $quantity, string $description): OrderLine
+    {
+        return new OrderLine(new OrderLineId(new Uuid(sprintf('e2000000-0000-4000-8000-%012d', $sequence))), new LineDescription($description), new Quantity($quantity), new Money('10', new Currency('EUR')));
+    }
+
+    private function invoiceCatalogue(): void
+    {
+        RelationAddressRecord::query()->create(['address_id' => self::ADDRESS_A, 'administration_id' => self::ADMIN_A, 'relation_id' => 'a1000000-0000-4000-8000-000000000014', 'address_type' => 'invoice', 'address_line_1' => 'Invoice <b>A</b>', 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
+        RelationAddressRecord::query()->create(['address_id' => 'b1000000-0000-4000-8000-000000000024', 'administration_id' => self::ADMIN_B, 'relation_id' => 'b1000000-0000-4000-8000-000000000014', 'address_type' => 'invoice', 'address_line_1' => 'Invoice B', 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'Breda', 'country_code' => 'NL', 'active' => true]);
+        TaxCodeRecord::query()->create(['id' => self::TAX_A, 'administration_id' => self::ADMIN_A, 'code' => 'BTW21', 'name' => '<b>Output</b>', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
+        TaxCodeRecord::query()->create(['id' => self::TAX_B, 'administration_id' => self::ADMIN_B, 'code' => 'BTW-B', 'name' => 'Foreign', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
+        TaxCodeRecord::query()->create(['id' => 'a1000000-0000-4000-8000-000000000035', 'administration_id' => self::ADMIN_A, 'code' => 'INPUT', 'name' => 'Input', 'rate' => '21', 'direction' => 'input', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
+    }
+
+    private function invoicePayload(string $token, string $lineId, string $quantity): array
+    {
+        return ['draft_request_token' => $token, 'invoice_date' => '2026-08-24', 'due_date' => '2026-09-24', 'invoice_address_id' => self::ADDRESS_A, 'administration_id' => self::ADMIN_B, 'customer_id' => self::CUSTOMER_B, 'currency' => 'USD', 'lines' => [$lineId => ['quantity' => $quantity, 'tax_code_id' => self::TAX_A, 'description' => 'HACKED', 'unit_price' => '0']]];
     }
 
     private function admin(string $id): AdministrationId

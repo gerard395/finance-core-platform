@@ -27,6 +27,25 @@ Alle vier headers kunnen een immutable customersnapshot met CustomerId, Relation
 
 Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
+SalesInvoice legt bij create document-level immutable customer- en supplier-fiscale
+snapshots vast met typed nullable VAT ID en jurisdiction. Een optionele typed
+SupplyDate is afzonderlijk van InvoiceDate en wordt nooit uit InvoiceDate of OrderDate
+afgeleid. SalesCreditInvoice kopieert partycontext en oorspronkelijke SupplyDate exact
+uit de source invoice; haar eigen credit date blijft de correctiedatum.
+
+TaxTreatment en VAT-return/ICP-classificatie blijven immutable per line. Reverse-
+charge- en intracommunautaire wording is een typed, treatment-derived
+renderinginstructie en geen vrije tekst of rate-heuristiek. Tot de selectorstory gereed
+is ondersteunt Sales uitsluitend domestic NL VAT en expliciet BTW0. De selector
+beslist nooit automatisch op land, btw-ID, code, naam of nulrate.
+
+De tenant-scoped Output-selector biedt daarnaast expliciet `EUDIENST`,
+`ICLGOEDEREN`, `BUITENSCOPE` en `VRIJGESTELD`. Iedere keuze levert rechtstreeks de
+immutable treatment/reporting/ICP-snapshot; BTW0 wordt nooit hergebruikt. Directe en
+Order-derived create tonen een nullable Prestatiedatum en gebruiken dezelfde typed
+readiness. Er is geen default of automatische keuze. Credits blijven volledig
+source-derived en hebben geen fiscale selector.
+
 ## Statusmachines
 
 ```text
@@ -71,7 +90,7 @@ Aggregates muteren elkaar niet. Een geaccepteerde Quotation kan later door de Ap
 
 Voor Quotation→Order geldt in W4A-v1 één volledige conversie: één Accepted Quotation levert maximaal één Draft Order. De Order neemt de immutable customer snapshot, Currency en alle commerciële regelinhoud over, maar krijgt een nieuwe OrderId en nieuwe aggregate-owned OrderLineIds. `Order.sourceQuotationId` is de headertrace; de Quotation blijft Accepted. Directe Orders behouden een null source. Database-uniciteit op de nullable tenant/source-combinatie is de concurrency-safe guard; line-level source-identiteiten worden pas vereist wanneer partial conversion of allocations worden ontworpen.
 
-Voor W4-v1 maakt de generieke `CreateSalesInvoice` uitsluitend directe facturen en zet zij `sourceOrderId` altijd op null. Alleen een afzonderlijke toekomstige `CreateSalesInvoiceFromOrder` mag een bron-Order vastleggen. Confirmed en PartiallyInvoiced zijn daarvoor noodzakelijke maar niet voldoende statusvoorwaarden: factureerbaarheid vereist per OrderLine immutable, traceerbare waarheid over ordered, reeds gefactureerde en resterende Quantity. Draft, FullyInvoiced en Cancelled zijn niet factureerbaar. De toekomstige orchestration moet allocations, nummering, invoicewrites en Orderstatus atomair en concurrency-safe bewaren; tot die capability bestaat is er geen Order→Invoice-conversie of source-input in Web.
+Voor W4-v1 maakt de generieke `CreateSalesInvoice` uitsluitend directe facturen en zet zij `sourceOrderId` altijd op null. W4B ontwerpt de afzonderlijke `CreateSalesInvoiceFromOrder`: Confirmed en PartiallyInvoiced zijn factureerbaar; Draft, FullyInvoiced en Cancelled niet. Immutable Draft-reservations verminderen beschikbare Quantity zonder Orderstatus te wijzigen. Finalize consumeert reservations naar append-only allocations en leidt PartiallyInvoiced/FullyInvoiced uit finalized quantities af; Draft-cancel schrijft append-only releases. Source-derived Draft-lines zijn commercieel immutable. Nummering, invoice, facts en Orderstatus delen hun relevante outer transaction en de tenant-scoped Order-lock serialiseert quantityconsumptie. Directe invoices blijven source null en allocationvrij.
 
 De eerste Sales-domeiniteratie bevat geen:
 

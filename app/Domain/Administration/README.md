@@ -8,6 +8,7 @@
 
 - De onveranderlijke identiteit en code van de administratieve eenheid bewaken.
 - Naam, optionele omschrijving, functionele basisvaluta en status beheren.
+- De optionele eigen typed VAT-identiteit en expliciete fiscale jurisdictie beheren.
 - Toestandswijzigingen uitsluitend via expliciet domeingedrag uitvoeren.
 - Lokale invarianten binnen de Aggregate Root en haar value objects afdwingen.
 
@@ -55,7 +56,7 @@ Een `Organisation` is een optionele child entity binnen Administration. De Aggre
 
 Een Organisation kan bij constructie worden meegegeven of later expliciet worden gekoppeld. Een bestaande koppeling wordt nooit stilzwijgend vervangen; iedere tweede koppelpoging wordt geweigerd. Verwijderen zonder aanwezige Organisation is idempotent.
 
-Organisation bevat juridische en contactgegevens. Adres, KvK-nummer, btw-nummer, IBAN en BIC zijn in deze story nog eenvoudige optionele strings. Afzonderlijke value objects en inhoudelijke validatie volgen in latere stories.
+Organisation bevat juridische en contactgegevens. Het bestaande VAT-opslagveld wordt door Administration als typed `VatIdentificationNumber` ontsloten; fiscale jurisdictie is afzonderlijke expliciete masterdata en wordt niet uit het vrije adres afgeleid. Fiscale-eenheid- en reportingidentitycontext blijven uitbreidingspunten.
 
 ## Buiten het Aggregate
 

@@ -43,11 +43,12 @@ final readonly class SalesInvoiceLineMutationService
         }
 
         return $this->mutations->mutate($administrationId, $invoiceId, function (SalesInvoice $invoice) use ($line, $add): ?SalesInvoiceWriteResult {
+            if ($invoice->sourceOrderId() !== null) {
+                return SalesInvoiceWriteResult::InvalidState;
+            }
             $add ? $invoice->addLine($line) : $invoice->updateLine($line);
 
-            return $this->readiness->check($invoice)->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed
-                ? SalesInvoiceWriteResult::TaxCalculationFailure
-                : null;
+            return CreateSalesInvoice::readinessFailure($this->readiness->check($invoice)->status());
         });
     }
 }

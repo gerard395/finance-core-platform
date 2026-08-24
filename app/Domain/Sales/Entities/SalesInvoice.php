@@ -10,10 +10,13 @@ use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
+use App\Domain\Sales\ValueObjects\SalesCustomerFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesSupplierFiscalSnapshot;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
@@ -37,6 +40,9 @@ final class SalesInvoice
         private SalesInvoiceStatus $status,
         private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
         private readonly ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
+        private readonly ?SalesCustomerFiscalSnapshot $customerFiscalSnapshot = null,
+        private readonly ?SalesSupplierFiscalSnapshot $supplierFiscalSnapshot = null,
+        private readonly ?SupplyDate $supplyDate = null,
     ) {
         self::assertDates($invoiceDate, $dueDate);
         self::assertSnapshots($customerId, $customerSnapshot, $invoiceAddressSnapshot);
@@ -56,8 +62,11 @@ final class SalesInvoice
         array $lines,
         ?SalesCustomerSnapshot $customerSnapshot = null,
         ?SalesAddressSnapshot $invoiceAddressSnapshot = null,
+        ?SalesCustomerFiscalSnapshot $customerFiscalSnapshot = null,
+        ?SalesSupplierFiscalSnapshot $supplierFiscalSnapshot = null,
+        ?SupplyDate $supplyDate = null,
     ): self {
-        $invoice = new self($id, $number, $administrationId, $customerId, $currency, $invoiceDate, $dueDate, $sourceOrderId, $status, $customerSnapshot, $invoiceAddressSnapshot);
+        $invoice = new self($id, $number, $administrationId, $customerId, $currency, $invoiceDate, $dueDate, $sourceOrderId, $status, $customerSnapshot, $invoiceAddressSnapshot, $customerFiscalSnapshot, $supplierFiscalSnapshot, $supplyDate);
         $invoice->restoreLines($lines);
 
         if (in_array($status, [SalesInvoiceStatus::Finalized, SalesInvoiceStatus::Posted, SalesInvoiceStatus::Paid], true) && $lines === []) {
@@ -95,6 +104,21 @@ final class SalesInvoice
     public function invoiceAddressSnapshot(): ?SalesAddressSnapshot
     {
         return $this->invoiceAddressSnapshot;
+    }
+
+    public function customerFiscalSnapshot(): ?SalesCustomerFiscalSnapshot
+    {
+        return $this->customerFiscalSnapshot;
+    }
+
+    public function supplierFiscalSnapshot(): ?SalesSupplierFiscalSnapshot
+    {
+        return $this->supplierFiscalSnapshot;
+    }
+
+    public function supplyDate(): ?SupplyDate
+    {
+        return $this->supplyDate;
     }
 
     public function currency(): Currency

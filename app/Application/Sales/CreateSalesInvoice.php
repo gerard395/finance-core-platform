@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Application\Sales;
 
+use App\Application\Administration\AdministrationFiscalPartyReader;
 use App\Application\Administration\AdministrationRepository;
+use App\Application\Relations\RelationFiscalPartyReader;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\AddressId;
@@ -12,9 +14,12 @@ use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\SalesInvoice;
 use App\Domain\Sales\Entities\SalesInvoiceLine;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
+use App\Domain\Sales\ValueObjects\SalesCustomerFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesSupplierFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesTaxSnapshot;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use DateTimeImmutable;
 use InvalidArgumentException;
 
@@ -28,13 +33,15 @@ final readonly class CreateSalesInvoice
         private SalesNumberAllocator $numbers,
         private SalesInvoiceCreator $invoices,
         private TransactionManager $transactions,
+        private RelationFiscalPartyReader $relationFiscalParties,
+        private AdministrationFiscalPartyReader $administrationFiscalParties,
     ) {}
 
     /** @param list<SalesInvoiceLineInput> $lines */
-    public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId, CustomerId $customerId, AddressId $invoiceAddressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines = []): SalesInvoiceWriteResult
+    public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId, CustomerId $customerId, AddressId $invoiceAddressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines = [], ?SupplyDate $supplyDate = null): SalesInvoiceWriteResult
     {
         try {
-            return $this->transactions->run(function () use ($administrationId, $invoiceId, $customerId, $invoiceAddressId, $invoiceDate, $dueDate, $lines): SalesInvoiceWriteResult {
+            return $this->transactions->run(function () use ($administrationId, $invoiceId, $customerId, $invoiceAddressId, $invoiceDate, $dueDate, $lines, $supplyDate): SalesInvoiceWriteResult {
                 $administration = $this->administrations->findById($administrationId);
                 if ($administration === null) {
                     return SalesInvoiceWriteResult::CustomerNotFound;
@@ -48,6 +55,11 @@ final readonly class CreateSalesInvoice
                 $address = $context->invoiceAddress();
                 if ($customer === null || $address === null) {
                     return SalesInvoiceWriteResult::MissingInvoiceAddress;
+                }
+                $customerFiscalParty = $this->relationFiscalParties->findFiscalParty($administrationId, $customer->relationId());
+                $supplierFiscalParty = $this->administrationFiscalParties->findFiscalParty($administrationId);
+                if ($customerFiscalParty === null || $supplierFiscalParty === null) {
+                    return SalesInvoiceWriteResult::CustomerNotFound;
                 }
                 $resolvedLines = [];
                 foreach ($lines as $input) {
@@ -80,12 +92,15 @@ final readonly class CreateSalesInvoice
                 if (! $number instanceof SalesInvoiceNumber) {
                     return SalesInvoiceWriteResult::SequenceMissing;
                 }
-                $invoice = new SalesInvoice($invoiceId, $number, $administrationId, $customerId, $administration->baseCurrency(), $invoiceDate, $dueDate, null, SalesInvoiceStatus::Draft, $customer, $address);
+                $invoice = new SalesInvoice($invoiceId, $number, $administrationId, $customerId, $administration->baseCurrency(), $invoiceDate, $dueDate, null, SalesInvoiceStatus::Draft, $customer, $address, new SalesCustomerFiscalSnapshot($customerFiscalParty->relationId, $customerFiscalParty->vatIdentificationNumber, $customerFiscalParty->fiscalJurisdiction), new SalesSupplierFiscalSnapshot($supplierFiscalParty->administrationId, $supplierFiscalParty->vatIdentificationNumber, $supplierFiscalParty->fiscalJurisdiction), $supplyDate);
                 foreach ($resolvedLines as $line) {
                     $invoice->addLine($line);
                 }
-                if ($resolvedLines !== [] && $this->readiness->check($invoice)->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed) {
-                    return SalesInvoiceWriteResult::TaxCalculationFailure;
+                if ($resolvedLines !== []) {
+                    $readinessFailure = self::readinessFailure($this->readiness->check($invoice)->status());
+                    if ($readinessFailure !== null) {
+                        return $readinessFailure;
+                    }
                 }
                 $result = $this->invoices->create($administrationId, $invoice);
                 if ($result !== SalesInvoiceWriteResult::Success) {
@@ -116,6 +131,20 @@ final readonly class CreateSalesInvoice
             SalesTaxCodeResolutionStatus::NotFound => SalesInvoiceWriteResult::TaxCodeNotFound,
             SalesTaxCodeResolutionStatus::Inactive => SalesInvoiceWriteResult::TaxCodeInactive,
             SalesTaxCodeResolutionStatus::WrongDirection => SalesInvoiceWriteResult::WrongTaxDirection,
+        };
+    }
+
+    public static function readinessFailure(SalesInvoiceReadinessStatus $status): ?SalesInvoiceWriteResult
+    {
+        return match ($status) {
+            SalesInvoiceReadinessStatus::Ready => null,
+            SalesInvoiceReadinessStatus::TaxCalculationFailed => SalesInvoiceWriteResult::TaxCalculationFailure,
+            SalesInvoiceReadinessStatus::CustomerVatIdMissing => SalesInvoiceWriteResult::CustomerVatIdMissing,
+            SalesInvoiceReadinessStatus::CustomerJurisdictionMissing => SalesInvoiceWriteResult::CustomerJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplierVatIdMissing => SalesInvoiceWriteResult::SupplierVatIdMissing,
+            SalesInvoiceReadinessStatus::SupplierJurisdictionMissing => SalesInvoiceWriteResult::SupplierJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplyDateMissing => SalesInvoiceWriteResult::SupplyDateMissing,
+            default => SalesInvoiceWriteResult::InvalidState,
         };
     }
 }

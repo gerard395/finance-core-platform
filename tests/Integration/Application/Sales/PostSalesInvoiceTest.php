@@ -16,6 +16,7 @@ use App\Application\Sales\SalesInvoicePostingClock;
 use App\Application\Sales\SalesInvoicePostingIdentityGenerator;
 use App\Application\Sales\SalesInvoicePostingRepository;
 use App\Application\Sales\SalesInvoicePostingSource;
+use App\Application\Sales\SalesInvoiceReadinessChecker;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesInvoiceWriteResult;
 use App\Application\Sales\SalesPostingConfigurationReader;
@@ -113,6 +114,70 @@ final class PostSalesInvoiceTest extends TestCase
         self::assertSame('100', OpenItemRecord::query()->value('original_amount'));
     }
 
+    public function test_all_fiscal_treatments_post_balanced_and_preserve_reporting_truth(): void
+    {
+        $cases = [
+            ['21', 'domestic_standard', 'domestic_standard', 'none', '21'],
+            ['9', 'domestic_reduced', 'domestic_reduced', 'none', '9'],
+            ['0', 'zero_rated', 'domestic_zero_rated', 'none', '0'],
+            ['0', 'reverse_charge_eu_service', 'eu_services', 'service', '0'],
+            ['0', 'intra_community_goods', 'intra_community_supplies', 'goods_supply', '0'],
+            ['0', 'outside_scope', 'outside_scope', 'none', '0'],
+            ['0', 'exempt', 'exempt', 'none', '0'],
+        ];
+
+        foreach ($cases as $offset => [$rate, $treatment, $vat, $icp, $tax]) {
+            $sequence = $offset + 1;
+            $this->seedInvoice(self::A, 1, $sequence, 'finalized', [['100', $rate]]);
+            $this->setFiscalTruth($sequence, $treatment, $vat, $icp);
+
+            $result = $this->postInvoice(self::A, $sequence);
+
+            self::assertSame(PostSalesInvoiceStatus::Success, $result->status(), $treatment);
+            $entryId = $result->journalEntryId()?->toString();
+            $lines = DB::table('journal_entry_lines')->where('journal_entry_id', $entryId)->get();
+            self::assertSame($tax === '0' ? 2 : 3, $lines->count(), $treatment);
+            self::assertSame($lines->sum('debit_amount'), $lines->sum('credit_amount'), $treatment);
+            $posting = TaxPostingRecord::query()->where('source_document_id', $this->invoiceId(1, $sequence))->firstOrFail();
+            self::assertSame('100', $posting->getAttribute('taxable_base'), $treatment);
+            self::assertSame($tax, $posting->getAttribute('tax_amount'), $treatment);
+            self::assertSame($treatment, $posting->getAttribute('treatment'));
+            self::assertSame($vat, $posting->getAttribute('vat_return_classification'));
+            self::assertSame($icp, $posting->getAttribute('icp_classification'));
+            self::assertSame($this->invoiceId(1, $sequence), $posting->getAttribute('source_document_id'));
+            self::assertSame($this->id(1, 60 + $sequence, 1), $posting->getAttribute('source_line_id'));
+            self::assertSame($tax === '0' ? '100' : (string) (100 + (int) $tax), OpenItemRecord::query()->where('journal_entry_id', $entryId)->value('original_amount'));
+            self::assertSame($tax === '0' ? null : $this->accountId(1, 3), $lines->firstWhere('ledger_account_id', $this->accountId(1, 3))?->ledger_account_id);
+        }
+    }
+
+    public function test_mixed_domestic_and_eu_service_posting_has_only_real_vat_and_independent_tax_facts(): void
+    {
+        $this->seedInvoice(self::A, 1, 1, 'finalized', [['100', '21'], ['50', '0']]);
+        $this->setFiscalTruth(1, 'reverse_charge_eu_service', 'eu_services', 'service', 1);
+
+        $result = $this->postInvoice(self::A, 1);
+
+        self::assertSame(PostSalesInvoiceStatus::Success, $result->status());
+        $postings = TaxPostingRecord::query()->where('source_document_id', $this->invoiceId(1, 1))->orderBy('tax_rate', 'desc')->get();
+        self::assertSame(['21', '0'], $postings->pluck('tax_rate')->all());
+        self::assertSame(['21', '0'], $postings->pluck('tax_amount')->all());
+        self::assertSame(['domestic_standard', 'reverse_charge_eu_service'], $postings->pluck('treatment')->all());
+        self::assertSame('171', OpenItemRecord::query()->where('administration_id', self::A)->value('original_amount'));
+        self::assertSame(1, DB::table('journal_entry_lines')->where('journal_entry_id', $result->journalEntryId()?->toString())->where('ledger_account_id', $this->accountId(1, 3))->count());
+    }
+
+    public function test_posting_rejects_inconsistent_international_history_but_accepts_domestic_legacy_history(): void
+    {
+        $this->seedInvoice(self::A, 1, 1, 'finalized', [['100', '0']]);
+        $this->setFiscalTruth(1, 'reverse_charge_eu_service', 'eu_services', 'service', fiscalPartyContext: false);
+        self::assertSame(PostSalesInvoiceStatus::FinancialStateInconsistent, $this->postInvoice(self::A, 1)->status());
+        $this->assertNoFinancialTruth();
+
+        $this->seedInvoice(self::A, 1, 2, 'finalized', [['100', '21']]);
+        self::assertSame(PostSalesInvoiceStatus::Success, $this->postInvoice(self::A, 2)->status());
+    }
+
     public function test_missing_invalid_and_cross_tenant_inputs_write_nothing(): void
     {
         $this->seedInvoice(self::A, 1, 1, 'finalized', [['100', '21']]);
@@ -173,12 +238,13 @@ final class PostSalesInvoiceTest extends TestCase
         }
     }
 
-    public function test_two_concurrent_attempts_create_exactly_one_complete_posting(): void
+    public function test_two_concurrent_international_zero_tax_attempts_create_exactly_one_complete_posting(): void
     {
         if (! function_exists('pcntl_fork')) {
             self::markTestSkipped('pcntl is required for the posting concurrency test.');
         }
-        $this->seedInvoice(self::A, 1, 1, 'finalized', [['100', '21'], ['50', '9']]);
+        $this->seedInvoice(self::A, 1, 1, 'finalized', [['100', '0']]);
+        $this->setFiscalTruth(1, 'reverse_charge_eu_service', 'eu_services', 'service');
         DB::commit();
         $files = [tempnam(sys_get_temp_dir(), 'invoice-post-'), tempnam(sys_get_temp_dir(), 'invoice-post-')];
         $children = [];
@@ -214,7 +280,8 @@ final class PostSalesInvoiceTest extends TestCase
         self::assertSame(1, SalesInvoicePostingRecord::query()->where('sales_invoice_id', $this->invoiceId(1, 1))->count());
         self::assertSame(1, JournalEntryRecord::query()->where('reference', 'INV-1-1')->count());
         self::assertSame(1, OpenItemRecord::query()->where('administration_id', self::A)->count());
-        self::assertSame(2, TaxPostingRecord::query()->where('source_document_id', $this->invoiceId(1, 1))->count());
+        self::assertSame(1, TaxPostingRecord::query()->where('source_document_id', $this->invoiceId(1, 1))->count());
+        self::assertSame('reverse_charge_eu_service', TaxPostingRecord::query()->where('source_document_id', $this->invoiceId(1, 1))->value('treatment'));
         self::assertSame('posted', SalesInvoiceRecord::query()->findOrFail($this->invoiceId(1, 1))->getAttribute('status'));
         $this->removeCommittedConcurrencyFixtures();
         DB::beginTransaction();
@@ -245,6 +312,7 @@ final class PostSalesInvoiceTest extends TestCase
             $failure === 'open_item' ? new FailingOpenItemStore : $openItem,
             $this->app->make(SalesInvoicePostingIdentityGenerator::class),
             $this->app->make(SalesInvoicePostingClock::class),
+            $this->app->make(SalesInvoiceReadinessChecker::class),
         );
     }
 
@@ -259,7 +327,7 @@ final class PostSalesInvoiceTest extends TestCase
             DB::table('ledger_accounts')->insert(['id' => $this->accountId($tenant, $sequence), 'administration_id' => $administration, 'code' => 'P'.$sequence, 'name' => 'Posting account '.$sequence, 'type' => $type, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         }
         foreach ([1 => ['VAT21', '21'], 2 => ['VAT9', '9'], 3 => ['VAT0', '0']] as $sequence => [$code, $rate]) {
-            DB::table('tax_codes')->insert(['id' => $this->taxCodeId($tenant, $sequence), 'administration_id' => $administration, 'code' => $code, 'name' => $code, 'rate' => $rate, 'direction' => 'output', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+            DB::table('tax_codes')->insert(['id' => $this->taxCodeId($tenant, $sequence), 'administration_id' => $administration, 'code' => $code, 'name' => $code, 'rate' => $rate, 'direction' => 'output', 'status' => 'active', 'treatment' => $rate === '0' ? 'zero_rated' : 'domestic_standard', 'vat_return_classification' => $rate === '0' ? 'domestic_zero_rated' : 'domestic_standard', 'icp_classification' => 'none', 'created_at' => $now, 'updated_at' => $now]);
         }
         $this->seedConfiguration($administration, $tenant);
     }
@@ -276,7 +344,25 @@ final class PostSalesInvoiceTest extends TestCase
         DB::table('sales_invoices')->insert(['id' => $this->invoiceId($tenant, $sequence), 'administration_id' => $administration, 'sales_invoice_number' => 'INV-'.$tenant.'-'.$sequence, 'customer_id' => $this->customerId($tenant), 'customer_relation_id_snapshot' => $this->relationId($tenant), 'customer_number_snapshot' => 'C'.$tenant, 'customer_name_snapshot' => 'Snapshot Customer '.$tenant, 'invoice_address_id_snapshot' => $this->id($tenant, 40, 1), 'invoice_address_type_snapshot' => 'invoice', 'invoice_address_line_1_snapshot' => 'Snapshot Street 1', 'invoice_address_line_2_snapshot' => null, 'invoice_postal_code_snapshot' => '1000AA', 'invoice_city_snapshot' => 'Amsterdam', 'invoice_country_code_snapshot' => 'NL', 'source_order_id' => null, 'currency' => 'EUR', 'invoice_date' => '2026-08-20', 'due_date' => '2026-09-19', 'status' => $status, 'created_at' => $now, 'updated_at' => $now]);
         foreach ($lines as $lineSequence => [$amount, $rate]) {
             $taxSequence = $rate === '21' ? 1 : ($rate === '9' ? 2 : 3);
-            DB::table('sales_invoice_lines')->insert(['id' => $this->id($tenant, 60 + $sequence, $lineSequence + 1), 'administration_id' => $administration, 'sales_invoice_id' => $this->invoiceId($tenant, $sequence), 'description' => 'Finalized line '.($lineSequence + 1), 'quantity' => '1', 'unit_price_amount' => $amount, 'currency' => 'EUR', 'tax_code_id_snapshot' => $this->taxCodeId($tenant, $taxSequence), 'tax_code_snapshot' => 'VAT'.$rate, 'tax_name_snapshot' => 'VAT '.$rate, 'tax_rate_snapshot' => $rate, 'tax_direction_snapshot' => 'output', 'created_at' => $now, 'updated_at' => $now]);
+            DB::table('sales_invoice_lines')->insert(['id' => $this->id($tenant, 60 + $sequence, $lineSequence + 1), 'administration_id' => $administration, 'sales_invoice_id' => $this->invoiceId($tenant, $sequence), 'description' => 'Finalized line '.($lineSequence + 1), 'quantity' => '1', 'unit_price_amount' => $amount, 'currency' => 'EUR', 'tax_code_id_snapshot' => $this->taxCodeId($tenant, $taxSequence), 'tax_code_snapshot' => 'VAT'.$rate, 'tax_name_snapshot' => 'VAT '.$rate, 'tax_rate_snapshot' => $rate, 'tax_direction_snapshot' => 'output', 'tax_treatment_snapshot' => $rate === '0' ? 'zero_rated' : 'domestic_standard', 'vat_return_classification_snapshot' => $rate === '0' ? 'domestic_zero_rated' : 'domestic_standard', 'icp_classification_snapshot' => 'none', 'created_at' => $now, 'updated_at' => $now]);
+        }
+    }
+
+    private function setFiscalTruth(int $invoiceSequence, string $treatment, string $vat, string $icp, int $lineSequence = 0, bool $fiscalPartyContext = true): void
+    {
+        DB::table('sales_invoice_lines')
+            ->where('sales_invoice_id', $this->invoiceId(1, $invoiceSequence))
+            ->where('id', $this->id(1, 60 + $invoiceSequence, $lineSequence + 1))
+            ->update(['tax_treatment_snapshot' => $treatment, 'vat_return_classification_snapshot' => $vat, 'icp_classification_snapshot' => $icp]);
+
+        if ($fiscalPartyContext && in_array($treatment, ['reverse_charge_eu_service', 'intra_community_goods'], true)) {
+            DB::table('sales_invoices')->where('id', $this->invoiceId(1, $invoiceSequence))->update([
+                'customer_vat_id_snapshot' => 'DE123456789',
+                'customer_fiscal_jurisdiction_snapshot' => 'DE',
+                'supplier_vat_id_snapshot' => 'NL123456789B01',
+                'supplier_fiscal_jurisdiction_snapshot' => 'NL',
+                'supply_date' => '2026-08-20',
+            ]);
         }
     }
 

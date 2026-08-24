@@ -102,6 +102,7 @@ final readonly class PostSalesCreditInvoiceWithTax
                 new TaxSourceDocumentId($creditInvoice->id()->uuid()), new TaxSourceLineId($line->id()->uuid()),
                 $entry->postingDate(), $entry->id(), $input->revenueReversalLineId(), $input->taxReversalLineId(),
                 TaxPostingType::Reversal, $original->id(),
+                $original->treatment(), $original->vatReturnClassification(), $original->icpClassification(),
             );
             $this->reversalPolicy->assertValidReversal($original, $reversal, $workingHistory);
             $workingHistory[] = $reversal;

@@ -293,7 +293,8 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - TaxRate is immutable.
 - TaxCalculation gebruikt Money en geen floats of primitieve geldbedragen.
 - TaxCalculation maakt geen JournalEntries.
-- TaxPosting bewaart de gebruikte TaxRate, taxable base en taxAmount als transactiesnapshot; de actuele TaxCode-rate is nooit historische rapportagewaarheid.
+- TaxPosting bewaart de gebruikte TaxRate, taxable base, taxAmount, TaxTreatment en VAT-return-/ICP-classificatie als transactiesnapshot; de actuele TaxCode-state is nooit historische rapportagewaarheid.
+- SalesInvoice bewaart document-level immutable customer/supplier VAT-ID- en jurisdictionsnapshots plus een expliciete nullable SupplyDate. InvoiceDate en OrderDate zijn geen impliciete prestatiedatum; SalesCreditInvoice erft de oorspronkelijke fiscale context uit haar source invoice.
 - TaxPostings zijn immutable en append-only. Het definitieve correctiemodel gebruikt een expliciet type `Original` of `Reversal`; bedragen blijven positief en Input/Output-direction blijft gelijk aan het origineel.
 - Een Reversal verwijst naar precies één Original, neemt TaxCode/rate/base/tax/Currency/direction exact over en is in v1 altijd volledig. Een Original mag maximaal eenmaal worden gereversed en een Reversal kan niet zelf reversal-target zijn.
 - Correcties verwijderen geen feiten. Application laat de financiële tegenboeking door PostingEngine maken en creëert pas daarna het Reversal-TaxPosting met de werkelijke correctie-JournalEntry/Line-identiteiten.
@@ -509,7 +510,7 @@ De Profit & Loss is gebaseerd op Trial Balance-resultaten, bevat uitsluitend Led
 
 - General Ledger Report: deterministisch geordende Posted JournalEntry-regels met een berekende period movement balance volgens `debit - credit`.
 - Open Items Report: historische openstanden en statussen op peildatum, uitsluitend gelezen via `OpenItem::openAmountAt()` en `statusAt()`.
-- VAT Overview: Input en Output VAT, 0%-classificaties, Original/Reversal-feiten en groepering op TaxCodeId plus TaxRate-snapshot, uitsluitend afgeleid uit `TaxPosting`.
+- VAT Overview: Input en Output VAT, 0%-classificaties, Original/Reversal-feiten en groepering op TaxCodeId, TaxRate-snapshot en expliciete treatment/VAT-return/ICP-classificatie, uitsluitend afgeleid uit `TaxPosting`.
 
 #### Architectuurregels
 

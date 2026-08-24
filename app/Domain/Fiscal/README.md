@@ -10,9 +10,22 @@ Fiscal biedt capabilityneutrale fiscale classificatie, berekening en geposte fis
 
 TaxCode beheert een immutable identiteit, code en Input/Output-richting, een wijzigbare naam, precies één actueel immutable TaxRate en een actieve of inactieve status. Administration ownership ligt buiten de Domain entity en wordt door Application en persistence bewaakt.
 
+Internationale fiscale betekenis kan niet door TaxRate worden gedragen: zero-rated,
+EU B2B reverse charge, exempt en outside-scope kunnen alle nul Nederlandse btw
+berekenen maar blijven afzonderlijke treatments. `TaxTreatment`,
+`VatReturnClassification` en `IcpClassification` zijn daarom afzonderlijke typed
+dimensies. `TaxClassification` bewaakt centraal de toegestane combinaties. TaxCode,
+Sales-taxsnapshot, berekenresultaat en TaxPosting dragen die betekenis exact door;
+geen treatment wordt uit code, naam, rate, land of btw-ID afgeleid.
+
 ## TaxPosting
 
 TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, Original/Reversal-type, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. De base-regel is altijd verplicht; de tax-regel bestaat uitsluitend bij een positief taxAmount. Alle context is immutable. Een Reversal verwijst via `reversedTaxPostingId` naar het oorspronkelijke feit zonder dat feit te muteren.
+
+Ook bij tax amount nul blijft een TaxPosting met taxable base en expliciete
+VAT/ICP-classificatie bestaan. VAT-return en ICP worden later uit dezelfde append-only
+facts opgebouwd; een credit neemt de oorspronkelijke classificatie exact over en de
+reversalpolicy weigert afwijkingen.
 
 ## Invarianten
 
@@ -37,6 +50,8 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 
 ## Grenzen
 
+VAT-identificatienummers in masterdata zijn uitsluitend syntactisch gevalideerd. Externe VIES-verificatie, evidence en fiscale-eenheidcontext zijn afzonderlijke toekomstige capabilities. Relation- en Administration-readers leveren snapshotinput; Fiscal leidt jurisdictie nooit uit een adres af.
+
 - Fiscal bevat geen landcodes, land-specifieke fiscale regels of btw-aangiftegedrag.
 - Fiscal is onafhankelijk van Sales en Purchasing.
 - TaxSourceDocumentId en TaxSourceLineId bewaren capabilityneutrale UUID-referenties zonder Sales- of Purchasing-dependency.
@@ -46,5 +61,8 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.
-- De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden; er worden zonder autoritatieve configuratie geen fiscale defaults geprovisioned.
+- De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden. De expliciete Nederlandse bootstrap maakt create-missing-only de actuele 21%-, 9%- en 0%-Outputcodes; zij kiest nooit een default of productclassificatie en wijzigt bestaande codes niet.
+- Dezelfde expliciete Sales-catalogus definieert afzonderlijke 0-rate Output-codes voor EU-serviceverlegging, intracommunautaire goederen, outside-scope en vrijstelling. Zij delen rekenkundig nul maar nooit treatment/reporting/ICP-betekenis; BTW0 blijft domestic zero-rated.
+- Het 0%-tarief is niet hetzelfde als vrijstelling. Het model onderscheidt beide typed; de Nederlandse bootstrap maakt BTW0 uitsluitend `ZeroRated` en geen vrijstellings- of internationale code.
+- Zonder effective dating is bootstrap geen rate-updater. Wettelijke tariefwijzigingen vereisen expliciete catalogusversioning en veranderen nooit historische TaxPosting-snapshots.
 - Globale, concurrency-safe uniciteit van TaxPostingId en dubbele-reversalpreventie worden later door persistenceconstraints en transacties afgedwongen; de huidige policies bewaken een volledig en consistent aangeleverde historie.

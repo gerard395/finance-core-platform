@@ -8,8 +8,11 @@ use App\Application\Sales\SalesInvoiceReadinessChecker;
 use App\Application\Sales\SalesInvoiceReadinessStatus;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
@@ -29,15 +32,19 @@ use App\Domain\Sales\Entities\SalesInvoice;
 use App\Domain\Sales\Entities\SalesInvoiceLine;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
+use App\Domain\Sales\ValueObjects\SalesCustomerFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesSupplierFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesTaxSnapshot;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use PHPUnit\Framework\TestCase;
@@ -91,6 +98,30 @@ final class SalesInvoiceReadinessCheckerTest extends TestCase
         self::assertSame('21', $snapshot->taxRate()->value());
         self::assertSame('VATOUT', $snapshot->taxCode()->value());
         self::assertSame(TaxPostingDirection::Output, $snapshot->direction());
+    }
+
+    public function test_reverse_charge_readiness_requires_historical_party_context_and_supply_date(): void
+    {
+        $invoice = $this->invoice('250', '0');
+        $line = $invoice->lines()[0];
+        $international = new SalesInvoice(
+            $invoice->id(), $invoice->number(), $invoice->administrationId(), $invoice->customerId(), $invoice->currency(),
+            $invoice->invoiceDate(), $invoice->dueDate(), null, SalesInvoiceStatus::Draft, $invoice->customerSnapshot(), $invoice->invoiceAddressSnapshot(),
+            new SalesCustomerFiscalSnapshot($invoice->customerSnapshot()->relationId(), new VatIdentificationNumber('DE123456789'), new CountryCode('DE')),
+            new SalesSupplierFiscalSnapshot($invoice->administrationId(), new VatIdentificationNumber('NL123456789B01'), new CountryCode('NL')),
+            new SupplyDate(new DateTimeImmutable('2026-08-20')),
+        );
+        $international->addLine(new SalesInvoiceLine($line->id(), $line->description(), $line->quantity(), $line->unitPrice(), new SalesTaxSnapshot(new TaxCodeId($this->uuid('5')), new TaxCodeCode('EUSERVICE'), new TaxCodeName('EU service'), new TaxRate('0'), TaxPostingDirection::Output, TaxTreatment::ReverseChargeEuService, VatReturnClassification::EuServices, IcpClassification::Service)));
+
+        $result = (new SalesInvoiceReadinessChecker(new TaxCalculation))->check($international);
+
+        self::assertSame(SalesInvoiceReadinessStatus::Ready, $result->status());
+        self::assertSame('250', $result->netTotal()?->amount());
+        self::assertSame('0', $result->taxTotal()?->amount());
+        self::assertSame('DE123456789', $international->customerFiscalSnapshot()?->vatIdentificationNumber()?->toString());
+        self::assertSame('NL123456789B01', $international->supplierFiscalSnapshot()?->vatIdentificationNumber()?->toString());
+        self::assertSame('2026-08-20', $international->supplyDate()?->value()->format('Y-m-d'));
+        self::assertSame(IcpClassification::Service, $international->lines()[0]->taxSnapshot()?->icpClassification());
     }
 
     private function invoice(string $amount, string $rate, bool $customer = true, bool $address = true, bool $tax = true): SalesInvoice

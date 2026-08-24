@@ -75,6 +75,12 @@ final readonly class TaxPostingReversalPolicy
             throw new DomainException('A reversal must retain the original tax rate snapshot.');
         }
 
+        if ($reversal->treatment() !== $original->treatment()
+            || $reversal->vatReturnClassification() !== $original->vatReturnClassification()
+            || $reversal->icpClassification() !== $original->icpClassification()) {
+            throw new DomainException('A reversal must retain the original tax reporting classification snapshot.');
+        }
+
         if (! $reversal->taxableBase()->currency()->equals($original->taxableBase()->currency())
             || ! $reversal->taxAmount()->currency()->equals($original->taxAmount()->currency())) {
             throw new DomainException('A reversal must retain the original currency.');

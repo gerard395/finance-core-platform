@@ -8,9 +8,13 @@ use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\TaxClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
@@ -38,7 +42,11 @@ final readonly class TaxPosting
         private ?JournalEntryLineId $taxJournalEntryLineId,
         private TaxPostingType $type,
         private ?TaxPostingId $reversedTaxPostingId = null,
+        private TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        private VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        private IcpClassification $icpClassification = IcpClassification::None,
     ) {
+        new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
         if (! $this->taxableBase->currency()->equals($this->taxAmount->currency())) {
             throw new DomainException('Tax posting amounts must use the same currency.');
         }
@@ -146,6 +154,21 @@ final readonly class TaxPosting
     public function reversedTaxPostingId(): ?TaxPostingId
     {
         return $this->reversedTaxPostingId;
+    }
+
+    public function treatment(): TaxTreatment
+    {
+        return $this->treatment;
+    }
+
+    public function vatReturnClassification(): VatReturnClassification
+    {
+        return $this->vatReturnClassification;
+    }
+
+    public function icpClassification(): IcpClassification
+    {
+        return $this->icpClassification;
     }
 
     public function isReversal(): bool

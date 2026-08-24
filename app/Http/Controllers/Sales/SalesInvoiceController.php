@@ -25,6 +25,7 @@ use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Controllers\Controller;
@@ -32,6 +33,7 @@ use App\Http\Requests\Sales\StoreSalesInvoiceRequest;
 use App\Http\Requests\Sales\UpdateSalesInvoiceRequest;
 use App\Presentation\Formatting\DutchMoneyFormatter;
 use App\Presentation\Sales\SalesInvoiceStatusPresenter;
+use App\Presentation\Sales\SalesTaxCodePresenter;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -101,6 +103,7 @@ final class SalesInvoiceController extends Controller
         return view('sales.invoices.show', $this->viewData($context) + [
             'invoice' => $detail,
             'taxCodes' => $this->taxCodes->findActiveForAdministrationAndDirection($context->administration->id(), TaxPostingDirection::Output),
+            'taxCodePresenter' => SalesTaxCodePresenter::class,
         ]);
     }
 
@@ -121,7 +124,7 @@ final class SalesInvoiceController extends Controller
             return back()->withInput()->withErrors(['customer_id' => 'De geselecteerde klant heeft niet exact één actief factuuradres.']);
         }
         $id = new SalesInvoiceId(new Uuid(Str::uuid()->toString()));
-        $result = $this->createInvoice->execute($context->administration->id(), $id, $customerId, $addressId, new DateTimeImmutable($validated['invoice_date']), new DateTimeImmutable($validated['due_date']));
+        $result = $this->createInvoice->execute($context->administration->id(), $id, $customerId, $addressId, new DateTimeImmutable($validated['invoice_date']), new DateTimeImmutable($validated['due_date']), supplyDate: isset($validated['supply_date']) ? new SupplyDate(new DateTimeImmutable($validated['supply_date'])) : null);
         if ($result !== SalesInvoiceWriteResult::Success) {
             $message = match ($result) {
                 SalesInvoiceWriteResult::CustomerNotFound, SalesInvoiceWriteResult::InactiveCustomer => 'De geselecteerde klant is niet beschikbaar.',

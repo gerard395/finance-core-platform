@@ -274,14 +274,21 @@ final class QuotationWebTest extends TestCase
             ->assertRedirect('/app')->assertSessionHas('error', 'De ordernummerreeks is niet beschikbaar.');
     }
 
-    public function test_route_is_post_only_and_no_order_invoice_action_is_introduced(): void
+    public function test_quotation_conversion_and_order_invoicing_routes_remain_separate_and_permission_scoped(): void
     {
         self::assertTrue(Route::has('sales.quotations.order.store'));
-        self::assertFalse(Route::has('sales.orders.invoice.store'));
         $route = Route::getRoutes()->getByName('sales.quotations.order.store');
         self::assertNotNull($route);
         self::assertSame(['POST'], $route->methods());
         self::assertContains(EnsureSalesPermission::using(SalesPermission::ManageOrders), $route->gatherMiddleware());
+        $create = Route::getRoutes()->getByName('sales.orders.invoice.create');
+        $store = Route::getRoutes()->getByName('sales.orders.invoice.store');
+        self::assertNotNull($create);
+        self::assertNotNull($store);
+        self::assertSame(['GET', 'HEAD'], $create->methods());
+        self::assertSame(['POST'], $store->methods());
+        self::assertContains(EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts), $create->gatherMiddleware());
+        self::assertContains(EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts), $store->gatherMiddleware());
     }
 
     private function provision(): void

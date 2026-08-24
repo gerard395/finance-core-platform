@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Relations\RelationCreator;
+use App\Application\Relations\RelationFiscalParty;
+use App\Application\Relations\RelationFiscalPartyReader;
 use App\Application\Relations\RelationReadRepository;
 use App\Application\Relations\RelationStore;
 use App\Application\Relations\RelationUpdater;
@@ -33,6 +35,7 @@ use App\Domain\Relations\ValueObjects\PhoneNumber;
 use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationBankAccountRecord;
@@ -41,7 +44,7 @@ use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentRelationRepository implements RelationCreator, RelationReadRepository, RelationStore, RelationUpdater
+final class EloquentRelationRepository implements RelationCreator, RelationFiscalPartyReader, RelationReadRepository, RelationStore, RelationUpdater
 {
     public function findByIdForAdministration(AdministrationId $administrationId, RelationId $relationId): ?Relation
     {
@@ -62,6 +65,15 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
             ->get()
             ->map(fn (RelationRecord $record): Relation => $this->hydrate($record))
             ->all();
+    }
+
+    public function findFiscalParty(AdministrationId $administrationId, RelationId $relationId): ?RelationFiscalParty
+    {
+        $relation = $this->findByIdForAdministration($administrationId, $relationId);
+
+        return $relation === null ? null : new RelationFiscalParty(
+            $relation->id(), $relation->vatIdentificationNumber(), $relation->fiscalJurisdiction(),
+        );
     }
 
     public function save(AdministrationId $administrationId, Relation $relation): void
@@ -124,6 +136,8 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
         }
 
         $record->setAttribute('display_name', $relation->displayName()->toString());
+        $record->setAttribute('vat_identification_number', $relation->vatIdentificationNumber()?->toString());
+        $record->setAttribute('fiscal_jurisdiction', $relation->fiscalJurisdiction()?->value());
         $record->setAttribute('active', $relation->isActive());
         $record->save();
 
@@ -153,7 +167,7 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
         }
     }
 
-    /** @return array{id: string, administration_id: string, code: string, display_name: string, active: bool} */
+    /** @return array{id: string, administration_id: string, code: string, display_name: string, vat_identification_number: ?string, fiscal_jurisdiction: ?string, active: bool} */
     private function attributes(AdministrationId $administrationId, Relation $relation): array
     {
         return [
@@ -161,6 +175,8 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
             'administration_id' => $administrationId->toString(),
             'code' => $relation->code()->toString(),
             'display_name' => $relation->displayName()->toString(),
+            'vat_identification_number' => $relation->vatIdentificationNumber()?->toString(),
+            'fiscal_jurisdiction' => $relation->fiscalJurisdiction()?->value(),
             'active' => $relation->isActive(),
         ];
     }
@@ -208,6 +224,8 @@ final class EloquentRelationRepository implements RelationCreator, RelationReadR
             $contacts,
             $addresses,
             $bankAccounts,
+            $record->getAttribute('vat_identification_number') === null ? null : new VatIdentificationNumber($record->getAttribute('vat_identification_number')),
+            $record->getAttribute('fiscal_jurisdiction') === null ? null : new CountryCode($record->getAttribute('fiscal_jurisdiction')),
         );
     }
 }

@@ -8,8 +8,11 @@ use App\Application\Fiscal\TaxCodeReadRepository;
 use App\Application\Fiscal\TaxCodeStore;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -53,6 +56,9 @@ final class EloquentTaxCodePersistenceTest extends TestCase
         self::assertSame('21.125', $read->rate()->value());
         self::assertSame(TaxPostingDirection::Output, $read->direction());
         self::assertSame(TaxCodeStatus::Active, $read->status());
+        self::assertSame(TaxTreatment::DomesticStandard, $read->treatment());
+        self::assertSame(VatReturnClassification::DomesticStandard, $read->vatReturnClassification());
+        self::assertSame(IcpClassification::None, $read->icpClassification());
 
         $taxCode->changeRate(new TaxRate('19.8765'));
         $taxCode->deactivate();
@@ -62,6 +68,23 @@ final class EloquentTaxCodePersistenceTest extends TestCase
         self::assertSame('19.8765', $changed?->rate()->value());
         self::assertSame(TaxCodeStatus::Inactive, $changed?->status());
         self::assertSame(1, TaxCodeRecord::query()->count());
+    }
+
+    public function test_international_reporting_metadata_roundtrips_without_rate_inference(): void
+    {
+        $taxCode = new TaxCode(
+            new TaxCodeId(new Uuid('30000000-0000-4000-8000-000000000099')),
+            new TaxCodeCode('TESTEUSERVICE'), new TaxCodeName('Test EU service'), new TaxRate('0'),
+            TaxPostingDirection::Output, TaxCodeStatus::Active, TaxTreatment::ReverseChargeEuService,
+            VatReturnClassification::EuServices, IcpClassification::Service,
+        );
+        $this->repository->save($this->administration(self::ADMIN_A), $taxCode);
+
+        $read = $this->repository->findByIdForAdministration($this->administration(self::ADMIN_A), $taxCode->id());
+        self::assertSame('0', $read?->rate()->value());
+        self::assertSame(TaxTreatment::ReverseChargeEuService, $read?->treatment());
+        self::assertSame(VatReturnClassification::EuServices, $read?->vatReturnClassification());
+        self::assertSame(IcpClassification::Service, $read?->icpClassification());
     }
 
     public function test_selection_is_active_direction_and_tenant_scoped_with_deterministic_order(): void

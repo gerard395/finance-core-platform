@@ -14,7 +14,7 @@ final class RelationRecord extends Model
 
     public $incrementing = false;
 
-    protected $fillable = ['id', 'administration_id', 'code', 'display_name', 'active'];
+    protected $fillable = ['id', 'administration_id', 'code', 'display_name', 'vat_identification_number', 'fiscal_jurisdiction', 'active'];
 
     protected function casts(): array
     {

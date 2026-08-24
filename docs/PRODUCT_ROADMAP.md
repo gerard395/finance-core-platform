@@ -241,7 +241,7 @@ W3 is afgerond met volledige Relation-aggregate-reconstitutie en tenant-veilige 
 
 ### Batch W4 – Sales Web Module
 
-**Status:** Completed; reviewed and merge-ready
+**Status:** Domestic implementation completed; merge blocked by international VAT predecessors
 
 W4 levert de eerste veilige administration-scoped verkoopdoorsnede voor Quotations,
 Orders, SalesInvoices en volledige SalesCreditInvoices. De batch omvat onafhankelijke
@@ -310,6 +310,71 @@ tenant- en concurrencyveiligheid, transactionele nummering, directe Orders zonde
 bronofferte en exacte permissionhandhaving. Er zijn geen mergeblockers. De enige
 reviewaanvulling is een expliciete regressieassertie dat **Offerte verzenden** geen
 Order creëert. Order→SalesInvoice blijft deferred en valt nadrukkelijk buiten W4A.
+
+### Batch W4B – Order Invoicing & Conversion
+
+**Status:** Completed; reviewed and merge-ready
+
+W4B converteert Confirmed en PartiallyInvoiced Orders veilig naar één of meerdere
+Draft SalesInvoices met partial quantities per OrderLine. Draft-reservations bewaken
+beschikbare quantity; Finalize schrijft immutable allocations en leidt uitsluitend
+daaruit PartiallyInvoiced/FullyInvoiced af. Een append-only release maakt een
+geannuleerde Draft-reservation vrij. De Order-headerlock, tenant-scoped constraints,
+transactionele SalesInvoice-nummering en duurzame request-idempotency voorkomen
+over-invoicing en dubbele browser-submits.
+
+- W4B-000 – Order invoicing allocation & conversion design
+- W4B-001 – Order invoicing facts, quantity ledger & persistence
+- W4B-002 – Create SalesInvoice from Order contracts
+- W4B-003 – Finalize/cancel allocation synchronization
+- W4B-004 – Order invoicing Web flow
+- W4B-004A – Dutch Tax Catalogue Bootstrap & Development Provisioning
+- W4B-004B – International VAT Treatment & ICP Readiness Design
+- W4B-004B0 – Administration Settings Authorization & Management Foundation (verplichte predecessor van W4B-004B1)
+- W4B-004B1 – VAT Identification & Jurisdiction Master Data (typed nullable Relation/Administration masterdata en snapshot-readers gereed)
+- W4B-004B2 – Tax Treatment & Reporting Classification (typed catalogus-, snapshot-, posting- en reversaltruth gereed)
+- W4B-004B3 – Sales International Fiscal Snapshots & Dates (document-level partytruth, SupplyDate en typed readiness gereed)
+- W4B-004B4 – Sales International Tax Selector Integration (expliciete tenantcatalogus en Webselectie gereed)
+- W4B-004B5 – International Fiscal Posting & Credit Reversal
+- W4B-004B6 – International VAT & ICP Readiness Review
+- W4B-005 – Review & regression
+
+Customersnapshot en Currency komen exact uit Order; Invoice-address en actieve Output
+TaxCode worden expliciet bij invoice creation geselecteerd. Source-derived Draft-lines
+zijn in v1 commercieel immutable. Orderstatus verandert bij invoice Finalize, niet bij
+Draft create of financial Post. Credits en annulering na Finalize heropenen Order-
+quantity niet automatisch.
+
+W4B-005 heeft de volledige quantity-, idempotency-, concurrency-, snapshot-,
+tenant-, authorization-, schema- en regressieketen beoordeeld. Er zijn geen
+mergeblockers of reviewfixes. Allocation reversal/reopen bij finalized cancel en
+credits blijft bewust deferred totdat de productpolicy en append-only facts daarvoor
+zijn ontworpen. De aanbevolen volgende productbatch is **Sales Document Delivery /
+PDF & Email**. Centrale Administration-bootstrap en verdere Draft-concurrency-
+hardening blijven afzonderlijke platformvervolgen.
+
+W4B-004B1–B6 sluiten de internationale fiscale predecessor af. BTW21, BTW9 en BTW0
+blijven afzonderlijke domestic treatments; BTW0 is nooit een shortcut voor
+verlegging, vrijstelling of outside-scope. EU-diensten, intracommunautaire goederen,
+outside-scope en vrijstelling hebben eigen expliciete TaxTreatments, VAT-return-/ICP-
+classificaties en selectorlabels. Customer/supplier VAT-ID, jurisdiction en
+prestatiedatum worden immutable gesnapshot; posting en credits bewaren ook bij nul-btw
+de taxable base en classificaties als duurzame TaxPosting-truth.
+
+De W4B-004B6-review bevestigt dat domestic NL Sales VAT, expliciete EU B2B-service-
+verlegging en de internationale invoice-/posting-/creditclassificaties end-to-end
+veilig zijn. Er zijn geen fiscale mergeblockers. Automatische treatmentselectie,
+VIES, PDF/e-mail en officiële VAT-/ICP-rapportage blijven afzonderlijke capabilities.
+Niet-EUR officiële reporting vereist eerst een expliciete FX→EUR-policy en historische
+koersfacts.
+
+### Toekomstige batch – Dutch VAT & ICP Reporting
+
+Na W4B-004B6 is de volgende fiscale batch een afzonderlijke reportingcapability voor reportingperioden,
+btw-aangifterubrieken, ICP-aggregatie per klant-btw-ID en goods/services,
+creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export volgt
+daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
+rapportage leest immutable fiscale facts en herclassificeert facturen niet achteraf.
 
 ## Releases
 

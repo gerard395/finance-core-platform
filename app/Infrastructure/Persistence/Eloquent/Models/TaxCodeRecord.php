@@ -14,5 +14,5 @@ final class TaxCodeRecord extends Model
 
     public $incrementing = false;
 
-    protected $fillable = ['id', 'administration_id', 'code', 'name', 'rate', 'direction', 'status'];
+    protected $fillable = ['id', 'administration_id', 'code', 'name', 'rate', 'direction', 'status', 'treatment', 'vat_return_classification', 'icp_classification'];
 }

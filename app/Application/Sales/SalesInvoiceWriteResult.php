@@ -17,7 +17,15 @@ enum SalesInvoiceWriteResult
     case TaxCodeInactive;
     case WrongTaxDirection;
     case TaxCalculationFailure;
+    case CustomerVatIdMissing;
+    case CustomerJurisdictionMissing;
+    case SupplierVatIdMissing;
+    case SupplierJurisdictionMissing;
+    case SupplyDateMissing;
     case InvalidState;
     case SequenceMissing;
     case SequenceInactive;
+    case ReservationStateInconsistent;
+    case AllocationConflict;
+    case PersistenceConflict;
 }

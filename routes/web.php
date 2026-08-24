@@ -1,8 +1,10 @@
 <?php
 
+use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AdministrationSelectionController;
+use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Relations\AddressController;
@@ -16,6 +18,7 @@ use App\Http\Controllers\Relations\RelationShowController;
 use App\Http\Controllers\Sales\OrderController;
 use App\Http\Controllers\Sales\OrderLifecycleController;
 use App\Http\Controllers\Sales\OrderLineController;
+use App\Http\Controllers\Sales\OrderSalesInvoiceController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\QuotationLifecycleController;
 use App\Http\Controllers\Sales\QuotationLineController;
@@ -27,6 +30,7 @@ use App\Http\Controllers\Sales\SalesInvoiceController;
 use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceLineController;
 use App\Http\Controllers\Sales\SalesInvoicePostingController;
+use App\Http\Middleware\EnsureAdministrationPermission;
 use App\Http\Middleware\EnsureRelationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
@@ -51,6 +55,13 @@ Route::middleware(['auth', 'domain.active'])->group(function (): void {
 Route::get('/app', DashboardController::class)
     ->middleware(['auth', 'domain.active', 'administration.active'])
     ->name('app');
+
+Route::get('/settings/administration', [AdministrationSettingsController::class, 'edit'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.edit');
+Route::put('/settings/administration', [AdministrationSettingsController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.update');
 
 Route::get('/relations', RelationIndexController::class)
     ->middleware([
@@ -211,6 +222,8 @@ Route::put('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'u
 Route::delete('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.destroy');
 Route::post('/sales/orders/{order}/confirm', [OrderLifecycleController::class, 'confirm'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.confirm');
 Route::post('/sales/orders/{order}/cancel', [OrderLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.cancel');
+Route::get('/sales/orders/{order}/invoice/create', [OrderSalesInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.orders.invoice.create');
+Route::post('/sales/orders/{order}/invoice', [OrderSalesInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.orders.invoice.store');
 
 Route::get('/sales/invoices', [SalesInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.invoices.index');
 Route::get('/sales/invoices/create', [SalesInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.create');

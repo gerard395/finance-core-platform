@@ -543,6 +543,7 @@ final class RelationsIndexTest extends TestCase
 
         $this->get('/relations/create')->assertOk()->assertSeeText('Nieuwe relatie')
             ->assertSee('name="_token"', false)->assertSee('name="code"', false)->assertSee('name="name"', false)
+            ->assertSee('name="vat_identification_number"', false)->assertSee('name="fiscal_jurisdiction"', false)
             ->assertDontSee('customer')->assertDontSee('supplier');
         $response = $this->post('/relations', [
             'code' => 'new-01',
@@ -552,10 +553,12 @@ final class RelationsIndexTest extends TestCase
             'customer' => true,
             'supplier' => true,
             'active' => false,
+            'vat_identification_number' => ' de123456789 ',
+            'fiscal_jurisdiction' => 'de',
         ]);
 
         $response->assertRedirect('/app')->assertSessionHas('status', 'Relatie aangemaakt.');
-        $this->assertDatabaseHas('relations', ['administration_id' => self::ADMIN_A, 'code' => 'NEW-01', 'display_name' => 'Created without View', 'active' => true]);
+        $this->assertDatabaseHas('relations', ['administration_id' => self::ADMIN_A, 'code' => 'NEW-01', 'display_name' => 'Created without View', 'vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE', 'active' => true]);
         $this->assertDatabaseMissing('relations', ['administration_id' => self::ADMIN_B, 'code' => 'NEW-01']);
         $this->assertDatabaseMissing('relations', ['id' => $this->uuid('6', 99)->toString()]);
         $this->assertDatabaseCount('customers', 0);
@@ -577,6 +580,8 @@ final class RelationsIndexTest extends TestCase
             ->assertRedirect('/relations/create')->assertSessionHasErrors('code');
         $this->get('/relations/create')->assertSee('&lt;Old Input&gt;', false)->assertDontSee('<Old Input>', false);
         $this->assertDatabaseCount('relations', 1);
+        $this->post('/relations', ['code' => 'VAT-01', 'name' => 'Invalid VAT', 'vat_identification_number' => 'NL 123', 'fiscal_jurisdiction' => 'NLD'])
+            ->assertSessionHasErrors(['vat_identification_number', 'fiscal_jurisdiction']);
     }
 
     public function test_create_with_view_redirects_to_detail_and_index_action_is_permission_scoped(): void
@@ -613,10 +618,12 @@ final class RelationsIndexTest extends TestCase
             'relation_id' => $this->uuid('6', 99)->toString(),
             'customer' => true,
             'supplier' => true,
+            'vat_identification_number' => ' nl123456789b01 ',
+            'fiscal_jurisdiction' => 'be',
         ]);
 
         $response->assertRedirect('/app')->assertSessionHas('status', 'Relatie bijgewerkt.');
-        $this->assertDatabaseHas('relations', ['id' => $relationId->toString(), 'administration_id' => self::ADMIN_A, 'code' => 'EDIT-01', 'display_name' => 'Changed Name', 'active' => false]);
+        $this->assertDatabaseHas('relations', ['id' => $relationId->toString(), 'administration_id' => self::ADMIN_A, 'code' => 'EDIT-01', 'display_name' => 'Changed Name', 'vat_identification_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'BE', 'active' => false]);
         $this->assertDatabaseMissing('relations', ['code' => 'HACKED']);
         $this->assertDatabaseMissing('relations', ['id' => $this->uuid('6', 99)->toString()]);
         $this->put('/relations/'.$relationId->toString(), ['name' => 'Active Again', 'status' => 'active'])->assertRedirect('/app');

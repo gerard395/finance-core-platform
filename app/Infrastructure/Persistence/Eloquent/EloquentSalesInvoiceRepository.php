@@ -10,7 +10,10 @@ use App\Application\Sales\SalesInvoiceReadRepository;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesInvoiceWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -30,15 +33,19 @@ use App\Domain\Sales\Entities\SalesInvoiceLine;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
+use App\Domain\Sales\ValueObjects\SalesCustomerFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesSupplierFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesTaxSnapshot;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\SalesInvoiceLineRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\SalesInvoiceRecord;
@@ -87,7 +94,7 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
         }
         $this->assertImmutableContext($record, $invoice);
         $attributes = $this->headerAttributes($administrationId, $invoice);
-        unset($attributes['id'], $attributes['administration_id'], $attributes['sales_invoice_number'], $attributes['customer_id'], $attributes['customer_relation_id_snapshot'], $attributes['customer_number_snapshot'], $attributes['customer_name_snapshot'], $attributes['invoice_address_id_snapshot'], $attributes['invoice_address_type_snapshot'], $attributes['invoice_address_line_1_snapshot'], $attributes['invoice_address_line_2_snapshot'], $attributes['invoice_postal_code_snapshot'], $attributes['invoice_city_snapshot'], $attributes['invoice_country_code_snapshot'], $attributes['source_order_id'], $attributes['currency']);
+        unset($attributes['id'], $attributes['administration_id'], $attributes['sales_invoice_number'], $attributes['customer_id'], $attributes['customer_relation_id_snapshot'], $attributes['customer_number_snapshot'], $attributes['customer_name_snapshot'], $attributes['invoice_address_id_snapshot'], $attributes['invoice_address_type_snapshot'], $attributes['invoice_address_line_1_snapshot'], $attributes['invoice_address_line_2_snapshot'], $attributes['invoice_postal_code_snapshot'], $attributes['invoice_city_snapshot'], $attributes['invoice_country_code_snapshot'], $attributes['customer_vat_id_snapshot'], $attributes['customer_fiscal_jurisdiction_snapshot'], $attributes['supplier_vat_id_snapshot'], $attributes['supplier_fiscal_jurisdiction_snapshot'], $attributes['supply_date'], $attributes['source_order_id'], $attributes['currency']);
         try {
             $record->fill($attributes)->save();
             $this->syncLines($administrationId, $invoice);
@@ -115,6 +122,8 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
     {
         $customer = $invoice->customerSnapshot();
         $address = $invoice->invoiceAddressSnapshot();
+        $customerFiscal = $invoice->customerFiscalSnapshot();
+        $supplierFiscal = $invoice->supplierFiscalSnapshot();
         if ($customer === null || $address === null || ! $invoice->administrationId()->equals($administrationId)) {
             throw new DomainException('Persistent SalesInvoice requires matching tenant and complete snapshots.');
         }
@@ -123,6 +132,7 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
             'id' => $invoice->id()->toString(), 'administration_id' => $administrationId->toString(), 'sales_invoice_number' => $invoice->number()->value(), 'customer_id' => $invoice->customerId()->toString(),
             'customer_relation_id_snapshot' => $customer->relationId()->toString(), 'customer_number_snapshot' => $customer->customerNumber()->toString(), 'customer_name_snapshot' => $customer->displayName()->toString(),
             'invoice_address_id_snapshot' => $address->addressId()->toString(), 'invoice_address_type_snapshot' => $address->type()->value, 'invoice_address_line_1_snapshot' => $address->addressLine()->value(), 'invoice_address_line_2_snapshot' => $address->addressLine2()?->value(), 'invoice_postal_code_snapshot' => $address->postalCode()->value(), 'invoice_city_snapshot' => $address->city()->value(), 'invoice_country_code_snapshot' => $address->countryCode()->value(),
+            'customer_vat_id_snapshot' => $customerFiscal?->vatIdentificationNumber()?->toString(), 'customer_fiscal_jurisdiction_snapshot' => $customerFiscal?->fiscalJurisdiction()?->value(), 'supplier_vat_id_snapshot' => $supplierFiscal?->vatIdentificationNumber()?->toString(), 'supplier_fiscal_jurisdiction_snapshot' => $supplierFiscal?->fiscalJurisdiction()?->value(), 'supply_date' => $invoice->supplyDate()?->value()->format('Y-m-d'),
             'source_order_id' => $invoice->sourceOrderId()?->toString(), 'currency' => $invoice->currency()->code(), 'invoice_date' => $invoice->invoiceDate()->format('Y-m-d'), 'due_date' => $invoice->dueDate()->format('Y-m-d'), 'status' => $invoice->status()->value,
         ];
     }
@@ -130,7 +140,7 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
     private function assertImmutableContext(SalesInvoiceRecord $record, SalesInvoice $invoice): void
     {
         $expected = $this->headerAttributes($invoice->administrationId(), $invoice);
-        foreach (['sales_invoice_number', 'customer_id', 'customer_relation_id_snapshot', 'customer_number_snapshot', 'customer_name_snapshot', 'invoice_address_id_snapshot', 'invoice_address_type_snapshot', 'invoice_address_line_1_snapshot', 'invoice_address_line_2_snapshot', 'invoice_postal_code_snapshot', 'invoice_city_snapshot', 'invoice_country_code_snapshot', 'source_order_id', 'currency'] as $field) {
+        foreach (['sales_invoice_number', 'customer_id', 'customer_relation_id_snapshot', 'customer_number_snapshot', 'customer_name_snapshot', 'invoice_address_id_snapshot', 'invoice_address_type_snapshot', 'invoice_address_line_1_snapshot', 'invoice_address_line_2_snapshot', 'invoice_postal_code_snapshot', 'invoice_city_snapshot', 'invoice_country_code_snapshot', 'customer_vat_id_snapshot', 'customer_fiscal_jurisdiction_snapshot', 'supplier_vat_id_snapshot', 'supplier_fiscal_jurisdiction_snapshot', 'supply_date', 'source_order_id', 'currency'] as $field) {
             if ($record->getAttribute($field) !== $expected[$field]) {
                 throw new DomainException('SalesInvoice immutable context cannot change.');
             }
@@ -164,13 +174,13 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
             throw new DomainException('Persistent SalesInvoice line requires a tax snapshot.');
         }
 
-        return ['id' => $line->id()->toString(), 'administration_id' => $administrationId->toString(), 'sales_invoice_id' => $invoice->id()->toString(), 'description' => $line->description()->value(), 'quantity' => $line->quantity()->value(), 'unit_price_amount' => $line->unitPrice()->amount(), 'currency' => $line->unitPrice()->currency()->code(), 'tax_code_id_snapshot' => $tax->taxCodeId()->toString(), 'tax_code_snapshot' => $tax->taxCode()->value(), 'tax_name_snapshot' => $tax->taxCodeName()->value(), 'tax_rate_snapshot' => $tax->taxRate()->value(), 'tax_direction_snapshot' => $tax->direction()->value];
+        return ['id' => $line->id()->toString(), 'administration_id' => $administrationId->toString(), 'sales_invoice_id' => $invoice->id()->toString(), 'description' => $line->description()->value(), 'quantity' => $line->quantity()->value(), 'unit_price_amount' => $line->unitPrice()->amount(), 'currency' => $line->unitPrice()->currency()->code(), 'tax_code_id_snapshot' => $tax->taxCodeId()->toString(), 'tax_code_snapshot' => $tax->taxCode()->value(), 'tax_name_snapshot' => $tax->taxCodeName()->value(), 'tax_rate_snapshot' => $tax->taxRate()->value(), 'tax_direction_snapshot' => $tax->direction()->value, 'tax_treatment_snapshot' => $tax->treatment()->value, 'vat_return_classification_snapshot' => $tax->vatReturnClassification()->value, 'icp_classification_snapshot' => $tax->icpClassification()->value];
     }
 
     private function hydrate(SalesInvoiceRecord $record): SalesInvoice
     {
         $currency = new Currency($record->getAttribute('currency'));
-        $lines = SalesInvoiceLineRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('sales_invoice_id', $record->getAttribute('id'))->orderBy('id')->get()->map(static fn (SalesInvoiceLineRecord $line): SalesInvoiceLine => new SalesInvoiceLine(new SalesInvoiceLineId(new Uuid($line->getAttribute('id'))), new LineDescription($line->getAttribute('description')), new Quantity($line->getAttribute('quantity')), new Money($line->getAttribute('unit_price_amount'), new Currency($line->getAttribute('currency'))), new SalesTaxSnapshot(new TaxCodeId(new Uuid($line->getAttribute('tax_code_id_snapshot'))), new TaxCodeCode($line->getAttribute('tax_code_snapshot')), new TaxCodeName($line->getAttribute('tax_name_snapshot')), new TaxRate($line->getAttribute('tax_rate_snapshot')), TaxPostingDirection::from($line->getAttribute('tax_direction_snapshot')))))->all();
+        $lines = SalesInvoiceLineRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('sales_invoice_id', $record->getAttribute('id'))->orderBy('id')->get()->map(static fn (SalesInvoiceLineRecord $line): SalesInvoiceLine => new SalesInvoiceLine(new SalesInvoiceLineId(new Uuid($line->getAttribute('id'))), new LineDescription($line->getAttribute('description')), new Quantity($line->getAttribute('quantity')), new Money($line->getAttribute('unit_price_amount'), new Currency($line->getAttribute('currency'))), new SalesTaxSnapshot(new TaxCodeId(new Uuid($line->getAttribute('tax_code_id_snapshot'))), new TaxCodeCode($line->getAttribute('tax_code_snapshot')), new TaxCodeName($line->getAttribute('tax_name_snapshot')), new TaxRate($line->getAttribute('tax_rate_snapshot')), TaxPostingDirection::from($line->getAttribute('tax_direction_snapshot')), TaxTreatment::from($line->getAttribute('tax_treatment_snapshot')), VatReturnClassification::from($line->getAttribute('vat_return_classification_snapshot')), IcpClassification::from($line->getAttribute('icp_classification_snapshot')))))->all();
         $source = $record->getAttribute('source_order_id');
 
         return SalesInvoice::reconstitute(
@@ -178,6 +188,9 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
             new DateTimeImmutable($record->getAttribute('invoice_date')), new DateTimeImmutable($record->getAttribute('due_date')), $source === null ? null : new OrderId(new Uuid($source)), SalesInvoiceStatus::from($record->getAttribute('status')), $lines,
             new SalesCustomerSnapshot(new CustomerId(new Uuid($record->getAttribute('customer_id'))), new RelationId(new Uuid($record->getAttribute('customer_relation_id_snapshot'))), new CustomerNumber($record->getAttribute('customer_number_snapshot')), new DisplayName($record->getAttribute('customer_name_snapshot'))),
             new SalesAddressSnapshot(new AddressId(new Uuid($record->getAttribute('invoice_address_id_snapshot'))), AddressType::from($record->getAttribute('invoice_address_type_snapshot')), new AddressLine($record->getAttribute('invoice_address_line_1_snapshot')), $record->getAttribute('invoice_address_line_2_snapshot') === null ? null : new AddressLine($record->getAttribute('invoice_address_line_2_snapshot')), new PostalCode($record->getAttribute('invoice_postal_code_snapshot')), new City($record->getAttribute('invoice_city_snapshot')), new CountryCode($record->getAttribute('invoice_country_code_snapshot'))),
+            new SalesCustomerFiscalSnapshot(new RelationId(new Uuid($record->getAttribute('customer_relation_id_snapshot'))), $record->getAttribute('customer_vat_id_snapshot') === null ? null : new VatIdentificationNumber($record->getAttribute('customer_vat_id_snapshot')), $record->getAttribute('customer_fiscal_jurisdiction_snapshot') === null ? null : new CountryCode($record->getAttribute('customer_fiscal_jurisdiction_snapshot'))),
+            new SalesSupplierFiscalSnapshot(new AdministrationId(new Uuid($record->getAttribute('administration_id'))), $record->getAttribute('supplier_vat_id_snapshot') === null ? null : new VatIdentificationNumber($record->getAttribute('supplier_vat_id_snapshot')), $record->getAttribute('supplier_fiscal_jurisdiction_snapshot') === null ? null : new CountryCode($record->getAttribute('supplier_fiscal_jurisdiction_snapshot'))),
+            $record->getAttribute('supply_date') === null ? null : new SupplyDate(new DateTimeImmutable($record->getAttribute('supply_date'))),
         );
     }
 }

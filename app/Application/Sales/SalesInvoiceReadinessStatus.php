@@ -12,4 +12,9 @@ enum SalesInvoiceReadinessStatus
     case MissingLines;
     case MissingTaxSnapshot;
     case TaxCalculationFailed;
+    case CustomerVatIdMissing;
+    case CustomerJurisdictionMissing;
+    case SupplierVatIdMissing;
+    case SupplierJurisdictionMissing;
+    case SupplyDateMissing;
 }

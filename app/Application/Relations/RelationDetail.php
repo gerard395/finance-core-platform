@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace App\Application\Relations;
 
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 
 final readonly class RelationDetail
 {
@@ -17,6 +19,8 @@ final readonly class RelationDetail
         private bool $active,
         private bool $customer,
         private bool $supplier,
+        private ?VatIdentificationNumber $vatIdentificationNumber = null,
+        private ?CountryCode $fiscalJurisdiction = null,
     ) {}
 
     public function id(): RelationId
@@ -47,5 +51,15 @@ final readonly class RelationDetail
     public function isSupplier(): bool
     {
         return $this->supplier;
+    }
+
+    public function vatIdentificationNumber(): ?VatIdentificationNumber
+    {
+        return $this->vatIdentificationNumber;
+    }
+
+    public function fiscalJurisdiction(): ?CountryCode
+    {
+        return $this->fiscalJurisdiction;
     }
 }
