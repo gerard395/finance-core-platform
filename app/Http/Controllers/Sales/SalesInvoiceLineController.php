@@ -121,6 +121,11 @@ final class SalesInvoiceLineController extends Controller
             $error = match ($result) {
                 SalesInvoiceWriteResult::TaxCodeNotFound, SalesInvoiceWriteResult::TaxCodeInactive, SalesInvoiceWriteResult::WrongTaxDirection => 'De geselecteerde btw-code is niet beschikbaar.',
                 SalesInvoiceWriteResult::TaxCalculationFailure => 'Deze regel kan niet exact zonder afronding worden berekend.',
+                SalesInvoiceWriteResult::CustomerVatIdMissing => 'Voor deze fiscale behandeling ontbreekt het btw-identificatienummer van de klant.',
+                SalesInvoiceWriteResult::CustomerJurisdictionMissing => 'Voor deze fiscale behandeling ontbreekt de fiscale jurisdictie van de klant.',
+                SalesInvoiceWriteResult::SupplierVatIdMissing => 'Vul eerst het btw-identificatienummer van de administratie in.',
+                SalesInvoiceWriteResult::SupplierJurisdictionMissing => 'Vul eerst de fiscale jurisdictie van de administratie in.',
+                SalesInvoiceWriteResult::SupplyDateMissing => 'Vul voor deze fiscale behandeling een prestatiedatum in.',
                 default => 'De actie is niet toegestaan in de huidige factuurstatus.',
             };
 

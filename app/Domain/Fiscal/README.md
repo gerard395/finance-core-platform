@@ -62,6 +62,7 @@ VAT-identificatienummers in masterdata zijn uitsluitend syntactisch gevalideerd.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.
 - De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden. De expliciete Nederlandse bootstrap maakt create-missing-only de actuele 21%-, 9%- en 0%-Outputcodes; zij kiest nooit een default of productclassificatie en wijzigt bestaande codes niet.
+- Dezelfde expliciete Sales-catalogus definieert afzonderlijke 0-rate Output-codes voor EU-serviceverlegging, intracommunautaire goederen, outside-scope en vrijstelling. Zij delen rekenkundig nul maar nooit treatment/reporting/ICP-betekenis; BTW0 blijft domestic zero-rated.
 - Het 0%-tarief is niet hetzelfde als vrijstelling. Het model onderscheidt beide typed; de Nederlandse bootstrap maakt BTW0 uitsluitend `ZeroRated` en geen vrijstellings- of internationale code.
 - Zonder effective dating is bootstrap geen rate-updater. Wettelijke tariefwijzigingen vereisen expliciete catalogusversioning en veranderen nooit historische TaxPosting-snapshots.
 - Globale, concurrency-safe uniciteit van TaxPostingId en dubbele-reversalpreventie worden later door persistenceconstraints en transacties afgedwongen; de huidige policies bewaken een volledig en consistent aangeleverde historie.

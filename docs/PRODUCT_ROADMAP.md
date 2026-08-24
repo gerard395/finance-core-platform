@@ -334,7 +334,7 @@ over-invoicing en dubbele browser-submits.
 - W4B-004B1 – VAT Identification & Jurisdiction Master Data (typed nullable Relation/Administration masterdata en snapshot-readers gereed)
 - W4B-004B2 – Tax Treatment & Reporting Classification (typed catalogus-, snapshot-, posting- en reversaltruth gereed)
 - W4B-004B3 – Sales International Fiscal Snapshots & Dates (document-level partytruth, SupplyDate en typed readiness gereed)
-- W4B-004B4 – Sales International Tax Selector Integration
+- W4B-004B4 – Sales International Tax Selector Integration (expliciete tenantcatalogus en Webselectie gereed)
 - W4B-004B5 – International Fiscal Posting & Credit Reversal
 - W4B-004B6 – International VAT & ICP Readiness Review
 - W4B-005 – Review & regression
@@ -372,6 +372,11 @@ create, bewaart een expliciete prestatiedatum zonder InvoiceDate-/OrderDate-fall
 en laat credits die oorspronkelijke context erven. Treatment-specifieke readiness en
 typed factuurwording zijn aanwezig; internationale TaxCodes en Webselectie blijven
 uitgeschakeld tot W4B-004B4.
+
+W4B-004B4 maakt de vier expliciete Output-treatments voor EU-diensten,
+intracommunautaire goederen, outside-scope en vrijstelling selecteerbaar in directe en
+Order-derived SalesInvoices. De keuze blijft volledig handmatig, tenant-scoped en
+readiness-guarded; VIES, fiscale decision support en ICP-reporting blijven deferred.
 
 ### Toekomstige batch – Dutch VAT & ICP Reporting
 

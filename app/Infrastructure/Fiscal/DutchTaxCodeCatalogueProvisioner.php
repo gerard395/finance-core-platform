@@ -27,6 +27,10 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
         'BTW21' => ['name' => 'BTW hoog (algemeen tarief)', 'rate' => '21', 'treatment' => TaxTreatment::DomesticStandard, 'vat' => VatReturnClassification::DomesticStandard, 'icp' => IcpClassification::None],
         'BTW9' => ['name' => 'BTW laag (verlaagd tarief)', 'rate' => '9', 'treatment' => TaxTreatment::DomesticReduced, 'vat' => VatReturnClassification::DomesticReduced, 'icp' => IcpClassification::None],
         'BTW0' => ['name' => 'BTW 0%', 'rate' => '0', 'treatment' => TaxTreatment::ZeroRated, 'vat' => VatReturnClassification::DomesticZeroRated, 'icp' => IcpClassification::None],
+        'EUDIENST' => ['name' => 'Btw verlegd - dienst EU', 'rate' => '0', 'treatment' => TaxTreatment::ReverseChargeEuService, 'vat' => VatReturnClassification::EuServices, 'icp' => IcpClassification::Service],
+        'ICLGOEDEREN' => ['name' => 'Intracommunautaire levering goederen', 'rate' => '0', 'treatment' => TaxTreatment::IntraCommunityGoods, 'vat' => VatReturnClassification::IntraCommunitySupplies, 'icp' => IcpClassification::GoodsSupply],
+        'BUITENSCOPE' => ['name' => 'Buiten Nederlandse btw-heffing', 'rate' => '0', 'treatment' => TaxTreatment::OutsideScope, 'vat' => VatReturnClassification::OutsideScope, 'icp' => IcpClassification::None],
+        'VRIJGESTELD' => ['name' => 'Vrijgesteld', 'rate' => '0', 'treatment' => TaxTreatment::Exempt, 'vat' => VatReturnClassification::Exempt, 'icp' => IcpClassification::None],
     ];
 
     public function __construct(private TransactionManager $transactions) {}

@@ -153,7 +153,8 @@ final class SalesInvoiceWebTest extends TestCase
         $this->login();
         $id = $this->invoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 1);
         $this->app->make(TaxCodeCatalogueProvisioner::class)->ensureDutchBasicOutputForAdministration($this->admin(self::ADMIN_A));
-        $this->get('/sales/invoices/'.$id->toString())->assertOk()->assertSee('VAT21')->assertSee('Hoge btw')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertDontSee('VAT09')->assertDontSee('INPUT')->assertDontSee('VATB')->assertDontSee('name="tax_rate"', false);
+        $this->get('/sales/invoices/'.$id->toString())->assertOk()->assertSee('VAT21')->assertSee('Hoge btw')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertSee('Btw verlegd - dienst EU')->assertSee('Intracommunautaire levering goederen')->assertSee('Buiten Nederlandse btw-heffing')->assertSee('Vrijgesteld')->assertDontSee('VAT09')->assertDontSee('INPUT')->assertDontSee('VATB')->assertDontSee('name="tax_rate"', false);
+        $this->get('/sales/invoices/create')->assertOk()->assertSee('Prestatiedatum')->assertSee('name="supply_date"', false);
         TaxCodeRecord::query()->where('administration_id', self::ADMIN_A)->where('direction', 'output')->where('status', 'active')->delete();
         $this->get('/sales/invoices/'.$id->toString())->assertOk()->assertSee('Geen btw-codes beschikbaar.')->assertDontSee('Regel toevoegen');
     }

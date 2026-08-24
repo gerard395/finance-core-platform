@@ -96,8 +96,11 @@ final readonly class CreateSalesInvoice
                 foreach ($resolvedLines as $line) {
                     $invoice->addLine($line);
                 }
-                if ($resolvedLines !== [] && $this->readiness->check($invoice)->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed) {
-                    return SalesInvoiceWriteResult::TaxCalculationFailure;
+                if ($resolvedLines !== []) {
+                    $readinessFailure = self::readinessFailure($this->readiness->check($invoice)->status());
+                    if ($readinessFailure !== null) {
+                        return $readinessFailure;
+                    }
                 }
                 $result = $this->invoices->create($administrationId, $invoice);
                 if ($result !== SalesInvoiceWriteResult::Success) {
@@ -128,6 +131,20 @@ final readonly class CreateSalesInvoice
             SalesTaxCodeResolutionStatus::NotFound => SalesInvoiceWriteResult::TaxCodeNotFound,
             SalesTaxCodeResolutionStatus::Inactive => SalesInvoiceWriteResult::TaxCodeInactive,
             SalesTaxCodeResolutionStatus::WrongDirection => SalesInvoiceWriteResult::WrongTaxDirection,
+        };
+    }
+
+    public static function readinessFailure(SalesInvoiceReadinessStatus $status): ?SalesInvoiceWriteResult
+    {
+        return match ($status) {
+            SalesInvoiceReadinessStatus::Ready => null,
+            SalesInvoiceReadinessStatus::TaxCalculationFailed => SalesInvoiceWriteResult::TaxCalculationFailure,
+            SalesInvoiceReadinessStatus::CustomerVatIdMissing => SalesInvoiceWriteResult::CustomerVatIdMissing,
+            SalesInvoiceReadinessStatus::CustomerJurisdictionMissing => SalesInvoiceWriteResult::CustomerJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplierVatIdMissing => SalesInvoiceWriteResult::SupplierVatIdMissing,
+            SalesInvoiceReadinessStatus::SupplierJurisdictionMissing => SalesInvoiceWriteResult::SupplierJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplyDateMissing => SalesInvoiceWriteResult::SupplyDateMissing,
+            default => SalesInvoiceWriteResult::InvalidState,
         };
     }
 }

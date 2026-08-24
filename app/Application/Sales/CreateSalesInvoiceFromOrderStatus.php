@@ -17,6 +17,11 @@ enum CreateSalesInvoiceFromOrderStatus
     case TaxCodeInactive;
     case TaxCodeWrongDirection;
     case TaxCalculationFailed;
+    case CustomerVatIdMissing;
+    case CustomerJurisdictionMissing;
+    case SupplierVatIdMissing;
+    case SupplierJurisdictionMissing;
+    case SupplyDateMissing;
     case SequenceMissing;
     case SequenceInactive;
     case PersistenceConflict;

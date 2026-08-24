@@ -23,6 +23,7 @@ use App\Domain\Sales\Entities\SalesInvoice;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Currency;
@@ -59,6 +60,8 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
 
     private const TAX_INPUT = '76000000-0000-4000-8000-000000000003';
 
+    private const TAX_EU_SERVICE = '76000000-0000-4000-8000-000000000004';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -68,6 +71,7 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
         $this->tax(self::TAX_ACTIVE, 'VAT21', '21', 'output', 'active');
         $this->tax(self::TAX_INACTIVE, 'VAT09', '9', 'output', 'inactive');
         $this->tax(self::TAX_INPUT, 'IN21', '21', 'input', 'active');
+        $this->tax(self::TAX_EU_SERVICE, 'EUDIENST', '0', 'output', 'active', 'reverse_charge_eu_service', 'eu_services', 'service');
         $this->app->make(SalesNumberSequenceProvisioner::class)->ensureForAdministration($this->admin(self::A));
         $this->app->make(SalesNumberSequenceProvisioner::class)->ensureForAdministration($this->admin(self::B));
     }
@@ -139,6 +143,38 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
         self::assertFalse(class_exists('App\\Application\\Sales\\MarkSalesInvoicePaid'));
     }
 
+    public function test_reverse_charge_create_uses_explicit_code_supply_date_and_immutable_party_snapshots(): void
+    {
+        AdministrationRecord::query()->whereKey(self::A)->update(['organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'NL']);
+        RelationRecord::query()->whereKey($this->relation(self::CUSTOMER_A))->update(['vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE']);
+        $id = $this->invoiceId(20);
+
+        $result = $this->app->make(CreateSalesInvoice::class)->execute($this->admin(self::A), $id, new CustomerId(new Uuid(self::CUSTOMER_A)), $this->addressId(), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-20'), [$this->line(20, self::TAX_EU_SERVICE, amount: '250')], new SupplyDate(new DateTimeImmutable('2026-08-20')));
+
+        self::assertSame(SalesInvoiceWriteResult::Success, $result);
+        $invoice = $this->read($id);
+        self::assertSame('reverse_charge_eu_service', $invoice?->lines()[0]->taxSnapshot()?->treatment()->value);
+        self::assertSame('eu_services', $invoice?->lines()[0]->taxSnapshot()?->vatReturnClassification()->value);
+        self::assertSame('service', $invoice?->lines()[0]->taxSnapshot()?->icpClassification()->value);
+        self::assertSame('0', $invoice?->lines()[0]->taxSnapshot()?->taxRate()->value());
+        self::assertSame('DE123456789', $invoice?->customerFiscalSnapshot()?->vatIdentificationNumber()?->toString());
+        self::assertSame('NL123456789B01', $invoice?->supplierFiscalSnapshot()?->vatIdentificationNumber()?->toString());
+        self::assertSame('2026-08-20', $invoice?->supplyDate()?->value()->format('Y-m-d'));
+    }
+
+    public function test_reverse_charge_missing_snapshot_data_is_typed_and_writes_nothing(): void
+    {
+        AdministrationRecord::query()->whereKey(self::A)->update(['organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'NL']);
+        RelationRecord::query()->whereKey($this->relation(self::CUSTOMER_A))->update(['fiscal_jurisdiction' => 'DE']);
+
+        self::assertSame(SalesInvoiceWriteResult::CustomerVatIdMissing, $this->app->make(CreateSalesInvoice::class)->execute($this->admin(self::A), $this->invoiceId(21), new CustomerId(new Uuid(self::CUSTOMER_A)), $this->addressId(), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-20'), [$this->line(21, self::TAX_EU_SERVICE)], new SupplyDate(new DateTimeImmutable('2026-08-20'))));
+        self::assertDatabaseMissing('sales_invoices', ['id' => $this->invoiceId(21)->toString()]);
+
+        RelationRecord::query()->whereKey($this->relation(self::CUSTOMER_A))->update(['vat_identification_number' => 'DE123456789']);
+        self::assertSame(SalesInvoiceWriteResult::SupplyDateMissing, $this->app->make(CreateSalesInvoice::class)->execute($this->admin(self::A), $this->invoiceId(22), new CustomerId(new Uuid(self::CUSTOMER_A)), $this->addressId(), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-20'), [$this->line(22, self::TAX_EU_SERVICE)]));
+        self::assertDatabaseMissing('sales_invoices', ['id' => $this->invoiceId(22)->toString()]);
+    }
+
     /** @param list<SalesInvoiceLineInput> $lines */
     private function create(SalesInvoiceId $id, array $lines = []): SalesInvoiceWriteResult
     {
@@ -162,9 +198,9 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
         CustomerRecord::query()->create(['id' => $customer, 'administration_id' => $administration, 'relation_id' => $this->relation($customer), 'customer_number' => 'C-'.$suffix, 'active' => true]);
     }
 
-    private function tax(string $id, string $code, string $rate, string $direction, string $status): void
+    private function tax(string $id, string $code, string $rate, string $direction, string $status, ?string $treatment = null, ?string $vat = null, string $icp = 'none'): void
     {
-        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => self::A, 'code' => $code, 'name' => $code.' name', 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'treatment' => $rate === '0' ? 'zero_rated' : 'domestic_standard', 'vat_return_classification' => $rate === '0' ? 'domestic_zero_rated' : 'domestic_standard', 'icp_classification' => 'none']);
+        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => self::A, 'code' => $code, 'name' => $code.' name', 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'treatment' => $treatment ?? ($rate === '0' ? 'zero_rated' : 'domestic_standard'), 'vat_return_classification' => $vat ?? ($rate === '0' ? 'domestic_zero_rated' : 'domestic_standard'), 'icp_classification' => $icp]);
     }
 
     private function admin(string $id): AdministrationId

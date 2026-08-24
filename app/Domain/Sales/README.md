@@ -39,6 +39,13 @@ renderinginstructie en geen vrije tekst of rate-heuristiek. Tot de selectorstory
 is ondersteunt Sales uitsluitend domestic NL VAT en expliciet BTW0. De selector
 beslist nooit automatisch op land, btw-ID, code, naam of nulrate.
 
+De tenant-scoped Output-selector biedt daarnaast expliciet `EUDIENST`,
+`ICLGOEDEREN`, `BUITENSCOPE` en `VRIJGESTELD`. Iedere keuze levert rechtstreeks de
+immutable treatment/reporting/ICP-snapshot; BTW0 wordt nooit hergebruikt. Directe en
+Order-derived create tonen een nullable Prestatiedatum en gebruiken dezelfde typed
+readiness. Er is geen default of automatische keuze. Credits blijven volledig
+source-derived en hebben geen fiscale selector.
+
 ## Statusmachines
 
 ```text

@@ -22,12 +22,14 @@ use App\Domain\Sales\Enums\OrderStatus;
 use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\OrderInvoiceDraftRequestId;
 use App\Domain\Sales\ValueObjects\OrderLineId;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Sales\StoreOrderSalesInvoiceRequest;
 use App\Presentation\Sales\OrderStatusPresenter;
+use App\Presentation\Sales\SalesTaxCodePresenter;
 use DateTimeImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Http\RedirectResponse;
@@ -90,6 +92,7 @@ final class OrderSalesInvoiceController extends Controller
         $result = $this->createInvoice->execute(
             $context->administration->id(), $orderId, $requestId, new AddressId(new Uuid($validated['invoice_address_id'])),
             new DateTimeImmutable($validated['invoice_date']), new DateTimeImmutable($validated['due_date']), $lines,
+            isset($validated['supply_date']) ? new SupplyDate(new DateTimeImmutable($validated['supply_date'])) : null,
         );
         if (in_array($result->status(), [CreateSalesInvoiceFromOrderStatus::Success, CreateSalesInvoiceFromOrderStatus::AlreadyCreated], true)) {
             $message = $result->status() === CreateSalesInvoiceFromOrderStatus::Success ? 'Verkoopfactuur aangemaakt.' : 'Deze factuur is al aangemaakt.';
@@ -127,6 +130,7 @@ final class OrderSalesInvoiceController extends Controller
             'invoiceAddresses' => $addresses,
             'taxCodes' => $this->taxCodes->findActiveForAdministrationAndDirection($context->administration->id(), TaxPostingDirection::Output),
             'statusPresenter' => OrderStatusPresenter::class,
+            'taxCodePresenter' => SalesTaxCodePresenter::class,
         ];
     }
 
@@ -152,6 +156,11 @@ final class OrderSalesInvoiceController extends Controller
             CreateSalesInvoiceFromOrderStatus::QuantityExceedsRemaining => 'De gekozen hoeveelheid is niet meer volledig beschikbaar voor facturatie.',
             CreateSalesInvoiceFromOrderStatus::MissingInvoiceAddress => 'Er is geen geldig factuuradres beschikbaar.',
             CreateSalesInvoiceFromOrderStatus::TaxCodeNotFound, CreateSalesInvoiceFromOrderStatus::TaxCodeInactive, CreateSalesInvoiceFromOrderStatus::TaxCodeWrongDirection, CreateSalesInvoiceFromOrderStatus::TaxCalculationFailed => 'De gekozen btw-code kan niet veilig voor deze factuur worden gebruikt.',
+            CreateSalesInvoiceFromOrderStatus::CustomerVatIdMissing => 'Voor deze fiscale behandeling ontbreekt het btw-identificatienummer van de klant.',
+            CreateSalesInvoiceFromOrderStatus::CustomerJurisdictionMissing => 'Voor deze fiscale behandeling ontbreekt de fiscale jurisdictie van de klant.',
+            CreateSalesInvoiceFromOrderStatus::SupplierVatIdMissing => 'Vul eerst het btw-identificatienummer van de administratie in.',
+            CreateSalesInvoiceFromOrderStatus::SupplierJurisdictionMissing => 'Vul eerst de fiscale jurisdictie van de administratie in.',
+            CreateSalesInvoiceFromOrderStatus::SupplyDateMissing => 'Vul voor deze fiscale behandeling een prestatiedatum in.',
             CreateSalesInvoiceFromOrderStatus::SequenceMissing, CreateSalesInvoiceFromOrderStatus::SequenceInactive => 'De factuurnummerreeks is niet beschikbaar.',
             CreateSalesInvoiceFromOrderStatus::NotFound => 'De order of een gekozen regel is niet beschikbaar.',
             default => 'De verkoopfactuur kon niet worden aangemaakt. Probeer het veilig opnieuw.',

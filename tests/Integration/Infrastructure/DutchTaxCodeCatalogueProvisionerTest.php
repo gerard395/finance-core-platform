@@ -40,6 +40,10 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
             ['code' => 'BTW0', 'name' => 'BTW 0%', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'zero_rated', 'vat_return_classification' => 'domestic_zero_rated', 'icp_classification' => 'none'],
             ['code' => 'BTW21', 'name' => 'BTW hoog (algemeen tarief)', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none'],
             ['code' => 'BTW9', 'name' => 'BTW laag (verlaagd tarief)', 'rate' => '9', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_reduced', 'vat_return_classification' => 'domestic_reduced', 'icp_classification' => 'none'],
+            ['code' => 'BUITENSCOPE', 'name' => 'Buiten Nederlandse btw-heffing', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'outside_scope', 'vat_return_classification' => 'outside_scope', 'icp_classification' => 'none'],
+            ['code' => 'EUDIENST', 'name' => 'Btw verlegd - dienst EU', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'reverse_charge_eu_service', 'vat_return_classification' => 'eu_services', 'icp_classification' => 'service'],
+            ['code' => 'ICLGOEDEREN', 'name' => 'Intracommunautaire levering goederen', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'intra_community_goods', 'vat_return_classification' => 'intra_community_supplies', 'icp_classification' => 'goods_supply'],
+            ['code' => 'VRIJGESTELD', 'name' => 'Vrijgesteld', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'exempt', 'vat_return_classification' => 'exempt', 'icp_classification' => 'none'],
         ], DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->orderBy('code')->get(['code', 'name', 'rate', 'direction', 'status', 'treatment', 'vat_return_classification', 'icp_classification'])->map(static fn (object $row): array => (array) $row)->all());
         self::assertSame(0, DB::table('tax_codes')->where('administration_id', self::ADMIN_B)->count());
     }
@@ -58,7 +62,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
         $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
 
         self::assertSame($before, DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->orderBy('code')->get()->map(static fn (object $row): array => (array) $row)->all());
-        self::assertCount(3, $before);
+        self::assertCount(7, $before);
     }
 
     public function test_compatible_custom_code_is_preserved_and_only_missing_codes_are_created(): void
@@ -74,7 +78,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
         $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
 
         $this->assertDatabaseHas('tax_codes', ['id' => '30000000-0000-4000-8000-000000000001', 'name' => 'Mijn lage tarief', 'rate' => '9.0000', 'status' => 'inactive', 'updated_at' => $createdAt]);
-        self::assertSame(3, DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->count());
+        self::assertSame(7, DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->count());
     }
 
     public function test_incompatible_rate_or_direction_fails_atomically_with_typed_conflict(): void
@@ -124,7 +128,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
             TaxPostingDirection::Output,
         );
 
-        self::assertSame(['BTW21', 'BTW9'], array_map(static fn ($item): string => $item->code()->value(), $items));
+        self::assertSame(['BTW21', 'BTW9', 'BUITENSCOPE', 'EUDIENST', 'ICLGOEDEREN', 'VRIJGESTELD'], array_map(static fn ($item): string => $item->code()->value(), $items));
     }
 
     public function test_provisioning_does_not_write_tax_posting_snapshot_truth(): void

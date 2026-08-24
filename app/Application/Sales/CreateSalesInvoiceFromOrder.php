@@ -134,8 +134,9 @@ final readonly class CreateSalesInvoiceFromOrder
                     $invoice->addLine($invoiceLine);
                     $reservations[] = new OrderInvoiceReservation($this->identities->reservationId(), $administrationId, $requestId, $orderId, $input->orderLineId(), $invoiceId, $invoiceLineId, $input->quantity());
                 }
-                if ($this->readiness->check($invoice)->status() !== SalesInvoiceReadinessStatus::Ready) {
-                    throw new OrderInvoiceDraftCreationFailed(CreateSalesInvoiceFromOrderStatus::TaxCalculationFailed);
+                $readinessFailure = $this->readinessFailure($this->readiness->check($invoice)->status());
+                if ($readinessFailure !== null) {
+                    throw new OrderInvoiceDraftCreationFailed($readinessFailure);
                 }
                 if ($this->invoices->create($administrationId, $invoice) !== SalesInvoiceWriteResult::Success) {
                     throw new OrderInvoiceDraftCreationFailed(CreateSalesInvoiceFromOrderStatus::PersistenceConflict);
@@ -192,6 +193,19 @@ final readonly class CreateSalesInvoiceFromOrder
             SalesTaxCodeResolutionStatus::NotFound => CreateSalesInvoiceFromOrderStatus::TaxCodeNotFound,
             SalesTaxCodeResolutionStatus::Inactive => CreateSalesInvoiceFromOrderStatus::TaxCodeInactive,
             SalesTaxCodeResolutionStatus::WrongDirection => CreateSalesInvoiceFromOrderStatus::TaxCodeWrongDirection,
+        };
+    }
+
+    private function readinessFailure(SalesInvoiceReadinessStatus $status): ?CreateSalesInvoiceFromOrderStatus
+    {
+        return match ($status) {
+            SalesInvoiceReadinessStatus::Ready => null,
+            SalesInvoiceReadinessStatus::CustomerVatIdMissing => CreateSalesInvoiceFromOrderStatus::CustomerVatIdMissing,
+            SalesInvoiceReadinessStatus::CustomerJurisdictionMissing => CreateSalesInvoiceFromOrderStatus::CustomerJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplierVatIdMissing => CreateSalesInvoiceFromOrderStatus::SupplierVatIdMissing,
+            SalesInvoiceReadinessStatus::SupplierJurisdictionMissing => CreateSalesInvoiceFromOrderStatus::SupplierJurisdictionMissing,
+            SalesInvoiceReadinessStatus::SupplyDateMissing => CreateSalesInvoiceFromOrderStatus::SupplyDateMissing,
+            default => CreateSalesInvoiceFromOrderStatus::TaxCalculationFailed,
         };
     }
 }

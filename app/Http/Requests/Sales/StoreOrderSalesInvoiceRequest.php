@@ -14,6 +14,7 @@ final class StoreOrderSalesInvoiceRequest extends FormRequest
             'draft_request_token' => ['required', 'string', 'max:2048'],
             'invoice_date' => ['required', 'date_format:Y-m-d'],
             'due_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:invoice_date'],
+            'supply_date' => ['nullable', 'date_format:Y-m-d'],
             'invoice_address_id' => ['required', 'uuid'],
             'lines' => ['required', 'array'],
             'lines.*' => ['required', 'array'],

@@ -212,7 +212,7 @@ final class OrderWebTest extends TestCase
         $this->post('/sales/orders/'.$order->toString().'/confirm')->assertRedirect();
 
         $this->get('/sales/orders/'.$order->toString())->assertOk()->assertSee('Factuur maken')->assertSee('Besteld')->assertSee('Gereserveerd')->assertSee('Gefactureerd')->assertSee('Beschikbaar')->assertSee('&lt;script&gt;Service&lt;/script&gt;', false)->assertDontSee('<script>Service</script>', false);
-        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('10')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertSee('Invoice &lt;b&gt;A&lt;/b&gt;', false)->assertDontSee('INPUT')->assertDontSee('BTW-B');
+        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('10')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertSee('Btw verlegd - dienst EU')->assertSee('Intracommunautaire levering goederen')->assertSee('Buiten Nederlandse btw-heffing')->assertSee('Vrijgesteld')->assertSee('Prestatiedatum')->assertSee('name="supply_date"', false)->assertSee('Invoice &lt;b&gt;A&lt;/b&gt;', false)->assertDontSee('INPUT')->assertDontSee('BTW-B');
         $token = $page->viewData('draftRequestToken');
         self::assertIsString($token);
         $payload = $this->invoicePayload($token, $line->id()->toString(), '4');

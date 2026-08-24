@@ -48,9 +48,7 @@ final readonly class SalesInvoiceLineMutationService
             }
             $add ? $invoice->addLine($line) : $invoice->updateLine($line);
 
-            return $this->readiness->check($invoice)->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed
-                ? SalesInvoiceWriteResult::TaxCalculationFailure
-                : null;
+            return CreateSalesInvoice::readinessFailure($this->readiness->check($invoice)->status());
         });
     }
 }
