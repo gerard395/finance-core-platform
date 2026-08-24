@@ -14,6 +14,8 @@ use App\Application\Accounting\OpenItemReadRepository;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Accounting\OpenItemStore;
 use App\Application\Administration\AdministrationRepository;
+use App\Application\Administration\AdministrationSettingsReader;
+use App\Application\Administration\AdministrationSettingsUpdater;
 use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Fiscal\TaxCodeReadRepository;
 use App\Application\Fiscal\TaxCodeStore;
@@ -276,6 +278,8 @@ class AppServiceProvider extends ServiceProvider
         });
         $this->app->bind(RelationClassificationIdentityGenerator::class, LaravelRelationClassificationIdentityGenerator::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
+        $this->app->bind(AdministrationSettingsReader::class, EloquentAdministrationRepository::class);
+        $this->app->bind(AdministrationSettingsUpdater::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);
         $this->app->bind(RoleRepository::class, EloquentRoleRepository::class);
         $this->app->bind(PermissionRepository::class, EloquentPermissionRepository::class);

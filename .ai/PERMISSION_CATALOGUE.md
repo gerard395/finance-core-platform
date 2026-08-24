@@ -8,7 +8,7 @@ Dit document benoemt de businessautorisaties van Finance Core Platform. Het besc
 | --- | --- |
 | View Administrations | Administratieve eenheden en hun basisgegevens raadplegen. |
 | Create Administration | Een nieuwe administratieve eenheid aanmaken. |
-| Change Administration | Naam, omschrijving en toegestane administratie-instellingen wijzigen. |
+| Change Administration Settings | Naam, omschrijving en andere expliciet ondersteunde masterdata-instellingen van uitsluitend de actieve administratie raadplegen en wijzigen (`ADMINISTRATION.SETTINGS_UPDATE`). Geeft geen recht op verwijderen, memberships, rollen, users, accounting-postings of Sales-beheer. |
 | Manage Organisation Details | De juridische en contactgegevens van de gekoppelde organisatie beheren. |
 | Manage Number Sequences | Documentnummerreeksen configureren, activeren en deactiveren. |
 

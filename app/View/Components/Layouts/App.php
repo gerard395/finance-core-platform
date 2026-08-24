@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\View\Components\Layouts;
 
 use App\Application\Identity\PermissionAuthorizer;
+use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Identity\Entities\User;
@@ -17,6 +18,8 @@ final class App extends Component
     public readonly bool $canViewRelations;
 
     public readonly bool $canViewSales;
+
+    public readonly bool $canUpdateAdministrationSettings;
 
     public function __construct(
         public readonly User $domainUser,
@@ -31,6 +34,10 @@ final class App extends Component
         $this->canViewSales = $permissionAuthorizer->allows(
             $administrationContext->permissionIds,
             SalesPermission::View->id(),
+        );
+        $this->canUpdateAdministrationSettings = $permissionAuthorizer->allows(
+            $administrationContext->permissionIds,
+            AdministrationPermission::UpdateSettings->id(),
         );
     }
 

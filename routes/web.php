@@ -1,8 +1,10 @@
 <?php
 
+use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AdministrationSelectionController;
+use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Relations\AddressController;
@@ -28,6 +30,7 @@ use App\Http\Controllers\Sales\SalesInvoiceController;
 use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceLineController;
 use App\Http\Controllers\Sales\SalesInvoicePostingController;
+use App\Http\Middleware\EnsureAdministrationPermission;
 use App\Http\Middleware\EnsureRelationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
@@ -52,6 +55,13 @@ Route::middleware(['auth', 'domain.active'])->group(function (): void {
 Route::get('/app', DashboardController::class)
     ->middleware(['auth', 'domain.active', 'administration.active'])
     ->name('app');
+
+Route::get('/settings/administration', [AdministrationSettingsController::class, 'edit'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.edit');
+Route::put('/settings/administration', [AdministrationSettingsController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.update');
 
 Route::get('/relations', RelationIndexController::class)
     ->middleware([

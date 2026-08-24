@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Administration\AdministrationRepository;
+use App\Application\Administration\AdministrationSettings;
+use App\Application\Administration\AdministrationSettingsReader;
+use App\Application\Administration\AdministrationSettingsUpdater;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\Entities\Organisation;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
@@ -16,7 +19,7 @@ use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 
-final class EloquentAdministrationRepository implements AdministrationRepository
+final class EloquentAdministrationRepository implements AdministrationRepository, AdministrationSettingsReader, AdministrationSettingsUpdater
 {
     public function findById(AdministrationId $id): ?Administration
     {
@@ -60,6 +63,30 @@ final class EloquentAdministrationRepository implements AdministrationRepository
                 'organisation_bic' => $organisation?->bic(),
             ],
         );
+    }
+
+    public function findSettings(AdministrationId $administrationId): ?AdministrationSettings
+    {
+        $record = AdministrationRecord::query()
+            ->select(['name', 'description'])
+            ->find($administrationId->toString());
+
+        return $record === null ? null : new AdministrationSettings(
+            $record->getAttribute('name'),
+            $record->getAttribute('description'),
+        );
+    }
+
+    public function updateSettings(Administration $administration): bool
+    {
+        $query = AdministrationRecord::query()
+            ->whereKey($administration->id()->toString());
+        $updated = $query->update([
+            'name' => $administration->name()->toString(),
+            'description' => $administration->description(),
+        ]);
+
+        return $updated === 1 || $query->exists();
     }
 
     private function reconstituteOrganisation(AdministrationRecord $record): ?Organisation
