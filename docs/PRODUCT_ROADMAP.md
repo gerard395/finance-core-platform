@@ -313,7 +313,7 @@ Order creëert. Order→SalesInvoice blijft deferred en valt nadrukkelijk buiten
 
 ### Batch W4B – Order Invoicing & Conversion
 
-**Status:** Designed
+**Status:** Completed; reviewed and merge-ready
 
 W4B converteert Confirmed en PartiallyInvoiced Orders veilig naar één of meerdere
 Draft SalesInvoices met partial quantities per OrderLine. Draft-reservations bewaken
@@ -335,6 +335,14 @@ TaxCode worden expliciet bij invoice creation geselecteerd. Source-derived Draft
 zijn in v1 commercieel immutable. Orderstatus verandert bij invoice Finalize, niet bij
 Draft create of financial Post. Credits en annulering na Finalize heropenen Order-
 quantity niet automatisch.
+
+W4B-005 heeft de volledige quantity-, idempotency-, concurrency-, snapshot-,
+tenant-, authorization-, schema- en regressieketen beoordeeld. Er zijn geen
+mergeblockers of reviewfixes. Allocation reversal/reopen bij finalized cancel en
+credits blijft bewust deferred totdat de productpolicy en append-only facts daarvoor
+zijn ontworpen. De aanbevolen volgende productbatch is **Sales Document Delivery /
+PDF & Email**. Centrale Administration-bootstrap en verdere Draft-concurrency-
+hardening blijven afzonderlijke platformvervolgen.
 
 ## Releases
 
