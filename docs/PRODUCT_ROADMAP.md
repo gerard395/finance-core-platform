@@ -241,7 +241,7 @@ W3 is afgerond met volledige Relation-aggregate-reconstitutie en tenant-veilige 
 
 ### Batch W4 – Sales Web Module
 
-**Status:** Completed; reviewed and merge-ready
+**Status:** Domestic implementation completed; merge blocked by international VAT predecessors
 
 W4 levert de eerste veilige administration-scoped verkoopdoorsnede voor Quotations,
 Orders, SalesInvoices en volledige SalesCreditInvoices. De batch omvat onafhankelijke
@@ -328,6 +328,14 @@ over-invoicing en dubbele browser-submits.
 - W4B-002 – Create SalesInvoice from Order contracts
 - W4B-003 – Finalize/cancel allocation synchronization
 - W4B-004 – Order invoicing Web flow
+- W4B-004A – Dutch Tax Catalogue Bootstrap & Development Provisioning
+- W4B-004B – International VAT Treatment & ICP Readiness Design
+- W4B-004B1 – VAT Identification & Jurisdiction Master Data
+- W4B-004B2 – Tax Treatment & Reporting Classification
+- W4B-004B3 – Sales International Fiscal Snapshots & Dates
+- W4B-004B4 – Sales International Tax Selector Integration
+- W4B-004B5 – International Fiscal Posting & Credit Reversal
+- W4B-004B6 – International VAT & ICP Readiness Review
 - W4B-005 – Review & regression
 
 Customersnapshot en Currency komen exact uit Order; Invoice-address en actieve Output
@@ -343,6 +351,22 @@ credits blijft bewust deferred totdat de productpolicy en append-only facts daar
 zijn ontworpen. De aanbevolen volgende productbatch is **Sales Document Delivery /
 PDF & Email**. Centrale Administration-bootstrap en verdere Draft-concurrency-
 hardening blijven afzonderlijke platformvervolgen.
+
+W4B-004A ondersteunt expliciet Nederlandse BTW21, BTW9 en BTW0; BTW0 is uitsluitend
+zero-rated en nooit een shortcut voor verlegging, vrijstelling of outside-scope.
+International VAT vereist typed VAT/jurisdictionmasterdata, TaxTreatment plus
+VAT-return/ICP-classificatie, immutable party- en line-snapshots, supply date en
+fiscale posting/creditreversaltruth. Tot W4B-004B1–B6 zijn voltooid is het productlabel
+**domestic NL Sales VAT supported; international reverse-charge invoicing not
+supported** en blijft de batch mergeblocked.
+
+### Toekomstige batch – Dutch VAT & ICP Reporting
+
+Na W4B-004B6 volgt een afzonderlijke reportingcapability voor reportingperioden,
+btw-aangifterubrieken, ICP-aggregatie per klant-btw-ID en goods/services,
+creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export volgt
+daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
+rapportage leest immutable fiscale facts en herclassificeert facturen niet achteraf.
 
 ## Releases
 

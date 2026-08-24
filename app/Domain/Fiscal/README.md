@@ -10,9 +10,21 @@ Fiscal biedt capabilityneutrale fiscale classificatie, berekening en geposte fis
 
 TaxCode beheert een immutable identiteit, code en Input/Output-richting, een wijzigbare naam, precies één actueel immutable TaxRate en een actieve of inactieve status. Administration ownership ligt buiten de Domain entity en wordt door Application en persistence bewaakt.
 
+Internationale fiscale betekenis kan niet door TaxRate worden gedragen: zero-rated,
+EU B2B reverse charge, exempt en outside-scope kunnen alle nul Nederlandse btw
+berekenen maar blijven afzonderlijke treatments. W4B-004B ontwerpt daarom een typed
+`TaxTreatment` plus afzonderlijke VAT-return- en ICP-classificatie als toekomstige
+immutable catalogus- en postingtruth. Geen treatment wordt uit code, naam, rate, land
+of btw-ID afgeleid.
+
 ## TaxPosting
 
 TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte TaxRate, taxable base, taxAmount, Input/Output-richting, Original/Reversal-type, bron-document en bron-regel, AdministrationId, PostingDate en de exacte JournalEntry/base-/tax-regelidentiteiten verklaart. De base-regel is altijd verplicht; de tax-regel bestaat uitsluitend bij een positief taxAmount. Alle context is immutable. Een Reversal verwijst via `reversedTaxPostingId` naar het oorspronkelijke feit zonder dat feit te muteren.
+
+De geplande treatment/reportinguitbreiding behoudt ook bij tax amount nul een
+TaxPosting met taxable base, fiscal/supply date en expliciete VAT/ICP-classificatie.
+VAT-return en ICP worden later uit dezelfde append-only facts opgebouwd; een credit
+neemt de oorspronkelijke classificatie exact over.
 
 ## Invarianten
 
