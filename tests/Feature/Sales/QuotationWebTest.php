@@ -165,9 +165,12 @@ final class QuotationWebTest extends TestCase
         $id = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 1);
         $this->app->make(AddQuotationLine::class)->execute($this->admin(self::ADMIN_A), $id, $this->line(1));
         $this->post('/sales/quotations/'.$id->toString().'/send')->assertRedirect('/sales/quotations/'.$id->toString());
+        $this->assertDatabaseMissing('orders', ['source_quotation_id' => $id->toString()]);
+        $this->get('/sales/quotations/'.$id->toString())->assertOk()->assertDontSee('Order maken');
         $this->get('/sales/quotations/'.$id->toString().'/edit')->assertStatus(409);
         $this->put('/sales/quotations/'.$id->toString(), ['quotation_date' => '2026-08-22'])->assertRedirect()->assertSessionHas('error');
         $this->post('/sales/quotations/'.$id->toString().'/accept')->assertRedirect();
+        $this->get('/sales/quotations/'.$id->toString())->assertOk()->assertSee('Order maken');
         $this->post('/sales/quotations/'.$id->toString().'/reject')->assertRedirect()->assertSessionHas('error');
         $this->assertDatabaseHas('quotations', ['id' => $id->toString(), 'status' => 'accepted']);
 

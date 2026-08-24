@@ -287,7 +287,7 @@ blijft een belangrijke afzonderlijke hardeningstory.
 
 ### Batch W4A – Quotation to Order Conversion
 
-**Status:** Designed
+**Status:** Completed; reviewed and merge-ready
 
 W4A sluit de bestaande commerciële workflow tussen Accepted Quotation en Draft Order.
 V1 converteert iedere Accepted Quotation maximaal één keer, kopieert immutable
@@ -304,6 +304,12 @@ double conversion database-safe; directe Orders met null source blijven onbeperk
 Order→SalesInvoice blijft een afzonderlijke toekomstige allocation/conversie-
 capability. Line-level Quotation→Order-traceability wordt pas toegevoegd als partial
 conversion of allocation een feitelijke requirement wordt.
+
+De W4A-003-review bevestigt de volledige Draft → Sent → Accepted → Draft Order-flow,
+tenant- en concurrencyveiligheid, transactionele nummering, directe Orders zonder
+bronofferte en exacte permissionhandhaving. Er zijn geen mergeblockers. De enige
+reviewaanvulling is een expliciete regressieassertie dat **Offerte verzenden** geen
+Order creëert. Order→SalesInvoice blijft deferred en valt nadrukkelijk buiten W4A.
 
 ## Releases
 
