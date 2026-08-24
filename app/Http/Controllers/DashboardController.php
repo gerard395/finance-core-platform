@@ -8,6 +8,7 @@ use App\Application\Dashboard\GetDashboardOverview;
 use App\Application\Identity\PermissionAuthorizer;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Identity\Definitions\RelationsPermission;
+use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Identity\Entities\User as DomainUser;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Presentation\Formatting\DutchMoneyFormatter;
@@ -48,6 +49,10 @@ final class DashboardController extends Controller
             'canViewRelations' => $this->permissionAuthorizer->allows(
                 $administrationContext->permissionIds,
                 RelationsPermission::View->id(),
+            ),
+            'canViewSales' => $this->permissionAuthorizer->allows(
+                $administrationContext->permissionIds,
+                SalesPermission::View->id(),
             ),
         ]);
     }

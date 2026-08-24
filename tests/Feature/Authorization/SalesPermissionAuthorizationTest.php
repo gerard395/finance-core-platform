@@ -10,6 +10,7 @@ use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
+use App\Domain\Identity\Definitions\RelationsRole;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Identity\Definitions\SalesRole;
 use App\Domain\Identity\Entities\AdministrationMembership;
@@ -23,6 +24,7 @@ use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
 use App\Http\Middleware\EnsureSalesPermission;
+use App\Infrastructure\Identity\RelationsAuthorizationProvisioner;
 use App\Infrastructure\Identity\SalesAuthorizationProvisioner;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
@@ -98,6 +100,42 @@ final class SalesPermissionAuthorizationTest extends TestCase
         $membershipRole->deactivate();
         $repository->save($membershipRole);
         $this->get($this->path(SalesPermission::View))->assertForbidden();
+    }
+
+    public function test_dashboard_sales_navigation_uses_effective_tenant_permissions_and_remains_independent_from_relations(): void
+    {
+        $this->provisionScenario();
+        $this->app->make(RelationsAuthorizationProvisioner::class)->provision();
+        $salesAssignment = $this->assignRole(SalesRole::Viewer, 'c1000000-0000-4000-8000-000000000020');
+        (new EloquentMembershipRoleRepository)->save(new MembershipRole(
+            new MembershipRoleId(new Uuid('c1000000-0000-4000-8000-000000000021')),
+            new AdministrationMembershipId(new Uuid(self::MEMBERSHIP_A)),
+            RelationsRole::Viewer->id(),
+            true,
+        ));
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $dashboard = $this->get('/app')->assertOk();
+        foreach (['sales.quotations.index' => 'Offertes', 'sales.orders.index' => 'Orders', 'sales.invoices.index' => 'Facturen', 'sales.credit-invoices.index' => 'Creditfacturen'] as $route => $label) {
+            $dashboard->assertSee('href="'.route($route).'"', false)->assertSeeText($label);
+        }
+        $dashboard->assertSee('href="'.route('relations.index').'"', false)->assertSeeText('Alle relaties');
+
+        $roles = new EloquentMembershipRoleRepository;
+        $sales = $roles->findById($salesAssignment);
+        self::assertNotNull($sales);
+        $sales->deactivate();
+        $roles->save($sales);
+        $withoutSales = $this->get('/app')->assertOk()->assertSeeText('Alle relaties');
+        foreach (['Offertes', 'Orders', 'Facturen', 'Creditfacturen'] as $label) {
+            $withoutSales->assertDontSeeText($label);
+        }
+
+        $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_B]);
+        $tenantB = $this->get('/app')->assertOk()->assertDontSeeText('Alle relaties');
+        foreach (['Offertes', 'Orders', 'Facturen', 'Creditfacturen'] as $label) {
+            $tenantB->assertDontSeeText($label);
+        }
     }
 
     public function test_inactive_membership_is_rejected_before_sales_permission(): void
