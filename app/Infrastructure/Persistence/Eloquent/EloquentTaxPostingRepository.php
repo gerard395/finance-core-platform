@@ -30,6 +30,19 @@ use DomainException;
 
 final class EloquentTaxPostingRepository implements TaxPostingReadRepository, TaxPostingStore
 {
+    public function findOriginalsForSource(AdministrationId $administrationId, TaxSourceDocumentType $sourceDocumentType, TaxSourceDocumentId $sourceDocumentId): array
+    {
+        return TaxPostingRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where('source_document_type', $sourceDocumentType->value)
+            ->where('source_document_id', $sourceDocumentId->toString())
+            ->where('type', TaxPostingType::Original->value)
+            ->orderBy('source_line_id')
+            ->get()
+            ->map(static fn (TaxPostingRecord $record): TaxPosting => self::hydrate($record))
+            ->all();
+    }
+
     public function findForAdministrationAndPeriod(
         AdministrationId $administrationId,
         PostingDate $startDate,
