@@ -43,6 +43,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Throwable;
 
 final class SalesCreditInvoiceApplicationContractsTest extends TestCase
 {
@@ -179,6 +180,56 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         self::assertSame('receivable', DB::table('open_items')->where('id', $result->openItemId()?->toString())->value('open_item_type'));
     }
 
+    public function test_two_concurrent_credit_post_attempts_create_exactly_one_complete_financial_truth(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required for the credit posting concurrency test.');
+        }
+        $source = $this->postedSource(self::A, 1, 1);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'credit-post-'), tempnam(sys_get_temp_dir(), 'credit-post-')];
+        $children = [];
+        foreach ($files as $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    $status = $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId())->status();
+                    file_put_contents($file, $status->name);
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        sort($results);
+
+        self::assertSame(['AlreadyPosted', 'Success'], $results);
+        self::assertSame(1, DB::table('sales_credit_invoice_postings')->count());
+        self::assertSame(1, DB::table('journal_entries')->where('reference', 'C000001')->count());
+        self::assertSame(2, DB::table('tax_postings')->where('type', 'reversal')->count());
+        self::assertSame(1, DB::table('open_items')->where('side', 'credit')->count());
+        self::assertSame(1, DB::table('open_item_matches')->count());
+        self::assertSame('posted', SalesCreditInvoiceRecord::query()->findOrFail($this->creditId()->toString())->getAttribute('status'));
+        $this->removeCommittedConcurrencyFixtures();
+        DB::beginTransaction();
+    }
+
     public function test_paid_source_creates_full_open_customer_credit_without_zero_match_or_refund(): void
     {
         $source = $this->postedSource(self::A, 1, 1);
@@ -303,6 +354,20 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
     private function create(string $admin, SalesInvoiceId $source): CreateSalesCreditInvoiceResult
     {
         return $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin($admin), $source, new DateTimeImmutable('2026-08-24'));
+    }
+
+    private function removeCommittedConcurrencyFixtures(): void
+    {
+        $administrations = [self::A, self::B];
+        foreach (['sales_credit_invoice_postings', 'open_item_matches', 'open_item_settlements'] as $table) {
+            DB::table($table)->whereIn('administration_id', $administrations)->delete();
+        }
+        DB::table('tax_postings')->whereIn('administration_id', $administrations)->whereNotNull('reversed_tax_posting_id')->delete();
+        DB::table('tax_postings')->whereIn('administration_id', $administrations)->delete();
+        foreach (['sales_invoice_postings', 'open_items', 'journal_entry_lines', 'journal_entries', 'sales_credit_invoice_lines', 'sales_credit_invoices', 'sales_invoice_lines', 'sales_invoices', 'sales_number_sequences', 'sales_posting_configurations', 'tax_codes', 'ledger_accounts', 'journals', 'customers', 'relations'] as $table) {
+            DB::table($table)->whereIn('administration_id', $administrations)->delete();
+        }
+        DB::table('administrations')->whereIn('id', $administrations)->delete();
     }
 
     private function postedSource(string $admin, int $tenant, int $sequence): SalesInvoiceId
