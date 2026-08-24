@@ -16,6 +16,9 @@ final readonly class RemoveSalesInvoiceLine
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId, SalesInvoiceLineId $lineId): SalesInvoiceWriteResult
     {
         return $this->mutations->mutate($administrationId, $invoiceId, static function ($invoice) use ($lineId): ?SalesInvoiceWriteResult {
+            if ($invoice->sourceOrderId() !== null) {
+                return SalesInvoiceWriteResult::InvalidState;
+            }
             if (! $invoice->hasLine($lineId)) {
                 throw new DomainException('Sales invoice line does not exist.');
             }

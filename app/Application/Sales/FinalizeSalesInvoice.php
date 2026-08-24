@@ -14,6 +14,9 @@ final readonly class FinalizeSalesInvoice
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): SalesInvoiceWriteResult
     {
         return $this->mutations->mutate($administrationId, $invoiceId, function ($invoice): ?SalesInvoiceWriteResult {
+            if ($invoice->sourceOrderId() !== null) {
+                return SalesInvoiceWriteResult::InvalidState;
+            }
             $readiness = $this->readiness->check($invoice);
             if ($readiness->status() !== SalesInvoiceReadinessStatus::Ready) {
                 return $readiness->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed

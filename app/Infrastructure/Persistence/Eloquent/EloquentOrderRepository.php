@@ -6,6 +6,7 @@ namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Sales\OrderBySourceQuotationRepository;
 use App\Application\Sales\OrderCreator;
+use App\Application\Sales\OrderInvoicingSource;
 use App\Application\Sales\OrderReadRepository;
 use App\Application\Sales\OrderUpdater;
 use App\Application\Sales\OrderWriteResult;
@@ -33,7 +34,7 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentOrderRepository implements OrderBySourceQuotationRepository, OrderCreator, OrderReadRepository, OrderUpdater
+final class EloquentOrderRepository implements OrderBySourceQuotationRepository, OrderCreator, OrderInvoicingSource, OrderReadRepository, OrderUpdater
 {
     public function findForAdministration(AdministrationId $administrationId, OrderId $orderId): ?Order
     {
@@ -50,6 +51,17 @@ final class EloquentOrderRepository implements OrderBySourceQuotationRepository,
         $record = OrderRecord::query()
             ->where('administration_id', $administrationId->toString())
             ->where('source_quotation_id', $quotationId->toString())
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function findLockedForAdministration(AdministrationId $administrationId, OrderId $orderId): ?Order
+    {
+        $record = OrderRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->whereKey($orderId->toString())
+            ->lockForUpdate()
             ->first();
 
         return $record === null ? null : $this->hydrate($record);

@@ -14,6 +14,9 @@ final readonly class CancelSalesInvoice
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): SalesInvoiceWriteResult
     {
         return $this->mutations->mutate($administrationId, $invoiceId, static function ($invoice): ?SalesInvoiceWriteResult {
+            if ($invoice->sourceOrderId() !== null) {
+                return SalesInvoiceWriteResult::InvalidState;
+            }
             $invoice->cancel();
 
             return null;
