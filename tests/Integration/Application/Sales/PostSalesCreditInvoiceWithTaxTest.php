@@ -16,9 +16,12 @@ use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
@@ -49,10 +52,10 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
     private int $sequence = 1;
 
     #[DataProvider('rates')]
-    public function test_full_reversal_posts_and_traces_exact_snapshot(string $rate, string $tax, bool $taxLine): void
+    public function test_full_reversal_posts_and_traces_exact_snapshot(string $rate, string $tax, bool $taxLine, TaxTreatment $treatment, VatReturnClassification $vat, IcpClassification $icp): void
     {
         $invoice = $this->creditInvoice([['100']]);
-        $original = $this->original('100', $tax, $rate);
+        $original = $this->original('100', $tax, $rate, treatment: $treatment, vat: $vat, icp: $icp);
         $input = $this->input($invoice->lines()[0], $original, $taxLine);
         $history = [$original];
 
@@ -72,6 +75,9 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
         self::assertTrue($reversal->taxRate()->equals($original->taxRate()));
         self::assertTrue($reversal->taxableBase()->equals($original->taxableBase()));
         self::assertTrue($reversal->taxAmount()->equals($original->taxAmount()));
+        self::assertSame($treatment, $reversal->treatment());
+        self::assertSame($vat, $reversal->vatReturnClassification());
+        self::assertSame($icp, $reversal->icpClassification());
         self::assertSame($invoice->id()->toString(), $reversal->sourceDocumentId()->toString());
         self::assertSame($invoice->lines()[0]->id()->toString(), $reversal->sourceLineId()->toString());
         self::assertSame($entry->id(), $reversal->journalEntryId());
@@ -83,7 +89,15 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
 
     public static function rates(): array
     {
-        return [['21', '21', true], ['9', '9', true], ['0', '0', false]];
+        return [
+            ['21', '21', true, TaxTreatment::DomesticStandard, VatReturnClassification::DomesticStandard, IcpClassification::None],
+            ['9', '9', true, TaxTreatment::DomesticReduced, VatReturnClassification::DomesticReduced, IcpClassification::None],
+            ['0', '0', false, TaxTreatment::ZeroRated, VatReturnClassification::DomesticZeroRated, IcpClassification::None],
+            ['0', '0', false, TaxTreatment::ReverseChargeEuService, VatReturnClassification::EuServices, IcpClassification::Service],
+            ['0', '0', false, TaxTreatment::IntraCommunityGoods, VatReturnClassification::IntraCommunitySupplies, IcpClassification::GoodsSupply],
+            ['0', '0', false, TaxTreatment::OutsideScope, VatReturnClassification::OutsideScope, IcpClassification::None],
+            ['0', '0', false, TaxTreatment::Exempt, VatReturnClassification::Exempt, IcpClassification::None],
+        ];
     }
 
     public function test_multiple_tax_codes_and_same_request_duplicate_are_handled(): void
@@ -103,7 +117,7 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
     public function test_history_and_target_guards_reject_invalid_inputs(): void
     {
         $invoice = $this->creditInvoice([['100']]);
-        $original = $this->original('100', '21', '21');
+        $original = $this->original('100', '0', '0', treatment: TaxTreatment::ReverseChargeEuService, vat: VatReturnClassification::EuServices, icp: IcpClassification::Service);
         $existing = $this->reversal($original);
         $this->expectException(DomainException::class);
         $this->execute($invoice, [$this->input($invoice->lines()[0], $original)], [$original, $existing]);
@@ -182,8 +196,11 @@ final class PostSalesCreditInvoiceWithTaxTest extends TestCase
         string $rate,
         TaxPostingDirection $direction = TaxPostingDirection::Output,
         ?SalesInvoiceId $sourceInvoiceId = null,
+        TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        VatReturnClassification $vat = VatReturnClassification::DomesticStandard,
+        IcpClassification $icp = IcpClassification::None,
     ): TaxPosting {
-        return new TaxPosting(new TaxPostingId($this->uuid('6')), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, new Currency('EUR')), new Money($tax, new Currency('EUR')), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId(($sourceInvoiceId ?? $this->sourceInvoiceId())->uuid()), new TaxSourceLineId($this->uuid('9')), new PostingDate(new DateTimeImmutable('2026-08-01')), new JournalEntryId($this->uuid('d')), $this->lineId(), $tax === '0' ? null : $this->lineId(), TaxPostingType::Original);
+        return new TaxPosting(new TaxPostingId($this->uuid('6')), new AdministrationId(new Uuid('20000000-0000-4000-8000-000000000001')), new TaxCodeId($this->uuid('7')), new TaxRate($rate), new Money($base, new Currency('EUR')), new Money($tax, new Currency('EUR')), $direction, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId(($sourceInvoiceId ?? $this->sourceInvoiceId())->uuid()), new TaxSourceLineId($this->uuid('9')), new PostingDate(new DateTimeImmutable('2026-08-01')), new JournalEntryId($this->uuid('d')), $this->lineId(), $tax === '0' ? null : $this->lineId(), TaxPostingType::Original, null, $treatment, $vat, $icp);
     }
 
     private function reversal(TaxPosting $original): TaxPosting
