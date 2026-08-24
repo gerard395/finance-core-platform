@@ -10,6 +10,7 @@ enum OrderWriteResult
     case NotFound;
     case DuplicateIdentity;
     case DuplicateNumber;
+    case AlreadyConverted;
     case CustomerNotFound;
     case InactiveCustomer;
     case SourceQuotationNotFound;

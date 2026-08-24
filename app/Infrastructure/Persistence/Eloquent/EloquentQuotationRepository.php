@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Sales\QuotationCreator;
+use App\Application\Sales\QuotationOrderConversionSource;
 use App\Application\Sales\QuotationReadRepository;
 use App\Application\Sales\QuotationUpdater;
 use App\Application\Sales\QuotationWriteResult;
@@ -31,13 +32,24 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentQuotationRepository implements QuotationCreator, QuotationReadRepository, QuotationUpdater
+final class EloquentQuotationRepository implements QuotationCreator, QuotationOrderConversionSource, QuotationReadRepository, QuotationUpdater
 {
     public function findForAdministration(AdministrationId $administrationId, QuotationId $quotationId): ?Quotation
     {
         $record = QuotationRecord::query()
             ->where('administration_id', $administrationId->toString())
             ->whereKey($quotationId->toString())
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function findLockedForAdministration(AdministrationId $administrationId, QuotationId $quotationId): ?Quotation
+    {
+        $record = QuotationRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->whereKey($quotationId->toString())
+            ->lockForUpdate()
             ->first();
 
         return $record === null ? null : $this->hydrate($record);

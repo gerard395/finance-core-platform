@@ -8,6 +8,7 @@ use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\RelationReadRepository;
 use App\Application\Sales\CreateQuotation;
+use App\Application\Sales\OrderBySourceQuotationRepository;
 use App\Application\Sales\QuotationDetailReadRepository;
 use App\Application\Sales\QuotationListQuery;
 use App\Application\Sales\QuotationListReadRepository;
@@ -39,6 +40,7 @@ final class QuotationController extends Controller
     public function __construct(
         private readonly QuotationListReadRepository $list,
         private readonly QuotationDetailReadRepository $details,
+        private readonly OrderBySourceQuotationRepository $ordersBySourceQuotation,
         private readonly CustomerReadRepository $customers,
         private readonly RelationReadRepository $relations,
         private readonly CreateQuotation $createQuotation,
@@ -89,9 +91,12 @@ final class QuotationController extends Controller
         $context = $this->context($request);
         $detail = $this->details->find($context->administration->id(), $this->quotationId($quotation));
         abort_if($detail === null, 404);
+        $sourceOrder = $this->ordersBySourceQuotation->findBySourceQuotation($context->administration->id(), $detail->id());
 
         return view('sales.quotations.show', $this->viewData($context) + [
             'quotation' => $detail,
+            'sourceOrderId' => $sourceOrder?->id(),
+            'defaultOrderDate' => (new DateTimeImmutable('today'))->format('Y-m-d'),
             'statusPresenter' => QuotationStatusPresenter::class,
         ]);
     }
@@ -193,6 +198,7 @@ final class QuotationController extends Controller
             'canViewRelations' => $this->permissions->allows($context->permissionIds, RelationsPermission::View->id()),
             'canViewSales' => $this->can($context, SalesPermission::View),
             'canManageQuotations' => $this->can($context, SalesPermission::ManageQuotations),
+            'canManageOrders' => $this->can($context, SalesPermission::ManageOrders),
         ];
     }
 

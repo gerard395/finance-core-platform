@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Persistence\Eloquent;
 
+use App\Application\Sales\OrderBySourceQuotationRepository;
 use App\Application\Sales\OrderCreator;
 use App\Application\Sales\OrderReadRepository;
 use App\Application\Sales\OrderUpdater;
@@ -32,13 +33,23 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentOrderRepository implements OrderCreator, OrderReadRepository, OrderUpdater
+final class EloquentOrderRepository implements OrderBySourceQuotationRepository, OrderCreator, OrderReadRepository, OrderUpdater
 {
     public function findForAdministration(AdministrationId $administrationId, OrderId $orderId): ?Order
     {
         $record = OrderRecord::query()
             ->where('administration_id', $administrationId->toString())
             ->whereKey($orderId->toString())
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function findBySourceQuotation(AdministrationId $administrationId, QuotationId $quotationId): ?Order
+    {
+        $record = OrderRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where('source_quotation_id', $quotationId->toString())
             ->first();
 
         return $record === null ? null : $this->hydrate($record);
@@ -88,6 +99,9 @@ final class EloquentOrderRepository implements OrderCreator, OrderReadRepository
         }
         if (OrderRecord::query()->where('administration_id', $administrationId->toString())->where('order_number', $order->number()->value())->exists()) {
             return OrderWriteResult::DuplicateNumber;
+        }
+        if ($order->sourceQuotationId() !== null && OrderRecord::query()->where('administration_id', $administrationId->toString())->where('source_quotation_id', $order->sourceQuotationId()->toString())->exists()) {
+            return OrderWriteResult::AlreadyConverted;
         }
 
         return null;
