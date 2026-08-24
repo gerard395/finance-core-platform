@@ -6,6 +6,7 @@ namespace Tests\Integration\Application\Sales;
 
 use App\Application\Sales\CancelSalesCreditInvoice;
 use App\Application\Sales\CreateSalesCreditInvoiceFromInvoice;
+use App\Application\Sales\CreateSalesCreditInvoiceResult;
 use App\Application\Sales\EligibleSalesCreditSourceQuery;
 use App\Application\Sales\EligibleSalesCreditSourceReadRepository;
 use App\Application\Sales\EligibleSalesCreditSourceSortField;
@@ -63,7 +64,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         DB::table('relations')->where('administration_id', self::A)->update(['display_name' => 'Later renamed']);
         DB::table('customers')->where('administration_id', self::A)->update(['active' => false]);
 
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
         $record = SalesCreditInvoiceRecord::query()->firstOrFail();
         self::assertSame(self::A, $record->getAttribute('administration_id'));
         self::assertSame($source->toString(), $record->getAttribute('source_sales_invoice_id'));
@@ -86,27 +87,27 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
     public function test_source_readiness_tenant_states_linkage_tax_paid_and_double_credit_are_enforced(): void
     {
         $draft = $this->seedInvoice(self::A, 1, 1, 'draft');
-        self::assertSame(SalesCreditInvoiceWriteResult::SourceNotPosted, $this->create(self::A, $draft));
-        self::assertSame(SalesCreditInvoiceWriteResult::NotFound, $this->create(self::B, $draft));
+        self::assertSame(SalesCreditInvoiceWriteResult::SourceNotPosted, $this->create(self::A, $draft)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::NotFound, $this->create(self::B, $draft)->status());
 
         $posted = $this->postedSource(self::A, 1, 2);
         DB::table('sales_invoice_postings')->where('sales_invoice_id', $posted->toString())->delete();
-        self::assertSame(SalesCreditInvoiceWriteResult::FinancialPostingMissing, $this->create(self::A, $posted));
+        self::assertSame(SalesCreditInvoiceWriteResult::FinancialPostingMissing, $this->create(self::A, $posted)->status());
 
         $missingTax = $this->postedSource(self::A, 1, 3);
         DB::table('tax_postings')->where('source_document_id', $missingTax->toString())->delete();
-        self::assertSame(SalesCreditInvoiceWriteResult::ReversalSourceMissing, $this->create(self::A, $missingTax));
+        self::assertSame(SalesCreditInvoiceWriteResult::ReversalSourceMissing, $this->create(self::A, $missingTax)->status());
 
         $paid = $this->postedSource(self::A, 1, 4);
         SalesInvoiceRecord::query()->whereKey($paid->toString())->update(['status' => 'paid']);
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $paid));
-        self::assertSame(SalesCreditInvoiceWriteResult::AlreadyCredited, $this->create(self::A, $paid));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $paid)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::AlreadyCredited, $this->create(self::A, $paid)->status());
     }
 
     public function test_finalize_cancel_and_factual_posted_hydration_preserve_locked_lines(): void
     {
         $source = $this->postedSource(self::A, 1, 1);
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
         self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
         self::assertSame('finalized', SalesCreditInvoiceRecord::query()->value('status'));
         SalesCreditInvoiceRecord::query()->update(['status' => 'posted']);
@@ -117,7 +118,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         DB::table('sales_credit_invoice_lines')->delete();
         DB::table('sales_credit_invoices')->delete();
         $second = $this->postedSource(self::A, 1, 2);
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $second));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $second)->status());
         self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(CancelSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
         self::assertSame(SalesCreditInvoiceStatus::Cancelled, $this->app->make(SalesCreditInvoiceReadRepository::class)->findForAdministration($this->admin(self::A), $this->creditId())?->status());
     }
@@ -127,11 +128,11 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         $source = $this->postedSource(self::A, 1, 1);
         $before = DB::table('sales_number_sequences')->where('administration_id', self::A)->where('sequence_type', 'sales_credit_invoice')->value('next_value');
         $useCase = new CreateSalesCreditInvoiceFromInvoice($this->app->make(SalesCreditSourceReader::class), $this->app->make(SalesNumberAllocator::class), new FixedCreditIdentity, new FailingCreditCreator, new SalesCreditInvoiceConsistency, $this->app->make(TransactionManager::class));
-        self::assertSame(SalesCreditInvoiceWriteResult::DuplicateIdentity, $useCase->execute($this->admin(self::A), $source, new DateTimeImmutable('2026-08-24')));
+        self::assertSame(SalesCreditInvoiceWriteResult::DuplicateIdentity, $useCase->execute($this->admin(self::A), $source, new DateTimeImmutable('2026-08-24'))->status());
         self::assertSame($before, DB::table('sales_number_sequences')->where('administration_id', self::A)->where('sequence_type', 'sales_credit_invoice')->value('next_value'));
         self::assertFalse(class_exists(PostSalesCreditInvoice::class));
 
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
         $this->expectException(QueryException::class);
         DB::table('sales_credit_invoice_lines')->insert(['id' => $this->id(2, 61, 1), 'administration_id' => self::B, 'sales_credit_invoice_id' => $this->creditId()->toString(), 'description' => 'cross tenant', 'quantity' => '1', 'unit_price_amount' => '1', 'currency' => 'EUR', 'created_at' => now(), 'updated_at' => now()]);
     }
@@ -180,7 +181,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         $withoutTax = $this->postedSource(self::A, 1, 25);
         DB::table('tax_postings')->where('source_document_id', $withoutTax->toString())->delete();
         $credited = $this->postedSource(self::A, 1, 26);
-        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $credited));
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $credited)->status());
         $ambiguous = $this->postedSource(self::A, 1, 27);
         $this->duplicateOriginal($ambiguous, 27);
         $reversed = $this->postedSource(self::A, 1, 28);
@@ -205,7 +206,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         self::assertSame(SalesCreditSourceStatus::Success, $single->read($this->admin(self::A), $valid)->status());
     }
 
-    private function create(string $admin, SalesInvoiceId $source): SalesCreditInvoiceWriteResult
+    private function create(string $admin, SalesInvoiceId $source): CreateSalesCreditInvoiceResult
     {
         return $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin($admin), $source, new DateTimeImmutable('2026-08-24'));
     }

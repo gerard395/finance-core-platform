@@ -19,6 +19,8 @@ use App\Http\Controllers\Sales\OrderLineController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\QuotationLifecycleController;
 use App\Http\Controllers\Sales\QuotationLineController;
+use App\Http\Controllers\Sales\SalesCreditInvoiceController;
+use App\Http\Controllers\Sales\SalesCreditInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceController;
 use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceLineController;
@@ -217,3 +219,9 @@ Route::delete('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineControl
 Route::post('/sales/invoices/{invoice}/finalize', [SalesInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueInvoices)])->name('sales.invoices.finalize');
 Route::post('/sales/invoices/{invoice}/cancel', [SalesInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.invoices.cancel');
 Route::post('/sales/invoices/{invoice}/post', SalesInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::PostInvoices)])->name('sales.invoices.post');
+Route::get('/sales/credit-invoices', [SalesCreditInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.credit-invoices.index');
+Route::get('/sales/credit-invoices/create', [SalesCreditInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageCreditInvoiceDrafts)])->name('sales.credit-invoices.create');
+Route::post('/sales/credit-invoices', [SalesCreditInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageCreditInvoiceDrafts)])->name('sales.credit-invoices.store');
+Route::get('/sales/credit-invoices/{creditInvoice}', [SalesCreditInvoiceController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.credit-invoices.show');
+Route::post('/sales/credit-invoices/{creditInvoice}/finalize', [SalesCreditInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueCreditInvoices)])->name('sales.credit-invoices.finalize');
+Route::post('/sales/credit-invoices/{creditInvoice}/cancel', [SalesCreditInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.credit-invoices.cancel');

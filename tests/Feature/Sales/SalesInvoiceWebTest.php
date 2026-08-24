@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature\Sales;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Sales\CreateSalesCreditInvoiceFromInvoice;
 use App\Application\Sales\CreateSalesInvoice;
+use App\Application\Sales\PostSalesInvoice;
 use App\Application\Sales\SalesNumberSequenceProvisioner;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
@@ -44,6 +46,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\SalesCreditInvoiceRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\SalesInvoiceRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\TaxCodeRecord;
 use DateTimeImmutable;
@@ -351,6 +354,118 @@ final class SalesInvoiceWebTest extends TestCase
         self::assertStringNotContainsString('Betaald markeren', $blade);
     }
 
+    public function test_credit_web_authorization_navigation_routes_and_empty_states_are_exact(): void
+    {
+        $this->get('/sales/credit-invoices')->assertRedirect('/login');
+        $this->login();
+        $this->get('/sales/credit-invoices')->assertForbidden();
+        $this->assign(SalesRole::Viewer, 40);
+        $this->get('/sales/credit-invoices')->assertOk()->assertSee('Nog geen creditfacturen.')->assertSee('Offertes')->assertSee('Orders')->assertSee('Facturen')->assertSee('Creditfacturen')->assertDontSee('Nieuwe creditfactuur');
+        $this->get('/sales/credit-invoices/create')->assertForbidden();
+        foreach (['index', 'create', 'store', 'show', 'finalize', 'cancel'] as $name) {
+            self::assertTrue(Route::has('sales.credit-invoices.'.$name));
+        }
+        foreach (['edit', 'lines.store', 'lines.update', 'lines.destroy', 'post', 'paid', 'refund'] as $name) {
+            self::assertFalse(Route::has('sales.credit-invoices.'.$name));
+        }
+        self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.store')?->methods());
+        self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.finalize')?->methods());
+        self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.cancel')?->methods());
+    }
+
+    public function test_credit_selector_create_and_detail_use_only_historical_full_source_truth(): void
+    {
+        $this->assign(SalesRole::Editor, 41);
+        $this->login();
+        $posted = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 40);
+        $paid = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 41);
+        SalesInvoiceRecord::query()->whereKey($paid->toString())->update(['status' => 'paid']);
+        $hiddenDraft = $this->finalizedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 42, 'draft');
+        $hiddenB = $this->postedInvoice(self::ADMIN_B, self::CUSTOMER_B, self::ADDRESS_B, 43);
+        RelationRecord::query()->where('administration_id', self::ADMIN_A)->update(['display_name' => 'Later renamed']);
+        CustomerRecord::query()->where('administration_id', self::ADMIN_A)->update(['active' => false]);
+
+        $this->get('/sales/credit-invoices/create')->assertOk()->assertSee('F000001')->assertSee('F000002')->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Geboekt')->assertSee('Betaald')->assertSee('EUR 121,00')->assertDontSee($hiddenDraft->toString())->assertDontSee($hiddenB->toString())->assertSee('Gedeeltelijke credits en regelwijzigingen worden niet ondersteund.')->assertDontSee('credit_amount')->assertDontSee('quantity_override');
+        $response = $this->post('/sales/credit-invoices', ['source_invoice_id' => $posted->toString(), 'credit_date' => '2026-08-24', 'administration_id' => self::ADMIN_B, 'customer_id' => self::CUSTOMER_B, 'currency' => 'USD', 'status' => 'posted', 'lines' => [['amount' => '1']], 'tax_rate' => '0']);
+        $credit = SalesCreditInvoiceRecord::query()->firstOrFail();
+        $response->assertRedirect('/sales/credit-invoices/'.$credit->getAttribute('id'));
+        self::assertSame(self::ADMIN_A, $credit->getAttribute('administration_id'));
+        self::assertSame($posted->toString(), $credit->getAttribute('source_sales_invoice_id'));
+        self::assertSame(self::CUSTOMER_A, $credit->getAttribute('customer_id'));
+        self::assertSame('Customer <script>alert(1)</script>', $credit->getAttribute('customer_name_snapshot'));
+        self::assertSame('EUR', $credit->getAttribute('currency'));
+        self::assertSame('draft', $credit->getAttribute('status'));
+        self::assertSame('C000001', $credit->getAttribute('sales_credit_invoice_number'));
+        $this->assertDatabaseHas('sales_credit_invoice_lines', ['sales_credit_invoice_id' => $credit->getAttribute('id'), 'description' => 'Posting service', 'unit_price_amount' => '100']);
+        $this->get('/sales/credit-invoices/'.$credit->getAttribute('id'))->assertOk()->assertSee('F000001')->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Invoice &lt;script&gt;alert(2)&lt;/script&gt;', false)->assertSee('Posting service')->assertSee('EUR 100,00')->assertDontSee('<script>', false)->assertDontSee('Regel toevoegen')->assertDontSee('Regel bewerken')->assertDontSee('Creditfactuur boeken');
+
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $paid->toString(), 'credit_date' => '2026-08-25'])->assertRedirect();
+        $this->assertDatabaseHas('sales_credit_invoices', ['administration_id' => self::ADMIN_A, 'source_sales_invoice_id' => $paid->toString(), 'sales_credit_invoice_number' => 'C000002', 'status' => 'draft']);
+    }
+
+    public function test_credit_create_revalidates_stale_invalid_and_cross_tenant_sources_safely(): void
+    {
+        $this->assign(SalesRole::Editor, 42);
+        $this->login();
+        $credited = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 44);
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $credited->toString(), 'credit_date' => '2026-08-24'])->assertRedirect();
+        $count = SalesCreditInvoiceRecord::query()->count();
+        $next = DB::table('sales_number_sequences')->where('administration_id', self::ADMIN_A)->where('sequence_type', 'sales_credit_invoice')->value('next_value');
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $credited->toString(), 'credit_date' => '2026-08-24'])->assertSessionHasErrors(['source_invoice_id' => 'Deze factuur kan niet worden gecrediteerd.']);
+        self::assertSame($count, SalesCreditInvoiceRecord::query()->count());
+        self::assertSame($next, DB::table('sales_number_sequences')->where('administration_id', self::ADMIN_A)->where('sequence_type', 'sales_credit_invoice')->value('next_value'));
+
+        $invalid = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 45);
+        DB::table('sales_invoice_postings')->where('sales_invoice_id', $invalid->toString())->delete();
+        $this->get('/sales/credit-invoices/create')->assertOk()->assertDontSee($invalid->toString());
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $invalid->toString(), 'credit_date' => '2026-08-24'])->assertSessionHasErrors(['source_invoice_id' => 'De factuur heeft geen consistente financiële broninformatie.']);
+        $crossTenant = $this->postedInvoice(self::ADMIN_B, self::CUSTOMER_B, self::ADDRESS_B, 46);
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $crossTenant->toString(), 'credit_date' => '2026-08-24', 'administration_id' => self::ADMIN_B])->assertNotFound();
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => 'not-a-uuid', 'credit_date' => '2026-08-24'])->assertSessionHasErrors('source_invoice_id');
+    }
+
+    public function test_credit_index_detail_lifecycle_permissions_and_mutation_only_redirects_are_tenant_safe(): void
+    {
+        $this->assign(SalesRole::Manager, 43);
+        $this->login();
+        $sourceA = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 47);
+        $sourceB = $this->postedInvoice(self::ADMIN_B, self::CUSTOMER_B, self::ADDRESS_B, 48);
+        $resultA = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_A), $sourceA, new DateTimeImmutable('2026-08-24'));
+        $resultB = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_B), $sourceB, new DateTimeImmutable('2026-08-24'));
+        $idA = $resultA->creditInvoiceId();
+        $idB = $resultB->creditInvoiceId();
+        self::assertNotNull($idA);
+        self::assertNotNull($idB);
+        $this->get('/sales/credit-invoices')->assertOk()->assertSee('C000001')->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertDontSee('Customer B');
+        $this->get('/sales/credit-invoices?q=absent')->assertOk()->assertSee('Geen creditfacturen gevonden.');
+        $this->get('/sales/credit-invoices?status=draft&date_from=2026-08-01&date_to=2026-08-31&sort=number&direction=asc')->assertOk()->assertSee('C000001');
+        $this->get('/sales/credit-invoices/'.$idB->toString())->assertNotFound();
+        $this->get('/sales/credit-invoices/not-a-uuid')->assertNotFound();
+        $this->post('/sales/credit-invoices/'.$idA->toString().'/finalize')->assertRedirect('/sales/credit-invoices/'.$idA->toString());
+        $this->assertDatabaseHas('sales_credit_invoices', ['id' => $idA->toString(), 'status' => 'finalized']);
+        $this->get('/sales/credit-invoices/'.$idA->toString())->assertOk()->assertSee('Definitief')->assertSee('Creditfactuur annuleren')->assertDontSee('Creditfactuur definitief maken')->assertDontSee('Creditfactuur boeken');
+        $this->post('/sales/credit-invoices/'.$idA->toString().'/cancel')->assertRedirect();
+        $this->assertDatabaseHas('sales_credit_invoices', ['id' => $idA->toString(), 'status' => 'cancelled']);
+        DB::table('sales_credit_invoices')->where('id', $idA->toString())->update(['status' => 'posted']);
+        $this->get('/sales/credit-invoices/'.$idA->toString())->assertOk()->assertSee('Geboekt')->assertDontSee('Creditfactuur annuleren')->assertDontSee('Creditfactuur boeken');
+        $this->post('/sales/credit-invoices/'.$idA->toString().'/cancel')->assertRedirect()->assertSessionHas('error');
+    }
+
+    public function test_credit_permissions_are_independent_and_mutation_only_success_redirects_to_app(): void
+    {
+        $source = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 49);
+        $this->assignPermissionOnly(SalesPermission::ManageCreditInvoiceDrafts, 'CREDIT_DRAFT_ONLY', 44);
+        $this->login();
+        $this->get('/sales/credit-invoices')->assertForbidden();
+        $this->get('/sales/credit-invoices/create')->assertOk();
+        $this->post('/sales/credit-invoices', ['source_invoice_id' => $source->toString(), 'credit_date' => '2026-08-24'])->assertRedirect('/app');
+        $credit = SalesCreditInvoiceRecord::query()->firstOrFail();
+        $this->post('/sales/credit-invoices/'.$credit->getAttribute('id').'/finalize')->assertForbidden();
+        $this->assignPermissionOnly(SalesPermission::IssueCreditInvoices, 'CREDIT_ISSUE_ONLY', 45);
+        $this->post('/sales/credit-invoices/'.$credit->getAttribute('id').'/finalize')->assertRedirect('/app');
+        self::assertFalse(Route::has('sales.credit-invoices.post'));
+    }
+
     private function provision(): void
     {
         $user = new UserId(new Uuid(self::USER));
@@ -401,6 +516,14 @@ final class SalesInvoiceWebTest extends TestCase
         $tax = $tenant === 1 ? self::TAX_ACTIVE : self::TAX_B;
         DB::table('sales_invoice_lines')->insert(['id' => sprintf('8f000000-0000-4000-8000-%012d', $sequence), 'administration_id' => $admin, 'sales_invoice_id' => $invoice->toString(), 'description' => 'Posting service', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'tax_code_id_snapshot' => $tax, 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'Snapshot VAT', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output', 'created_at' => now(), 'updated_at' => now()]);
         SalesInvoiceRecord::query()->whereKey($invoice->toString())->update(['status' => $status]);
+
+        return $invoice;
+    }
+
+    private function postedInvoice(string $admin, string $customer, string $address, int $sequence): SalesInvoiceId
+    {
+        $invoice = $this->finalizedInvoice($admin, $customer, $address, $sequence);
+        self::assertSame('Success', $this->app->make(PostSalesInvoice::class)->execute($this->admin($admin), $invoice)->status()->name);
 
         return $invoice;
     }

@@ -19,31 +19,31 @@ final readonly class CreateSalesCreditInvoiceFromInvoice
 {
     public function __construct(private SalesCreditSourceReader $sources, private SalesNumberAllocator $numbers, private SalesCreditInvoiceIdentityGenerator $identities, private SalesCreditInvoiceCreator $credits, private SalesCreditInvoiceConsistency $consistency, private TransactionManager $transactions) {}
 
-    public function execute(AdministrationId $administrationId, SalesInvoiceId $sourceInvoiceId, DateTimeImmutable $creditDate): SalesCreditInvoiceWriteResult
+    public function execute(AdministrationId $administrationId, SalesInvoiceId $sourceInvoiceId, DateTimeImmutable $creditDate): CreateSalesCreditInvoiceResult
     {
         try {
-            return $this->transactions->run(function () use ($administrationId, $sourceInvoiceId, $creditDate): SalesCreditInvoiceWriteResult {
+            return $this->transactions->run(function () use ($administrationId, $sourceInvoiceId, $creditDate): CreateSalesCreditInvoiceResult {
                 $source = $this->sources->read($administrationId, $sourceInvoiceId);
                 $failure = self::sourceFailure($source->status());
                 if ($failure !== null) {
-                    return $failure;
+                    return new CreateSalesCreditInvoiceResult($failure);
                 }
                 $invoice = $source->invoice();
                 $customer = $invoice?->customerSnapshot();
                 $address = $invoice?->invoiceAddressSnapshot();
                 if ($invoice === null || $customer === null || $address === null) {
-                    return SalesCreditInvoiceWriteResult::ReversalSourceInvalid;
+                    return new CreateSalesCreditInvoiceResult(SalesCreditInvoiceWriteResult::ReversalSourceInvalid);
                 }
                 $allocation = $this->numbers->next($administrationId, SalesNumberType::SalesCreditInvoice);
                 if ($allocation->status() === SalesNumberAllocationStatus::SequenceMissing) {
-                    return SalesCreditInvoiceWriteResult::SequenceMissing;
+                    return new CreateSalesCreditInvoiceResult(SalesCreditInvoiceWriteResult::SequenceMissing);
                 }
                 if ($allocation->status() === SalesNumberAllocationStatus::SequenceInactive) {
-                    return SalesCreditInvoiceWriteResult::SequenceInactive;
+                    return new CreateSalesCreditInvoiceResult(SalesCreditInvoiceWriteResult::SequenceInactive);
                 }
                 $number = $allocation->number();
                 if (! $number instanceof SalesCreditInvoiceNumber) {
-                    return SalesCreditInvoiceWriteResult::SequenceMissing;
+                    return new CreateSalesCreditInvoiceResult(SalesCreditInvoiceWriteResult::SequenceMissing);
                 }
                 $credit = new SalesCreditInvoice($this->identities->creditInvoiceId(), $number, $administrationId, $invoice->customerId(), $invoice->currency(), $creditDate, $invoice->id(), SalesCreditInvoiceStatus::Draft, $customer, $address);
                 foreach ($invoice->lines() as $line) {
@@ -57,10 +57,10 @@ final readonly class CreateSalesCreditInvoiceFromInvoice
                     throw new SalesCreditPersistenceFailure($result);
                 }
 
-                return SalesCreditInvoiceWriteResult::Success;
+                return CreateSalesCreditInvoiceResult::success($credit->id());
             });
         } catch (SalesCreditPersistenceFailure $failure) {
-            return $failure->result;
+            return new CreateSalesCreditInvoiceResult($failure->result);
         }
     }
 
