@@ -311,6 +311,31 @@ bronofferte en exacte permissionhandhaving. Er zijn geen mergeblockers. De enige
 reviewaanvulling is een expliciete regressieassertie dat **Offerte verzenden** geen
 Order creëert. Order→SalesInvoice blijft deferred en valt nadrukkelijk buiten W4A.
 
+### Batch W4B – Order Invoicing & Conversion
+
+**Status:** Designed
+
+W4B converteert Confirmed en PartiallyInvoiced Orders veilig naar één of meerdere
+Draft SalesInvoices met partial quantities per OrderLine. Draft-reservations bewaken
+beschikbare quantity; Finalize schrijft immutable allocations en leidt uitsluitend
+daaruit PartiallyInvoiced/FullyInvoiced af. Een append-only release maakt een
+geannuleerde Draft-reservation vrij. De Order-headerlock, tenant-scoped constraints,
+transactionele SalesInvoice-nummering en duurzame request-idempotency voorkomen
+over-invoicing en dubbele browser-submits.
+
+- W4B-000 – Order invoicing allocation & conversion design
+- W4B-001 – Order invoicing facts, quantity ledger & persistence
+- W4B-002 – Create SalesInvoice from Order contracts
+- W4B-003 – Finalize/cancel allocation synchronization
+- W4B-004 – Order invoicing Web flow
+- W4B-005 – Review & regression
+
+Customersnapshot en Currency komen exact uit Order; Invoice-address en actieve Output
+TaxCode worden expliciet bij invoice creation geselecteerd. Source-derived Draft-lines
+zijn in v1 commercieel immutable. Orderstatus verandert bij invoice Finalize, niet bij
+Draft create of financial Post. Credits en annulering na Finalize heropenen Order-
+quantity niet automatisch.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
