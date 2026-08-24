@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Sales;
 
+use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Identity\ProvisionUserAccount;
 use App\Application\Sales\AddOrderLine;
 use App\Application\Sales\ConfirmOrder;
@@ -202,6 +203,7 @@ final class OrderWebTest extends TestCase
         $this->assign(SalesRole::Manager, 10);
         $this->login();
         $this->invoiceCatalogue();
+        $this->app->make(TaxCodeCatalogueProvisioner::class)->ensureDutchBasicOutputForAdministration($this->admin(self::ADMIN_A));
         $order = $this->order(self::ADMIN_A, self::CUSTOMER_A, 10);
         $line = $this->lineWithQuantity(10, '10', '<script>Service</script>');
         $secondLine = $this->lineWithQuantity(110, '5', 'Second service');
@@ -210,7 +212,7 @@ final class OrderWebTest extends TestCase
         $this->post('/sales/orders/'.$order->toString().'/confirm')->assertRedirect();
 
         $this->get('/sales/orders/'.$order->toString())->assertOk()->assertSee('Factuur maken')->assertSee('Besteld')->assertSee('Gereserveerd')->assertSee('Gefactureerd')->assertSee('Beschikbaar')->assertSee('&lt;script&gt;Service&lt;/script&gt;', false)->assertDontSee('<script>Service</script>', false);
-        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('10')->assertSee('BTW21')->assertSee('Invoice &lt;b&gt;A&lt;/b&gt;', false)->assertDontSee('INPUT')->assertDontSee('BTW-B');
+        $page = $this->get('/sales/orders/'.$order->toString().'/invoice/create')->assertOk()->assertSee('10')->assertSee('BTW21')->assertSee('BTW9')->assertSee('BTW0')->assertSee('Invoice &lt;b&gt;A&lt;/b&gt;', false)->assertDontSee('INPUT')->assertDontSee('BTW-B');
         $token = $page->viewData('draftRequestToken');
         self::assertIsString($token);
         $payload = $this->invoicePayload($token, $line->id()->toString(), '4');

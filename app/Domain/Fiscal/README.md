@@ -46,5 +46,7 @@ TaxPosting is Fiscal-owned bronwaarheid die zelfstandig TaxCodeId, gebruikte Tax
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.
-- De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden; er worden zonder autoritatieve configuratie geen fiscale defaults geprovisioned.
+- De duurzame catalogus is Administration-scoped. Alleen actieve codes met de gevraagde direction worden aangeboden. De expliciete Nederlandse bootstrap maakt create-missing-only de actuele 21%-, 9%- en 0%-Outputcodes; zij kiest nooit een default of productclassificatie en wijzigt bestaande codes niet.
+- Het 0%-tarief is niet hetzelfde als vrijstelling. Het huidige model heeft geen aparte vrijstellingssemantiek; de Nederlandse bootstrap maakt daarom geen vrijstellingscode.
+- Zonder effective dating is bootstrap geen rate-updater. Wettelijke tariefwijzigingen vereisen expliciete catalogusversioning en veranderen nooit historische TaxPosting-snapshots.
 - Globale, concurrency-safe uniciteit van TaxPostingId en dubbele-reversalpreventie worden later door persistenceconstraints en transacties afgedwongen; de huidige policies bewaken een volledig en consistent aangeleverde historie.
