@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace Tests\Feature\Sales;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Sales\AcceptQuotation;
 use App\Application\Sales\AddQuotationLine;
 use App\Application\Sales\CreateQuotation;
 use App\Application\Sales\SalesNumberSequenceProvisioner;
+use App\Application\Sales\SendQuotation;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -39,6 +41,7 @@ use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
+use App\Http\Middleware\EnsureSalesPermission;
 use App\Infrastructure\Identity\SalesAuthorizationProvisioner;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
@@ -46,11 +49,13 @@ use App\Infrastructure\Persistence\Eloquent\EloquentMembershipRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\OrderRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\QuotationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Route;
 use Tests\TestCase;
 
 final class QuotationWebTest extends TestCase
@@ -190,6 +195,92 @@ final class QuotationWebTest extends TestCase
         $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_date' => '2026-08-21'])->assertRedirect('/app');
     }
 
+    public function test_accepted_quotation_exposes_order_action_and_conversion_preserves_source_data(): void
+    {
+        $this->assign(SalesRole::Editor, 6);
+        $this->login();
+        $quotation = $this->acceptedQuotation(self::ADMIN_A, self::CUSTOMER_A, 10);
+
+        $this->get('/sales/quotations/'.$quotation->toString())
+            ->assertOk()
+            ->assertSee('Order maken')
+            ->assertSee('name="order_date"', false)
+            ->assertSee(route('sales.quotations.order.store', $quotation->toString()), false);
+
+        $response = $this->post('/sales/quotations/'.$quotation->toString().'/order', [
+            'order_date' => '2026-08-24',
+            'administration_id' => self::ADMIN_B,
+            'customer_id' => self::CUSTOMER_B,
+            'status' => 'confirmed',
+        ]);
+        $order = OrderRecord::query()->where('source_quotation_id', $quotation->toString())->firstOrFail();
+        $response->assertRedirect('/sales/orders/'.$order->getAttribute('id'))->assertSessionHas('status', 'Order aangemaakt.');
+        $this->assertDatabaseHas('orders', [
+            'id' => $order->getAttribute('id'),
+            'administration_id' => self::ADMIN_A,
+            'source_quotation_id' => $quotation->toString(),
+            'customer_id' => self::CUSTOMER_A,
+            'order_date' => '2026-08-24',
+            'status' => 'draft',
+        ]);
+        self::assertSame(1, DB::table('order_lines')->where('order_id', $order->getAttribute('id'))->count());
+        $this->assertDatabaseHas('quotations', ['id' => $quotation->toString(), 'status' => 'accepted']);
+
+        $this->get('/sales/quotations/'.$quotation->toString())->assertOk()->assertSee('Bekijk order')->assertDontSee('Order maken');
+        $this->post('/sales/quotations/'.$quotation->toString().'/order', ['order_date' => '2026-08-25'])
+            ->assertRedirect('/sales/orders/'.$order->getAttribute('id'))
+            ->assertSessionHas('status', 'Voor deze offerte bestaat al een order.');
+        self::assertSame(1, OrderRecord::query()->where('source_quotation_id', $quotation->toString())->count());
+    }
+
+    public function test_order_conversion_enforces_exact_permission_tenant_and_runtime_revocation(): void
+    {
+        $quotationA = $this->acceptedQuotation(self::ADMIN_A, self::CUSTOMER_A, 11);
+        $quotationB = $this->acceptedQuotation(self::ADMIN_B, self::CUSTOMER_B, 12);
+        $this->login();
+        $this->assign(SalesRole::Viewer, 7);
+
+        $this->get('/sales/quotations/'.$quotationA->toString())->assertOk()->assertDontSee('Order maken');
+        $this->post('/sales/quotations/'.$quotationA->toString().'/order', ['order_date' => '2026-08-24'])->assertForbidden();
+
+        $this->assign(SalesRole::Editor, 8);
+        $this->post('/sales/quotations/'.$quotationB->toString().'/order', ['order_date' => '2026-08-24'])->assertNotFound();
+        $this->post('/sales/quotations/not-a-uuid/order', ['order_date' => '2026-08-24'])->assertNotFound();
+        DB::table('administration_membership_roles')->where('membership_id', self::MEMBERSHIP_A)->delete();
+        $this->post('/sales/quotations/'.$quotationA->toString().'/order', ['order_date' => '2026-08-24'])->assertForbidden();
+        $this->assertDatabaseMissing('orders', ['source_quotation_id' => $quotationA->toString()]);
+    }
+
+    public function test_mutation_only_redirect_validation_and_failure_messages_are_safe(): void
+    {
+        $this->grantOnly(SalesPermission::ManageOrders, 20);
+        $this->login();
+        $accepted = $this->acceptedQuotation(self::ADMIN_A, self::CUSTOMER_A, 13);
+
+        $this->post('/sales/quotations/'.$accepted->toString().'/order', [])->assertSessionHasErrors('order_date');
+        $this->post('/sales/quotations/'.$accepted->toString().'/order', ['order_date' => '24-08-2026'])->assertSessionHasErrors('order_date');
+        $this->post('/sales/quotations/'.$accepted->toString().'/order', ['order_date' => '2026-08-24'])
+            ->assertRedirect('/app')->assertSessionHas('status', 'Order aangemaakt.');
+
+        $draft = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 14);
+        $this->post('/sales/quotations/'.$draft->toString().'/order', ['order_date' => '2026-08-24'])
+            ->assertRedirect('/app')->assertSessionHas('error', 'Deze offerte kan niet naar een order worden omgezet.');
+        $missing = $this->acceptedQuotation(self::ADMIN_A, self::CUSTOMER_A, 15);
+        DB::table('sales_number_sequences')->where('administration_id', self::ADMIN_A)->where('sequence_type', 'order')->delete();
+        $this->post('/sales/quotations/'.$missing->toString().'/order', ['order_date' => '2026-08-24'])
+            ->assertRedirect('/app')->assertSessionHas('error', 'De ordernummerreeks is niet beschikbaar.');
+    }
+
+    public function test_route_is_post_only_and_no_order_invoice_action_is_introduced(): void
+    {
+        self::assertTrue(Route::has('sales.quotations.order.store'));
+        self::assertFalse(Route::has('sales.orders.invoice.store'));
+        $route = Route::getRoutes()->getByName('sales.quotations.order.store');
+        self::assertNotNull($route);
+        self::assertSame(['POST'], $route->methods());
+        self::assertContains(EnsureSalesPermission::using(SalesPermission::ManageOrders), $route->gatherMiddleware());
+    }
+
     private function provision(): void
     {
         $user = new UserId(new Uuid(self::USER));
@@ -236,6 +327,24 @@ final class QuotationWebTest extends TestCase
     private function line(int $sequence): QuotationLine
     {
         return new QuotationLine(new QuotationLineId(new Uuid(sprintf('e1000000-0000-4000-8000-%012d', $sequence))), new LineDescription('Service line'), new Quantity('2'), new Money('10', new Currency('EUR')));
+    }
+
+    private function acceptedQuotation(string $admin, string $customer, int $sequence): QuotationId
+    {
+        $id = $this->quotation($admin, $customer, $sequence);
+        $this->app->make(AddQuotationLine::class)->execute($this->admin($admin), $id, $this->line($sequence));
+        $this->app->make(SendQuotation::class)->execute($this->admin($admin), $id);
+        $this->app->make(AcceptQuotation::class)->execute($this->admin($admin), $id);
+
+        return $id;
+    }
+
+    private function grantOnly(SalesPermission $permission, int $sequence): void
+    {
+        $roleId = new RoleId(new Uuid(sprintf('f2000000-0000-4000-8000-%012d', $sequence)));
+        (new EloquentRoleRepository)->save(new Role($roleId, new RoleCode('CUSTOM_'.$sequence), new RoleName('Custom '.$sequence), null, RoleStatus::Active));
+        (new EloquentRolePermissionRepository)->save(new RolePermission(new RolePermissionId(new Uuid(sprintf('f3000000-0000-4000-8000-%012d', $sequence))), $roleId, $permission->id(), true));
+        (new EloquentMembershipRoleRepository)->save(new MembershipRole(new MembershipRoleId(new Uuid(sprintf('f4000000-0000-4000-8000-%012d', $sequence))), new AdministrationMembershipId(new Uuid(self::MEMBERSHIP_A)), $roleId, true));
     }
 
     private function admin(string $id): AdministrationId

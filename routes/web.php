@@ -19,6 +19,7 @@ use App\Http\Controllers\Sales\OrderLineController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\QuotationLifecycleController;
 use App\Http\Controllers\Sales\QuotationLineController;
+use App\Http\Controllers\Sales\QuotationOrderController;
 use App\Http\Controllers\Sales\SalesCreditInvoiceController;
 use App\Http\Controllers\Sales\SalesCreditInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesCreditInvoicePostingController;
@@ -195,6 +196,9 @@ Route::post('/sales/quotations/{quotation}/reject', [QuotationLifecycleControlle
 Route::post('/sales/quotations/{quotation}/expire', [QuotationLifecycleController::class, 'expire'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
     ->name('sales.quotations.expire');
+Route::post('/sales/quotations/{quotation}/order', QuotationOrderController::class)
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])
+    ->name('sales.quotations.order.store');
 
 Route::get('/sales/orders', [OrderController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.orders.index');
 Route::get('/sales/orders/create', [OrderController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.create');
