@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Application\Sales;
 
+use App\Application\Sales\CreateSalesInvoicePostingRequest;
 use App\Application\Sales\PostSalesInvoiceWithTax;
 use App\Application\Sales\SalesFiscalLineInput;
 use App\Application\Sales\SalesFiscalPostingResult;
@@ -249,6 +250,7 @@ final class PostSalesInvoiceWithTaxTest extends TestCase
                 $validation,
                 static fn (): JournalEntryId => new JournalEntryId(new Uuid(self::POSTED_ENTRY_ID)),
             ),
+            new CreateSalesInvoicePostingRequest,
         );
 
         return $useCase->execute(
@@ -308,6 +310,7 @@ final class PostSalesInvoiceWithTaxTest extends TestCase
                 new TaxCodeCode('vat'.$rate),
                 new TaxCodeName('VAT '.$rate.'%'),
                 new TaxRate($rate),
+                TaxPostingDirection::Output,
                 TaxCodeStatus::Active,
             ),
             new LedgerAccountId($this->nextUuid('7')),

@@ -11,6 +11,7 @@ use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
@@ -26,6 +27,7 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentOpenItemRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemSettlementRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
@@ -77,6 +79,8 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         self::assertTrue($item->relationId()->equals($read[0]->relationId()));
         self::assertTrue($item->journalEntryId()->equals($read[0]->journalEntryId()));
         self::assertSame(OpenItemType::Receivable, $read[0]->type());
+        self::assertSame(OpenItemSide::Debit, $read[0]->side());
+        self::assertSame('debit', OpenItemRecord::query()->firstOrFail()->getAttribute('side'));
         self::assertSame('receivable', OpenItemRecord::query()->firstOrFail()->getAttribute('open_item_type'));
         self::assertSame('1000.12345678', $read[0]->originalAmount()->amount());
         self::assertSame('EUR', $read[0]->originalAmount()->currency()->code());
@@ -100,24 +104,27 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         $read = $this->read(self::ADMINISTRATION_A, '2026-01-31')[0];
 
         self::assertSame(OpenItemType::Payable, $read->type());
+        self::assertSame(OpenItemSide::Credit, $read->side());
         self::assertSame('payable', OpenItemRecord::query()->firstOrFail()->getAttribute('open_item_type'));
         self::assertCount(1, $read->settlements());
         self::assertSame('60', $read->openAmountAt($this->date('2026-01-31'))->amount());
     }
 
-    public function test_database_requires_open_item_type_without_default_and_rejects_invalid_values(): void
+    public function test_database_requires_open_item_type_and_side_without_defaults_and_rejects_invalid_values(): void
     {
-        $column = DB::selectOne(<<<'SQL'
-            SELECT COLUMN_DEFAULT, IS_NULLABLE
+        $columns = DB::select(<<<'SQL'
+            SELECT COLUMN_NAME, COLUMN_DEFAULT, IS_NULLABLE
             FROM information_schema.COLUMNS
             WHERE TABLE_SCHEMA = DATABASE()
               AND TABLE_NAME = 'open_items'
-              AND COLUMN_NAME = 'open_item_type'
+              AND COLUMN_NAME IN ('open_item_type', 'side')
             SQL);
 
-        self::assertNotNull($column);
-        self::assertSame('NO', $column->IS_NULLABLE);
-        self::assertNull($column->COLUMN_DEFAULT);
+        self::assertCount(2, $columns);
+        foreach ($columns as $column) {
+            self::assertSame('NO', $column->IS_NULLABLE);
+            self::assertNull($column->COLUMN_DEFAULT);
+        }
 
         try {
             OpenItemRecord::query()->create([
@@ -126,6 +133,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
                 'relation_id' => '40000000-0000-4000-8000-000000000001',
                 'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
                 'open_item_type' => 'other',
+                'side' => OpenItemSide::Debit->value,
                 'original_amount' => '100',
                 'currency' => 'EUR',
                 'opened_on' => '2026-01-01',
@@ -134,6 +142,19 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         } catch (QueryException) {
             self::assertSame(0, OpenItemRecord::query()->count());
         }
+
+        $this->expectException(QueryException::class);
+        OpenItemRecord::query()->create([
+            'id' => '32000000-0000-4000-8000-000000000002',
+            'administration_id' => self::ADMINISTRATION_A,
+            'relation_id' => '40000000-0000-4000-8000-000000000001',
+            'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
+            'open_item_type' => OpenItemType::Receivable->value,
+            'side' => 'other',
+            'original_amount' => '100',
+            'currency' => 'EUR',
+            'opened_on' => '2026-01-01',
+        ]);
     }
 
     public function test_full_future_history_is_hydrated_and_domain_reproduces_as_of_amounts(): void
@@ -343,14 +364,32 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
 
     private function createPostedEntry(string $administration, int $sequence): void
     {
+        JournalRecord::query()->create([
+            'id' => $this->journalId($administration, $sequence),
+            'administration_id' => $administration,
+            'code' => 'TEST'.$sequence,
+            'name' => 'Open item test journal '.$sequence,
+            'type' => 'general',
+            'status' => 'active',
+        ]);
         JournalEntryRecord::query()->create([
             'id' => $this->journalEntryId($administration, $sequence)->toString(),
             'administration_id' => $administration,
-            'journal_id' => sprintf('70000000-0000-4000-8000-%012d', $sequence),
+            'journal_id' => $this->journalId($administration, $sequence),
             'posting_date' => '2026-01-01',
             'reference' => 'OpenItem source '.$sequence,
             'status' => JournalEntryStatus::Posted->value,
         ]);
+    }
+
+    private function journalId(string $administration, int $sequence): string
+    {
+        return sprintf(
+            $administration === self::ADMINISTRATION_A
+                ? '70000000-0000-4000-8000-%012d'
+                : '71000000-0000-4000-8000-%012d',
+            $sequence,
+        );
     }
 
     private function createRelation(string $administration, int $sequence): void

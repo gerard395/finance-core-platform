@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Identity\Definitions\RelationsPermission;
+use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
@@ -12,7 +13,21 @@ use App\Http\Controllers\Relations\RelationCreateController;
 use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
 use App\Http\Controllers\Relations\RelationShowController;
+use App\Http\Controllers\Sales\OrderController;
+use App\Http\Controllers\Sales\OrderLifecycleController;
+use App\Http\Controllers\Sales\OrderLineController;
+use App\Http\Controllers\Sales\QuotationController;
+use App\Http\Controllers\Sales\QuotationLifecycleController;
+use App\Http\Controllers\Sales\QuotationLineController;
+use App\Http\Controllers\Sales\SalesCreditInvoiceController;
+use App\Http\Controllers\Sales\SalesCreditInvoiceLifecycleController;
+use App\Http\Controllers\Sales\SalesCreditInvoicePostingController;
+use App\Http\Controllers\Sales\SalesInvoiceController;
+use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
+use App\Http\Controllers\Sales\SalesInvoiceLineController;
+use App\Http\Controllers\Sales\SalesInvoicePostingController;
 use App\Http\Middleware\EnsureRelationsPermission;
+use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -140,3 +155,75 @@ Route::post('/relations/{relation}/supplier', [RelationClassificationController:
 Route::delete('/relations/{relation}/supplier', [RelationClassificationController::class, 'destroySupplier'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::ClassifySupplier)])
     ->name('relations.supplier.destroy');
+
+Route::get('/sales/quotations', [QuotationController::class, 'index'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])
+    ->name('sales.quotations.index');
+Route::get('/sales/quotations/create', [QuotationController::class, 'create'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.create');
+Route::post('/sales/quotations', [QuotationController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.store');
+Route::get('/sales/quotations/{quotation}', [QuotationController::class, 'show'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])
+    ->name('sales.quotations.show');
+Route::get('/sales/quotations/{quotation}/edit', [QuotationController::class, 'edit'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.edit');
+Route::put('/sales/quotations/{quotation}', [QuotationController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.update');
+Route::post('/sales/quotations/{quotation}/lines', [QuotationLineController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.store');
+Route::put('/sales/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.update');
+Route::delete('/sales/quotations/{quotation}/lines/{line}', [QuotationLineController::class, 'destroy'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.lines.destroy');
+Route::post('/sales/quotations/{quotation}/send', [QuotationLifecycleController::class, 'send'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.send');
+Route::post('/sales/quotations/{quotation}/accept', [QuotationLifecycleController::class, 'accept'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.accept');
+Route::post('/sales/quotations/{quotation}/reject', [QuotationLifecycleController::class, 'reject'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.reject');
+Route::post('/sales/quotations/{quotation}/expire', [QuotationLifecycleController::class, 'expire'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageQuotations)])
+    ->name('sales.quotations.expire');
+
+Route::get('/sales/orders', [OrderController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.orders.index');
+Route::get('/sales/orders/create', [OrderController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.create');
+Route::post('/sales/orders', [OrderController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.store');
+Route::get('/sales/orders/{order}', [OrderController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.orders.show');
+Route::get('/sales/orders/{order}/edit', [OrderController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.edit');
+Route::put('/sales/orders/{order}', [OrderController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.update');
+Route::post('/sales/orders/{order}/lines', [OrderLineController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.store');
+Route::put('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.update');
+Route::delete('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.destroy');
+Route::post('/sales/orders/{order}/confirm', [OrderLifecycleController::class, 'confirm'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.confirm');
+Route::post('/sales/orders/{order}/cancel', [OrderLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.cancel');
+
+Route::get('/sales/invoices', [SalesInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.invoices.index');
+Route::get('/sales/invoices/create', [SalesInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.create');
+Route::post('/sales/invoices', [SalesInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.store');
+Route::get('/sales/invoices/{invoice}', [SalesInvoiceController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.invoices.show');
+Route::get('/sales/invoices/{invoice}/edit', [SalesInvoiceController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.edit');
+Route::put('/sales/invoices/{invoice}', [SalesInvoiceController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.update');
+Route::post('/sales/invoices/{invoice}/lines', [SalesInvoiceLineController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.store');
+Route::put('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.update');
+Route::delete('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.destroy');
+Route::post('/sales/invoices/{invoice}/finalize', [SalesInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueInvoices)])->name('sales.invoices.finalize');
+Route::post('/sales/invoices/{invoice}/cancel', [SalesInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.invoices.cancel');
+Route::post('/sales/invoices/{invoice}/post', SalesInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::PostInvoices)])->name('sales.invoices.post');
+Route::get('/sales/credit-invoices', [SalesCreditInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.credit-invoices.index');
+Route::get('/sales/credit-invoices/create', [SalesCreditInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageCreditInvoiceDrafts)])->name('sales.credit-invoices.create');
+Route::post('/sales/credit-invoices', [SalesCreditInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageCreditInvoiceDrafts)])->name('sales.credit-invoices.store');
+Route::get('/sales/credit-invoices/{creditInvoice}', [SalesCreditInvoiceController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.credit-invoices.show');
+Route::post('/sales/credit-invoices/{creditInvoice}/finalize', [SalesCreditInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueCreditInvoices)])->name('sales.credit-invoices.finalize');
+Route::post('/sales/credit-invoices/{creditInvoice}/cancel', [SalesCreditInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.credit-invoices.cancel');
+Route::post('/sales/credit-invoices/{creditInvoice}/post', SalesCreditInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::PostCreditInvoices)])->name('sales.credit-invoices.post');

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Sales\Entities;
 
 use App\Domain\Sales\ValueObjects\SalesInvoiceLineId;
+use App\Domain\Sales\ValueObjects\SalesTaxSnapshot;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
 use App\Domain\Shared\Finance\Money;
@@ -19,6 +20,7 @@ final readonly class SalesInvoiceLine
         private LineDescription $description,
         private Quantity $quantity,
         private Money $unitPrice,
+        private ?SalesTaxSnapshot $taxSnapshot = null,
     ) {
         if (str_starts_with($unitPrice->amount(), '-')) {
             throw new InvalidArgumentException('Unit price cannot be negative.');
@@ -50,5 +52,10 @@ final readonly class SalesInvoiceLine
     public function lineTotal(): Money
     {
         return $this->lineTotal;
+    }
+
+    public function taxSnapshot(): ?SalesTaxSnapshot
+    {
+        return $this->taxSnapshot;
     }
 }

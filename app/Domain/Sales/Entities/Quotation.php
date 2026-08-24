@@ -10,7 +10,9 @@ use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
 use DomainException;
 use InvalidArgumentException;
@@ -27,12 +29,35 @@ final class Quotation
         private readonly CustomerId $customerId,
         private readonly Currency $currency,
         private QuotationStatus $status,
-        private readonly DateTimeImmutable $quotationDate,
-        private readonly ?DateTimeImmutable $expiryDate,
+        private DateTimeImmutable $quotationDate,
+        private ?DateTimeImmutable $expiryDate,
+        private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
     ) {
-        if ($expiryDate !== null && $expiryDate < $quotationDate) {
-            throw new InvalidArgumentException('Expiry date cannot precede quotation date.');
+        self::assertDates($quotationDate, $expiryDate);
+        self::assertCustomerSnapshot($customerId, $customerSnapshot);
+    }
+
+    /** @param list<QuotationLine> $lines */
+    public static function reconstitute(
+        QuotationId $id,
+        QuotationNumber $number,
+        AdministrationId $administrationId,
+        CustomerId $customerId,
+        Currency $currency,
+        QuotationStatus $status,
+        DateTimeImmutable $quotationDate,
+        ?DateTimeImmutable $expiryDate,
+        array $lines,
+        ?SalesCustomerSnapshot $customerSnapshot = null,
+    ): self {
+        $quotation = new self($id, $number, $administrationId, $customerId, $currency, $status, $quotationDate, $expiryDate, $customerSnapshot);
+        $quotation->restoreLines($lines);
+
+        if (in_array($status, [QuotationStatus::Sent, QuotationStatus::Accepted, QuotationStatus::Rejected], true) && $lines === []) {
+            throw new DomainException('A sent, accepted or rejected quotation must contain at least one line.');
         }
+
+        return $quotation;
     }
 
     public function id(): QuotationId
@@ -53,6 +78,18 @@ final class Quotation
     public function customerId(): CustomerId
     {
         return $this->customerId;
+    }
+
+    public function customerSnapshot(): ?SalesCustomerSnapshot
+    {
+        return $this->customerSnapshot;
+    }
+
+    private static function assertCustomerSnapshot(CustomerId $customerId, ?SalesCustomerSnapshot $snapshot): void
+    {
+        if ($snapshot !== null && ! $snapshot->customerId()->equals($customerId)) {
+            throw new DomainException('Quotation customer snapshot must match CustomerId.');
+        }
     }
 
     public function currency(): Currency
@@ -94,6 +131,7 @@ final class Quotation
     public function addLine(QuotationLine $line): void
     {
         $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
         $key = $line->id()->toString();
 
         if (isset($this->lines[$key])) {
@@ -103,10 +141,41 @@ final class Quotation
         $this->lines[$key] = $line;
     }
 
+    public function updateLine(QuotationLine $line): void
+    {
+        $this->assertDraftForLineChanges();
+        $this->assertLineCurrency($line);
+        $key = $line->id()->toString();
+
+        if (! isset($this->lines[$key])) {
+            throw new DomainException('Quotation line to update does not exist.');
+        }
+
+        $this->lines[$key] = $line;
+    }
+
     public function removeLine(QuotationLineId $lineId): void
     {
         $this->assertDraftForLineChanges();
         unset($this->lines[$lineId->toString()]);
+    }
+
+    public function changeDates(DateTimeImmutable $quotationDate, ?DateTimeImmutable $expiryDate): void
+    {
+        $this->assertDraftForLineChanges();
+        self::assertDates($quotationDate, $expiryDate);
+        $this->quotationDate = $quotationDate;
+        $this->expiryDate = $expiryDate;
+    }
+
+    public function total(): Money
+    {
+        $total = Money::zero($this->currency);
+        foreach ($this->lines as $line) {
+            $total = $total->add($line->lineTotal());
+        }
+
+        return $total;
     }
 
     public function send(): void
@@ -158,6 +227,33 @@ final class Quotation
     {
         if ($this->status !== QuotationStatus::Draft) {
             throw new DomainException('Quotation lines can only be changed while the quotation is in draft.');
+        }
+    }
+
+    /** @param list<QuotationLine> $lines */
+    private function restoreLines(array $lines): void
+    {
+        foreach ($lines as $line) {
+            $this->assertLineCurrency($line);
+            $key = $line->id()->toString();
+            if (isset($this->lines[$key])) {
+                throw new DomainException('Quotation already contains a line with this identity.');
+            }
+            $this->lines[$key] = $line;
+        }
+    }
+
+    private function assertLineCurrency(QuotationLine $line): void
+    {
+        if (! $line->unitPrice()->currency()->equals($this->currency)) {
+            throw new DomainException('Quotation line currency must match document currency.');
+        }
+    }
+
+    private static function assertDates(DateTimeImmutable $quotationDate, ?DateTimeImmutable $expiryDate): void
+    {
+        if ($expiryDate !== null && $expiryDate < $quotationDate) {
+            throw new InvalidArgumentException('Expiry date cannot precede quotation date.');
         }
     }
 }

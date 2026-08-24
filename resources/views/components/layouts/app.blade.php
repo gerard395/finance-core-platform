@@ -1,4 +1,3 @@
-@props(['domainUser', 'administrationContext', 'canViewRelations' => false, 'title'])
 <!DOCTYPE html>
 <html lang="nl">
 <head>
@@ -17,7 +16,20 @@
             @if ($canViewRelations)
                 <x-navigation.section title="Relaties"><x-navigation.item label="Alle relaties" :href="route('relations.index')" :active="request()->routeIs('relations.*')" /></x-navigation.section>
             @endif
-            <x-navigation.section title="Verkoop"><x-navigation.item label="Offertes" disabled /><x-navigation.item label="Orders" disabled /><x-navigation.item label="Facturen" disabled /><x-navigation.item label="Creditfacturen" disabled /></x-navigation.section>
+            <x-navigation.section title="Verkoop">
+                @if ($canViewSales)
+                    <x-navigation.item label="Offertes" :href="route('sales.quotations.index')" :active="request()->routeIs('sales.quotations.*')" />
+                @endif
+                @if ($canViewSales)
+                    <x-navigation.item label="Orders" :href="route('sales.orders.index')" :active="request()->routeIs('sales.orders.*')" />
+                @endif
+                @if ($canViewSales)
+                    <x-navigation.item label="Facturen" :href="route('sales.invoices.index')" :active="request()->routeIs('sales.invoices.*')" />
+                @endif
+                @if ($canViewSales)
+                    <x-navigation.item label="Creditfacturen" :href="route('sales.credit-invoices.index')" :active="request()->routeIs('sales.credit-invoices.*')" />
+                @endif
+            </x-navigation.section>
             <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" disabled /><x-navigation.item label="Inkoopcreditfacturen" disabled /></x-navigation.section>
             <x-navigation.section title="Financieel"><x-navigation.item label="Bank" disabled /><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>
             <x-navigation.section title="Beheer"><x-navigation.item label="Administraties" disabled /><x-navigation.item label="Gebruikers & rollen" disabled /><x-navigation.item label="Instellingen" disabled /></x-navigation.section>

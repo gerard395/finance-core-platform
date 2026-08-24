@@ -1,0 +1,9 @@
+<x-layouts.app title="Nieuwe verkoopfactuur" :$domainUser :$administrationContext :$canViewRelations :$canViewSales>
+    <h1 class="text-2xl font-bold">Nieuwe factuur</h1><p class="mt-1 text-slate-600">Maak een directe verkoopfactuur. Factuurnummer, valuta en factuuradres worden server-side bepaald.</p>
+    <form method="POST" action="{{ route('sales.invoices.store') }}" class="mt-6 max-w-2xl space-y-5 rounded-xl bg-white p-6 shadow-sm">@csrf
+        <label class="block">Klant<select name="customer_id" required class="mt-1 w-full rounded-lg border-slate-300"><option value="">Selecteer een klant</option>@foreach($customers as $customer)<option value="{{ $customer['id'] }}" @selected(old('customer_id')===$customer['id'])>{{ $customer['number'] }} · {{ $customer['name'] }}</option>@endforeach</select>@error('customer_id')<span class="mt-1 block text-sm text-red-700">{{ $message }}</span>@enderror</label>
+        <label class="block">Factuurdatum<input type="date" name="invoice_date" required value="{{ old('invoice_date', now()->format('Y-m-d')) }}" class="mt-1 w-full rounded-lg border-slate-300">@error('invoice_date')<span class="mt-1 block text-sm text-red-700">{{ $message }}</span>@enderror</label>
+        <label class="block">Vervaldatum<input type="date" name="due_date" required value="{{ old('due_date') }}" class="mt-1 w-full rounded-lg border-slate-300">@error('due_date')<span class="mt-1 block text-sm text-red-700">{{ $message }}</span>@enderror</label>
+        <div class="flex flex-wrap gap-3"><button class="rounded-lg bg-blue-700 px-4 py-3 font-semibold text-white focus:ring-2 focus:ring-blue-700">Factuur aanmaken</button>@if($canViewSales)<a class="px-4 py-3 font-semibold text-blue-700" href="{{ route('sales.invoices.index') }}">Annuleren</a>@endif</div>
+    </form>
+</x-layouts.app>

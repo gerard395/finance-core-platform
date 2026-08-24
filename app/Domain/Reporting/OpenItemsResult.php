@@ -21,8 +21,11 @@ final readonly class OpenItemsResult
         private array $lines,
         private Money $totalOriginalAmount,
         private Money $totalOpenAmount,
+        private Money $totalDebitOpenAmount,
+        private Money $totalCreditOpenAmount,
+        private Money $netReceivableOpenAmount,
     ) {
-        foreach ([$this->totalOriginalAmount, $this->totalOpenAmount] as $amount) {
+        foreach ([$this->totalOriginalAmount, $this->totalOpenAmount, $this->totalDebitOpenAmount, $this->totalCreditOpenAmount, $this->netReceivableOpenAmount] as $amount) {
             $this->assertCurrency($amount);
         }
 
@@ -61,6 +64,21 @@ final readonly class OpenItemsResult
     public function totalOpenAmount(): Money
     {
         return $this->totalOpenAmount;
+    }
+
+    public function totalDebitOpenAmount(): Money
+    {
+        return $this->totalDebitOpenAmount;
+    }
+
+    public function totalCreditOpenAmount(): Money
+    {
+        return $this->totalCreditOpenAmount;
+    }
+
+    public function netReceivableOpenAmount(): Money
+    {
+        return $this->netReceivableOpenAmount;
     }
 
     public function countOpen(): int

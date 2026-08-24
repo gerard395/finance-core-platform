@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Fiscal\Entities;
 
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
+use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -17,6 +18,7 @@ final class TaxCode
         private readonly TaxCodeCode $code,
         private TaxCodeName $name,
         private TaxRate $rate,
+        private readonly TaxPostingDirection $direction,
         private TaxCodeStatus $status,
     ) {}
 
@@ -43,6 +45,11 @@ final class TaxCode
     public function status(): TaxCodeStatus
     {
         return $this->status;
+    }
+
+    public function direction(): TaxPostingDirection
+    {
+        return $this->direction;
     }
 
     public function isActive(): bool

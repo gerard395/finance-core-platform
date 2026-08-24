@@ -6,6 +6,7 @@ namespace Tests\Unit\Domain\Fiscal\Entities;
 
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
+use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -23,6 +24,7 @@ final class TaxCodeTest extends TestCase
         self::assertSame('VAT21', $taxCode->code()->value());
         self::assertSame('General rate', $taxCode->name()->value());
         self::assertSame('21', $taxCode->rate()->value());
+        self::assertSame(TaxPostingDirection::Output, $taxCode->direction());
         self::assertSame(TaxCodeStatus::Active, $taxCode->status());
         self::assertTrue($taxCode->isActive());
     }
@@ -73,6 +75,7 @@ final class TaxCodeTest extends TestCase
             new TaxCodeCode('vat21'),
             new TaxCodeName('General rate'),
             new TaxRate('21.0000'),
+            TaxPostingDirection::Output,
             TaxCodeStatus::Active,
         );
     }

@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Reporting;
 
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -17,6 +19,8 @@ final readonly class OpenItemsLine
         private OpenItemId $openItemId,
         private RelationId $relationId,
         private JournalEntryId $journalEntryId,
+        private OpenItemType $type,
+        private OpenItemSide $side,
         private PostingDate $openedOn,
         private Money $originalAmount,
         private Money $openAmount,
@@ -36,6 +40,16 @@ final readonly class OpenItemsLine
     public function journalEntryId(): JournalEntryId
     {
         return $this->journalEntryId;
+    }
+
+    public function type(): OpenItemType
+    {
+        return $this->type;
+    }
+
+    public function side(): OpenItemSide
+    {
+        return $this->side;
     }
 
     public function openedOn(): PostingDate

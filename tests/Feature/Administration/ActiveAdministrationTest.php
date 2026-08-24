@@ -22,6 +22,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepo
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryLineRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
@@ -192,6 +193,14 @@ final class ActiveAdministrationTest extends TestCase
             ]);
         }
 
+        JournalRecord::query()->create([
+            'id' => $prefix.'7000000-0000-4000-8000-000000000001',
+            'administration_id' => $administration->id()->toString(),
+            'code' => 'DASH'.$sequence,
+            'name' => 'Dashboard test journal '.$sequence,
+            'type' => 'general',
+            'status' => 'active',
+        ]);
         JournalEntryRecord::query()->create([
             'id' => $entryId,
             'administration_id' => $administration->id()->toString(),
@@ -235,6 +244,7 @@ final class ActiveAdministrationTest extends TestCase
                 'relation_id' => $relationId,
                 'journal_entry_id' => $entryId,
                 'open_item_type' => $type,
+                'side' => $type === 'receivable' ? 'debit' : 'credit',
                 'original_amount' => $amount,
                 'currency' => 'EUR',
                 'opened_on' => $date,

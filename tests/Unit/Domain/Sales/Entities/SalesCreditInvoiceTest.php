@@ -25,7 +25,7 @@ use PHPUnit\Framework\TestCase;
 
 final class SalesCreditInvoiceTest extends TestCase
 {
-    public function test_constructor_exposes_immutable_state_without_source_invoice(): void
+    public function test_constructor_exposes_immutable_state_with_required_source_invoice(): void
     {
         $creditInvoice = $this->createCreditInvoice();
 
@@ -35,7 +35,7 @@ final class SalesCreditInvoiceTest extends TestCase
         self::assertSame('550e8400-e29b-41d4-a716-446655440002', $creditInvoice->customerId()->toString());
         self::assertSame('EUR', $creditInvoice->currency()->code());
         self::assertSame('2026-07-15', $creditInvoice->creditInvoiceDate()->format('Y-m-d'));
-        self::assertNull($creditInvoice->sourceInvoiceId());
+        self::assertSame('550e8400-e29b-41d4-a716-446655440003', $creditInvoice->sourceInvoiceId()->toString());
         self::assertSame(SalesCreditInvoiceStatus::Draft, $creditInvoice->status());
     }
 
@@ -209,7 +209,7 @@ final class SalesCreditInvoiceTest extends TestCase
             new CustomerId(new Uuid('550e8400-e29b-41d4-a716-446655440002')),
             new Currency('EUR'),
             new DateTimeImmutable('2026-07-15'),
-            $sourceInvoiceId,
+            $sourceInvoiceId ?? new SalesInvoiceId(new Uuid('550e8400-e29b-41d4-a716-446655440003')),
             $status,
         );
 

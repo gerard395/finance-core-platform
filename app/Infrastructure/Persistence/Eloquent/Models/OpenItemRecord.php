@@ -21,6 +21,7 @@ final class OpenItemRecord extends Model
         'relation_id',
         'journal_entry_id',
         'open_item_type',
+        'side',
         'original_amount',
         'currency',
         'opened_on',

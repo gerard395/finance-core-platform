@@ -6,6 +6,7 @@ namespace Tests\Unit\Domain\Fiscal\Services;
 
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
+use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
@@ -90,6 +91,7 @@ final class TaxCalculationTest extends TestCase
             new TaxCodeCode('vat21'),
             new TaxCodeName('General rate'),
             new TaxRate($rate),
+            TaxPostingDirection::Output,
             $status,
         );
     }

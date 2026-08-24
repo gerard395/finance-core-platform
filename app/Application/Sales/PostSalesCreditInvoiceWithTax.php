@@ -141,6 +141,9 @@ final readonly class PostSalesCreditInvoiceWithTax
     private function assertInput(SalesCreditInvoice $invoice, Money $lineTotal, SalesCreditFiscalLineInput $input): void
     {
         $original = $input->originalTaxPosting();
+        if (! $original->sourceDocumentId()->uuid()->equals($invoice->sourceInvoiceId()->uuid())) {
+            throw new DomainException('A sales credit reversal must target its source SalesInvoice.');
+        }
         if ($original->type() !== TaxPostingType::Original || $original->direction() !== TaxPostingDirection::Output || $original->sourceDocumentType() !== TaxSourceDocumentType::SalesInvoice) {
             throw new DomainException('A sales credit reversal requires an original sales output tax posting.');
         }

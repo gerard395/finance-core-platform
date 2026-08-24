@@ -239,6 +239,52 @@ W3 maakt de bestaande Relation-owned Contacts, Addresses en BankAccounts duurzaa
 
 W3 is afgerond met volledige Relation-aggregate-reconstitutie en tenant-veilige persistence en webflows voor Contacts, Addresses en BankAccounts. Alle childverwijdering is een deactivate/reactivate-lifecycle met behoud van identity; cross-tenant en cross-Relation ownership wordt in Application én database afgedwongen. De afsluitende review corrigeerde bovendien Relation-edit voor volledig gehydrateerde aggregates en bevestigde dat parent- en childwrites elkaars state behouden. Het aanbevolen vervolg is Sales Web, dat deze duurzame Relation-masterdata nu zonder tijdelijke of gedupliceerde klantmodellen kan gebruiken.
 
+### Batch W4 – Sales Web Module
+
+**Status:** Completed; reviewed and merge-ready
+
+W4 levert de eerste veilige administration-scoped verkoopdoorsnede voor Quotations,
+Orders, SalesInvoices en volledige SalesCreditInvoices. De batch omvat onafhankelijke
+businesspermissions, transactionele nummering, historische klant-/adres-/taxsnapshots,
+tenant-veilige persistence, responsive webflows en financiële posting uitsluitend via
+`PostingEngine`. Invoiceposting maakt een Receivable/Debit; creditposting maakt een
+Receivable/Credit en matcht uitsluitend het actuele open sourcebedrag. Beide flows
+zijn transactioneel, duurzaam idempotent en concurrency-safe.
+
+- W4-000 – Sales web module design
+- W4-000A0 – Sales business permission catalogue
+- W4-000A – Sales permission identity & provisioning
+- W4-000B – Sales numbering persistence
+- W4-000C – Sales reconstitution & mutation contracts
+- W4-000D0 – TaxCode persistence readiness
+- W4-000D – Sales snapshot & tax readiness
+- W4-001 – Quotation persistence & application contracts
+- W4-002 – Quotation web UI
+- W4-003 – Order persistence & application contracts
+- W4-004 – Order web UI
+- W4-005A – Order invoicing source contract
+- W4-005 – Sales invoice persistence & application contracts
+- W4-006 – Sales invoice web UI
+- W4-007A00 – Journal ownership design
+- W4-007A0 – Journal persistence and tenant linkage
+- W4-007 – Transactional sales invoice posting
+- W4-008 – Sales invoice posting web action
+- W4-009 – Sales credit invoice persistence contracts
+- W4-010A – Eligible credit source read contract
+- W4-010 – Sales credit invoice web UI
+- W4-011A – Receivable credit balance and matching semantics
+- W4-011 – Transactional sales credit posting and reversal
+- W4-012 – Sales credit posting web action
+- W4-013 – Sales web module review and closure
+- W4-NAV-001 – Cross-module Sales navigation
+
+Bewust uitgesteld zijn Order→Invoice-allocation/conversie, document-PDF/e-maildelivery,
+refund/customer-credituitbetaling en toepassing van customer credit op toekomstige
+facturen. De aanbevolen volgende productbatch is **Sales Document Delivery / PDF &
+Email**. Platformvervolg moet daarnaast centrale Administration-bootstrap voor
+permissions, nummerreeksen en postingconfiguratie ontwerpen; Draft optimistic locking
+blijft een belangrijke afzonderlijke hardeningstory.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

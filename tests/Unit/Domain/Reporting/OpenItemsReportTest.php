@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Unit\Domain\Reporting;
 
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
@@ -231,6 +232,30 @@ final class OpenItemsReportTest extends TestCase
         self::assertIsString($result->lines()[0]->openAmount()->amount());
         self::assertIsString($result->totalOriginalAmount()->amount());
         self::assertIsString($result->totalOpenAmount()->amount());
+    }
+
+    public function test_receivable_debit_and_credit_are_reported_gross_and_net_without_payable_reclassification(): void
+    {
+        $debit = $this->openItem('121', '2026-01-01');
+        $credit = new OpenItem(
+            new OpenItemId($this->nextUuid('3')),
+            $this->administrationId(self::ADMINISTRATION_ID),
+            $this->relationId(self::RELATION_ID),
+            $this->journalEntryId(),
+            OpenItemType::Receivable,
+            $this->money('40'),
+            $this->date('2026-01-02'),
+            OpenItemSide::Credit,
+        );
+
+        $result = $this->generate([$debit, $credit]);
+
+        self::assertSame(OpenItemType::Receivable, $result->lines()[1]->type());
+        self::assertSame(OpenItemSide::Credit, $result->lines()[1]->side());
+        self::assertSame('121', $result->totalDebitOpenAmount()->amount());
+        self::assertSame('40', $result->totalCreditOpenAmount()->amount());
+        self::assertSame('81', $result->netReceivableOpenAmount()->amount());
+        self::assertSame('161', $result->totalOpenAmount()->amount());
     }
 
     /** @param list<OpenItem> $openItems */

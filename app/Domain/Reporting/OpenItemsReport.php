@@ -5,7 +5,9 @@ declare(strict_types=1);
 namespace App\Domain\Reporting;
 
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
+use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\RelationId;
@@ -48,6 +50,8 @@ final readonly class OpenItemsReport
                 $openItem->id(),
                 $openItem->relationId(),
                 $openItem->journalEntryId(),
+                $openItem->type(),
+                $openItem->side(),
                 $openItem->openedOn(),
                 $openItem->originalAmount(),
                 $openAmount,
@@ -65,10 +69,23 @@ final readonly class OpenItemsReport
 
         $totalOriginalAmount = Money::zero($currency);
         $totalOpenAmount = Money::zero($currency);
+        $totalDebitOpenAmount = Money::zero($currency);
+        $totalCreditOpenAmount = Money::zero($currency);
+        $netReceivableOpenAmount = Money::zero($currency);
 
         foreach ($lines as $line) {
             $totalOriginalAmount = $totalOriginalAmount->add($line->originalAmount());
             $totalOpenAmount = $totalOpenAmount->add($line->openAmount());
+            if ($line->side() === OpenItemSide::Debit) {
+                $totalDebitOpenAmount = $totalDebitOpenAmount->add($line->openAmount());
+            } else {
+                $totalCreditOpenAmount = $totalCreditOpenAmount->add($line->openAmount());
+            }
+            if ($line->type() === OpenItemType::Receivable) {
+                $netReceivableOpenAmount = $line->side() === OpenItemSide::Debit
+                    ? $netReceivableOpenAmount->add($line->openAmount())
+                    : $netReceivableOpenAmount->subtract($line->openAmount());
+            }
         }
 
         return new OpenItemsResult(
@@ -78,6 +95,9 @@ final readonly class OpenItemsReport
             $lines,
             $totalOriginalAmount,
             $totalOpenAmount,
+            $totalDebitOpenAmount,
+            $totalCreditOpenAmount,
+            $netReceivableOpenAmount,
         );
     }
 }

@@ -41,6 +41,10 @@ Permissions, gebruikerskoppelingen en wijzigingen aan AdministrationMembership v
 
 Permissioncodes bevatten 2 tot en met 64 ASCII-tekens uit letters, cijfers, punten en underscores en worden naar uppercase genormaliseerd. Koppelingen met Role of AdministrationMembership en technische autorisatiehandhaving vallen buiten deze story.
 
+## Sales authorization definitions
+
+`SalesPermission` en `SalesRole` zijn frameworkonafhankelijke, autoritatieve system definitions met stabiele identities, canonical codes en displaynamen. Sales Viewer bevat alleen read, Sales Editor bevat read plus Quotation/Order- en factuur-Draftbeheer, en Sales Manager voegt uitsluitend beide Issue-rechten toe. De afzonderlijke Sales Poster bevat alleen invoice- en creditinvoice-Post; zij impliceert geen View, Draft of Issue. Memberships kunnen rollen combineren, maar provisioning wijst nooit automatisch een rol toe.
+
 ### Relations authorization definitions
 
 `RelationsPermission` en `RelationsRole` vormen de frameworkonafhankelijke, autoritatieve Identity-definities voor de Relations-capability. Iedere definitie heeft een vaste UUID-identiteit, een canonical code volgens de bestaande uppercase value-objectsemantiek en een zakelijke displaynaam. De rollen zijn system-wide capabilityrollen; toekenning aan een gebruiker blijft uitsluitend mogelijk via een expliciete AdministrationMembership-scoped `MembershipRole`.
