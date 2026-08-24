@@ -370,9 +370,9 @@ final class OrderWebTest extends TestCase
     {
         RelationAddressRecord::query()->create(['address_id' => self::ADDRESS_A, 'administration_id' => self::ADMIN_A, 'relation_id' => 'a1000000-0000-4000-8000-000000000014', 'address_type' => 'invoice', 'address_line_1' => 'Invoice <b>A</b>', 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
         RelationAddressRecord::query()->create(['address_id' => 'b1000000-0000-4000-8000-000000000024', 'administration_id' => self::ADMIN_B, 'relation_id' => 'b1000000-0000-4000-8000-000000000014', 'address_type' => 'invoice', 'address_line_1' => 'Invoice B', 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'Breda', 'country_code' => 'NL', 'active' => true]);
-        TaxCodeRecord::query()->create(['id' => self::TAX_A, 'administration_id' => self::ADMIN_A, 'code' => 'BTW21', 'name' => '<b>Output</b>', 'rate' => '21', 'direction' => 'output', 'status' => 'active']);
-        TaxCodeRecord::query()->create(['id' => self::TAX_B, 'administration_id' => self::ADMIN_B, 'code' => 'BTW-B', 'name' => 'Foreign', 'rate' => '21', 'direction' => 'output', 'status' => 'active']);
-        TaxCodeRecord::query()->create(['id' => 'a1000000-0000-4000-8000-000000000035', 'administration_id' => self::ADMIN_A, 'code' => 'INPUT', 'name' => 'Input', 'rate' => '21', 'direction' => 'input', 'status' => 'active']);
+        TaxCodeRecord::query()->create(['id' => self::TAX_A, 'administration_id' => self::ADMIN_A, 'code' => 'BTW21', 'name' => '<b>Output</b>', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
+        TaxCodeRecord::query()->create(['id' => self::TAX_B, 'administration_id' => self::ADMIN_B, 'code' => 'BTW-B', 'name' => 'Foreign', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
+        TaxCodeRecord::query()->create(['id' => 'a1000000-0000-4000-8000-000000000035', 'administration_id' => self::ADMIN_A, 'code' => 'INPUT', 'name' => 'Input', 'rate' => '21', 'direction' => 'input', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
     }
 
     private function invoicePayload(string $token, string $lineId, string $quantity): array

@@ -133,7 +133,7 @@ final class EloquentSalesInvoicePersistenceTest extends TestCase
         $this->repository->create($this->admin(self::A), $invoice);
 
         $this->expectException(QueryException::class);
-        SalesInvoiceLineRecord::query()->create(['id' => '6f000000-0000-4000-8000-000000000099', 'administration_id' => self::B, 'sales_invoice_id' => $invoice->id()->toString(), 'description' => 'Cross tenant', 'quantity' => '1', 'unit_price_amount' => '1', 'currency' => 'EUR', 'tax_code_id_snapshot' => $this->taxId(self::B)->toString(), 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'VAT high', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output']);
+        SalesInvoiceLineRecord::query()->create(['id' => '6f000000-0000-4000-8000-000000000099', 'administration_id' => self::B, 'sales_invoice_id' => $invoice->id()->toString(), 'description' => 'Cross tenant', 'quantity' => '1', 'unit_price_amount' => '1', 'currency' => 'EUR', 'tax_code_id_snapshot' => $this->taxId(self::B)->toString(), 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'VAT high', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output', 'tax_treatment_snapshot' => 'domestic_standard', 'vat_return_classification_snapshot' => 'domestic_standard', 'icp_classification_snapshot' => 'none']);
     }
 
     private function invoice(int $id, SalesInvoiceStatus $status, ?OrderId $source, ?string $number = null): SalesInvoice
@@ -161,7 +161,7 @@ final class EloquentSalesInvoicePersistenceTest extends TestCase
         AdministrationRecord::query()->create(['id' => $id, 'code' => 'SI-'.$suffix, 'name' => 'Invoice tenant '.$suffix, 'base_currency' => 'EUR', 'status' => 'active']);
         RelationRecord::query()->create(['id' => $this->relationId($id)->toString(), 'administration_id' => $id, 'code' => 'REL-'.$suffix, 'display_name' => 'Customer '.$suffix, 'active' => true]);
         CustomerRecord::query()->create(['id' => $this->customerId($id)->toString(), 'administration_id' => $id, 'relation_id' => $this->relationId($id)->toString(), 'customer_number' => 'C-'.$suffix, 'active' => true]);
-        TaxCodeRecord::query()->create(['id' => $this->taxId($id)->toString(), 'administration_id' => $id, 'code' => 'VAT21', 'name' => 'VAT high', 'rate' => '21', 'direction' => 'output', 'status' => 'active']);
+        TaxCodeRecord::query()->create(['id' => $this->taxId($id)->toString(), 'administration_id' => $id, 'code' => 'VAT21', 'name' => 'VAT high', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none']);
         if ($id === self::A) {
             OrderRecord::query()->create(['id' => $this->sourceOrderId()->toString(), 'administration_id' => $id, 'order_number' => 'O000001', 'customer_id' => $this->customerId($id)->toString(), 'customer_relation_id_snapshot' => $this->relationId($id)->toString(), 'customer_number_snapshot' => 'C-A', 'customer_name_snapshot' => 'Customer A', 'source_quotation_id' => null, 'currency' => 'EUR', 'order_date' => '2026-08-20', 'status' => 'confirmed']);
         }

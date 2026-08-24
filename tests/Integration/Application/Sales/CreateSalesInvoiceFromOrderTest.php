@@ -481,7 +481,7 @@ final class CreateSalesInvoiceFromOrderTest extends TestCase
         DB::table('customers')->insert(['id' => $this->customer($admin), 'administration_id' => $admin, 'relation_id' => $this->relation($admin), 'customer_number' => 'C-'.$suffix, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('relation_addresses')->insert(['address_id' => $this->addressId($admin)->toString(), 'administration_id' => $admin, 'relation_id' => $this->relation($admin), 'address_type' => 'invoice', 'address_line_1' => 'Invoice '.$suffix, 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'City', 'country_code' => 'NL', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         foreach ([[1, '21', 'output', 'active'], [2, '9', 'output', 'inactive'], [3, '21', 'input', 'active']] as [$sequence, $rate, $direction, $status]) {
-            DB::table('tax_codes')->insert(['id' => $this->taxId($admin, $sequence)->toString(), 'administration_id' => $admin, 'code' => 'T'.$suffix.$sequence, 'name' => 'Tax', 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'created_at' => $now, 'updated_at' => $now]);
+            DB::table('tax_codes')->insert(['id' => $this->taxId($admin, $sequence)->toString(), 'administration_id' => $admin, 'code' => 'T'.$suffix.$sequence, 'name' => 'Tax', 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none', 'created_at' => $now, 'updated_at' => $now]);
         }
     }
 

@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace App\Domain\Fiscal\ValueObjects;
 
+use App\Domain\Fiscal\Enums\IcpClassification;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Shared\Finance\Money;
 
 final readonly class TaxCalculationResult
@@ -14,6 +17,9 @@ final readonly class TaxCalculationResult
         private Money $grossAmount,
         private TaxCodeId $taxCodeId,
         private TaxRate $taxRate,
+        private TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        private VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        private IcpClassification $icpClassification = IcpClassification::None,
     ) {}
 
     public function netAmount(): Money
@@ -39,5 +45,20 @@ final readonly class TaxCalculationResult
     public function taxRate(): TaxRate
     {
         return $this->taxRate;
+    }
+
+    public function treatment(): TaxTreatment
+    {
+        return $this->treatment;
+    }
+
+    public function vatReturnClassification(): VatReturnClassification
+    {
+        return $this->vatReturnClassification;
+    }
+
+    public function icpClassification(): IcpClassification
+    {
+        return $this->icpClassification;
     }
 }

@@ -5,8 +5,11 @@ declare(strict_types=1);
 namespace App\Application\Fiscal;
 
 use App\Domain\Fiscal\Entities\TaxCode;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -21,6 +24,9 @@ final readonly class TaxCodeSelectionItem
         private TaxRate $rate,
         private TaxPostingDirection $direction,
         private TaxCodeStatus $status,
+        private TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        private VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        private IcpClassification $icpClassification = IcpClassification::None,
     ) {}
 
     public function id(): TaxCodeId
@@ -53,8 +59,23 @@ final readonly class TaxCodeSelectionItem
         return $this->status;
     }
 
+    public function treatment(): TaxTreatment
+    {
+        return $this->treatment;
+    }
+
+    public function vatReturnClassification(): VatReturnClassification
+    {
+        return $this->vatReturnClassification;
+    }
+
+    public function icpClassification(): IcpClassification
+    {
+        return $this->icpClassification;
+    }
+
     public function toTaxCode(): TaxCode
     {
-        return new TaxCode($this->id, $this->code, $this->name, $this->rate, $this->direction, $this->status);
+        return new TaxCode($this->id, $this->code, $this->name, $this->rate, $this->direction, $this->status, $this->treatment, $this->vatReturnClassification, $this->icpClassification);
     }
 }

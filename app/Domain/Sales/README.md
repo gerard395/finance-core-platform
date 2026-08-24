@@ -27,11 +27,12 @@ Alle vier headers kunnen een immutable customersnapshot met CustomerId, Relation
 
 Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
-W4B-004B maakt internationale Sales afhankelijk van aanvullende immutable fiscale
-snapshots: customer/supplier VAT identity en jurisdiction op documentniveau;
-TaxTreatment, VAT-return/ICP-classificatie en eventuele verplichte factuurwording per
-line; plus een supply date waar de fiscale periode niet uit invoice date volgt. Tot
-die predecessors bestaan ondersteunt Sales uitsluitend domestic NL VAT en expliciet
+Internationale Sales vereist aanvullende immutable fiscale snapshots:
+customer/supplier VAT identity en jurisdiction op documentniveau, eventuele
+verplichte factuurwording per line en een supply date waar de fiscale periode niet uit
+invoice date volgt. TaxTreatment en VAT-return/ICP-classificatie zijn al immutable in
+TaxCode, Sales-taxsnapshot en fiscale postings. Tot de party-/date-integratie en
+selectorstory gereed zijn ondersteunt Sales uitsluitend domestic NL VAT en expliciet
 BTW0, niet reverse charge, exempt of outside-scope. De selector beslist nooit
 automatisch op land, btw-ID, code, naam of nulrate.
 

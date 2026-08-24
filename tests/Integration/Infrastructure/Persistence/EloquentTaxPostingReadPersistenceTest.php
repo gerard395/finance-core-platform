@@ -12,10 +12,13 @@ use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -84,6 +87,26 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         self::assertTrue($posting->baseJournalEntryLineId()->equals($read->baseJournalEntryLineId()));
         self::assertTrue($posting->taxJournalEntryLineId()?->equals($read->taxJournalEntryLineId()));
         self::assertNull($read->reversedTaxPostingId());
+        self::assertSame(TaxTreatment::DomesticStandard, $read->treatment());
+        self::assertSame(VatReturnClassification::DomesticStandard, $read->vatReturnClassification());
+        self::assertSame(IcpClassification::None, $read->icpClassification());
+    }
+
+    public function test_zero_tax_reporting_fact_roundtrips_without_a_tax_journal_line(): void
+    {
+        $posting = $this->posting(
+            1, self::ADMINISTRATION_A, '2026-08-20', taxRate: '0', taxableBase: '250', taxAmount: '0',
+            includeTaxLine: false, treatment: TaxTreatment::ReverseChargeEuService,
+            vatReturn: VatReturnClassification::EuServices, icp: IcpClassification::Service,
+        );
+        $this->repository->append($posting);
+        $read = $this->read(self::ADMINISTRATION_A, '2026-08-20', '2026-08-20')[0];
+
+        self::assertSame('250', $read->taxableBase()->amount());
+        self::assertSame('0', $read->taxAmount()->amount());
+        self::assertNull($read->taxJournalEntryLineId());
+        self::assertSame(TaxTreatment::ReverseChargeEuService, $read->treatment());
+        self::assertSame(IcpClassification::Service, $read->icpClassification());
     }
 
     public function test_zero_percent_input_and_nullable_tax_line_roundtrip(): void
@@ -298,6 +321,9 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         ?string $accountingAdministration = null,
         ?string $baseLineAdministration = null,
         ?string $taxLineAdministration = null,
+        TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        VatReturnClassification $vatReturn = VatReturnClassification::DomesticStandard,
+        IcpClassification $icp = IcpClassification::None,
     ): TaxPosting {
         $currency = new Currency('EUR');
         $entryAdministration = $accountingAdministration ?? $administration;
@@ -319,6 +345,9 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
             $includeTaxLine ? $this->lineId($taxLineAdministration ?? $entryAdministration, $entry, 2) : null,
             $type,
             $reversed,
+            $treatment,
+            $vatReturn,
+            $icp,
         );
     }
 

@@ -5,8 +5,12 @@ declare(strict_types=1);
 namespace App\Domain\Sales\ValueObjects;
 
 use App\Domain\Fiscal\Entities\TaxCode;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\TaxClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -21,10 +25,14 @@ final readonly class SalesTaxSnapshot
         private TaxCodeName $taxCodeName,
         private TaxRate $taxRate,
         private TaxPostingDirection $direction,
+        private TaxTreatment $treatment = TaxTreatment::DomesticStandard,
+        private VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
+        private IcpClassification $icpClassification = IcpClassification::None,
     ) {
         if ($direction !== TaxPostingDirection::Output) {
             throw new DomainException('A Sales tax snapshot requires output direction.');
         }
+        new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
     }
 
     public static function fromTaxCode(TaxCode $taxCode): self
@@ -33,7 +41,7 @@ final readonly class SalesTaxSnapshot
             throw new DomainException('A Sales tax snapshot requires an active output TaxCode.');
         }
 
-        return new self($taxCode->id(), $taxCode->code(), $taxCode->name(), $taxCode->rate(), $taxCode->direction());
+        return new self($taxCode->id(), $taxCode->code(), $taxCode->name(), $taxCode->rate(), $taxCode->direction(), $taxCode->treatment(), $taxCode->vatReturnClassification(), $taxCode->icpClassification());
     }
 
     public function taxCodeId(): TaxCodeId
@@ -61,8 +69,23 @@ final readonly class SalesTaxSnapshot
         return $this->direction;
     }
 
+    public function treatment(): TaxTreatment
+    {
+        return $this->treatment;
+    }
+
+    public function vatReturnClassification(): VatReturnClassification
+    {
+        return $this->vatReturnClassification;
+    }
+
+    public function icpClassification(): IcpClassification
+    {
+        return $this->icpClassification;
+    }
+
     public function forCalculation(): TaxCode
     {
-        return new TaxCode($this->taxCodeId, $this->taxCode, $this->taxCodeName, $this->taxRate, $this->direction, TaxCodeStatus::Active);
+        return new TaxCode($this->taxCodeId, $this->taxCode, $this->taxCodeName, $this->taxRate, $this->direction, TaxCodeStatus::Active, $this->treatment, $this->vatReturnClassification, $this->icpClassification);
     }
 }

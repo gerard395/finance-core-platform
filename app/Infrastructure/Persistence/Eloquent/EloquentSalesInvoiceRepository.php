@@ -10,7 +10,10 @@ use App\Application\Sales\SalesInvoiceReadRepository;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesInvoiceWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
@@ -164,13 +167,13 @@ final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, Sales
             throw new DomainException('Persistent SalesInvoice line requires a tax snapshot.');
         }
 
-        return ['id' => $line->id()->toString(), 'administration_id' => $administrationId->toString(), 'sales_invoice_id' => $invoice->id()->toString(), 'description' => $line->description()->value(), 'quantity' => $line->quantity()->value(), 'unit_price_amount' => $line->unitPrice()->amount(), 'currency' => $line->unitPrice()->currency()->code(), 'tax_code_id_snapshot' => $tax->taxCodeId()->toString(), 'tax_code_snapshot' => $tax->taxCode()->value(), 'tax_name_snapshot' => $tax->taxCodeName()->value(), 'tax_rate_snapshot' => $tax->taxRate()->value(), 'tax_direction_snapshot' => $tax->direction()->value];
+        return ['id' => $line->id()->toString(), 'administration_id' => $administrationId->toString(), 'sales_invoice_id' => $invoice->id()->toString(), 'description' => $line->description()->value(), 'quantity' => $line->quantity()->value(), 'unit_price_amount' => $line->unitPrice()->amount(), 'currency' => $line->unitPrice()->currency()->code(), 'tax_code_id_snapshot' => $tax->taxCodeId()->toString(), 'tax_code_snapshot' => $tax->taxCode()->value(), 'tax_name_snapshot' => $tax->taxCodeName()->value(), 'tax_rate_snapshot' => $tax->taxRate()->value(), 'tax_direction_snapshot' => $tax->direction()->value, 'tax_treatment_snapshot' => $tax->treatment()->value, 'vat_return_classification_snapshot' => $tax->vatReturnClassification()->value, 'icp_classification_snapshot' => $tax->icpClassification()->value];
     }
 
     private function hydrate(SalesInvoiceRecord $record): SalesInvoice
     {
         $currency = new Currency($record->getAttribute('currency'));
-        $lines = SalesInvoiceLineRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('sales_invoice_id', $record->getAttribute('id'))->orderBy('id')->get()->map(static fn (SalesInvoiceLineRecord $line): SalesInvoiceLine => new SalesInvoiceLine(new SalesInvoiceLineId(new Uuid($line->getAttribute('id'))), new LineDescription($line->getAttribute('description')), new Quantity($line->getAttribute('quantity')), new Money($line->getAttribute('unit_price_amount'), new Currency($line->getAttribute('currency'))), new SalesTaxSnapshot(new TaxCodeId(new Uuid($line->getAttribute('tax_code_id_snapshot'))), new TaxCodeCode($line->getAttribute('tax_code_snapshot')), new TaxCodeName($line->getAttribute('tax_name_snapshot')), new TaxRate($line->getAttribute('tax_rate_snapshot')), TaxPostingDirection::from($line->getAttribute('tax_direction_snapshot')))))->all();
+        $lines = SalesInvoiceLineRecord::query()->where('administration_id', $record->getAttribute('administration_id'))->where('sales_invoice_id', $record->getAttribute('id'))->orderBy('id')->get()->map(static fn (SalesInvoiceLineRecord $line): SalesInvoiceLine => new SalesInvoiceLine(new SalesInvoiceLineId(new Uuid($line->getAttribute('id'))), new LineDescription($line->getAttribute('description')), new Quantity($line->getAttribute('quantity')), new Money($line->getAttribute('unit_price_amount'), new Currency($line->getAttribute('currency'))), new SalesTaxSnapshot(new TaxCodeId(new Uuid($line->getAttribute('tax_code_id_snapshot'))), new TaxCodeCode($line->getAttribute('tax_code_snapshot')), new TaxCodeName($line->getAttribute('tax_name_snapshot')), new TaxRate($line->getAttribute('tax_rate_snapshot')), TaxPostingDirection::from($line->getAttribute('tax_direction_snapshot')), TaxTreatment::from($line->getAttribute('tax_treatment_snapshot')), VatReturnClassification::from($line->getAttribute('vat_return_classification_snapshot')), IcpClassification::from($line->getAttribute('icp_classification_snapshot')))))->all();
         $source = $record->getAttribute('source_order_id');
 
         return SalesInvoice::reconstitute(

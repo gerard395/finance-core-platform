@@ -37,10 +37,10 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
         $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
 
         self::assertSame([
-            ['code' => 'BTW0', 'name' => 'BTW 0%', 'rate' => '0', 'direction' => 'output', 'status' => 'active'],
-            ['code' => 'BTW21', 'name' => 'BTW hoog (algemeen tarief)', 'rate' => '21', 'direction' => 'output', 'status' => 'active'],
-            ['code' => 'BTW9', 'name' => 'BTW laag (verlaagd tarief)', 'rate' => '9', 'direction' => 'output', 'status' => 'active'],
-        ], DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->orderBy('code')->get(['code', 'name', 'rate', 'direction', 'status'])->map(static fn (object $row): array => (array) $row)->all());
+            ['code' => 'BTW0', 'name' => 'BTW 0%', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'zero_rated', 'vat_return_classification' => 'domestic_zero_rated', 'icp_classification' => 'none'],
+            ['code' => 'BTW21', 'name' => 'BTW hoog (algemeen tarief)', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none'],
+            ['code' => 'BTW9', 'name' => 'BTW laag (verlaagd tarief)', 'rate' => '9', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_reduced', 'vat_return_classification' => 'domestic_reduced', 'icp_classification' => 'none'],
+        ], DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->orderBy('code')->get(['code', 'name', 'rate', 'direction', 'status', 'treatment', 'vat_return_classification', 'icp_classification'])->map(static fn (object $row): array => (array) $row)->all());
         self::assertSame(0, DB::table('tax_codes')->where('administration_id', self::ADMIN_B)->count());
     }
 
@@ -68,6 +68,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
             'id' => '30000000-0000-4000-8000-000000000001', 'administration_id' => self::ADMIN_A,
             'code' => 'BTW9', 'name' => 'Mijn lage tarief', 'rate' => '9.0000', 'direction' => 'output',
             'status' => 'inactive', 'created_at' => $createdAt, 'updated_at' => $createdAt,
+            'treatment' => 'domestic_reduced', 'vat_return_classification' => 'domestic_reduced', 'icp_classification' => 'none',
         ]);
 
         $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
@@ -82,6 +83,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
             'id' => '30000000-0000-4000-8000-000000000002', 'administration_id' => self::ADMIN_A,
             'code' => 'BTW9', 'name' => 'Conflict', 'rate' => '8', 'direction' => 'output',
             'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+            'treatment' => 'domestic_reduced', 'vat_return_classification' => 'domestic_reduced', 'icp_classification' => 'none',
         ]);
 
         try {
@@ -94,6 +96,17 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
         self::assertSame(['BTW9'], DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->pluck('code')->all());
     }
 
+    public function test_incompatible_reporting_classification_is_a_typed_conflict_and_is_never_reset(): void
+    {
+        $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
+        DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->where('code', 'BTW0')->update([
+            'treatment' => 'exempt', 'vat_return_classification' => 'exempt',
+        ]);
+
+        $this->expectException(TaxCodeCatalogueProvisioningConflict::class);
+        $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
+    }
+
     public function test_sales_selection_contract_exposes_only_active_same_tenant_output_codes(): void
     {
         $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
@@ -103,6 +116,7 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
             'id' => '30000000-0000-4000-8000-000000000003', 'administration_id' => self::ADMIN_A,
             'code' => 'INPUT21', 'name' => 'Input 21', 'rate' => '21', 'direction' => 'input',
             'status' => 'active', 'created_at' => now(), 'updated_at' => now(),
+            'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none',
         ]);
 
         $items = $this->app->make(TaxCodeReadRepository::class)->findActiveForAdministrationAndDirection(

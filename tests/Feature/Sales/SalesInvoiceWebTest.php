@@ -614,7 +614,7 @@ final class SalesInvoiceWebTest extends TestCase
 
     private function tax(string $admin, string $id, string $code, string $name, string $rate, string $direction, string $status): void
     {
-        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => $admin, 'code' => $code, 'name' => $name, 'rate' => $rate, 'direction' => $direction, 'status' => $status]);
+        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => $admin, 'code' => $code, 'name' => $name, 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'treatment' => $rate === '0' ? 'zero_rated' : 'domestic_standard', 'vat_return_classification' => $rate === '0' ? 'domestic_zero_rated' : 'domestic_standard', 'icp_classification' => 'none']);
     }
 
     private function invoice(string $admin, string $customer, string $address, int $sequence): SalesInvoiceId
@@ -630,7 +630,7 @@ final class SalesInvoiceWebTest extends TestCase
         $invoice = $this->invoice($admin, $customer, $address, $sequence);
         $tenant = $admin === self::ADMIN_A ? 1 : 2;
         $tax = $tenant === 1 ? self::TAX_ACTIVE : self::TAX_B;
-        DB::table('sales_invoice_lines')->insert(['id' => sprintf('8f000000-0000-4000-8000-%012d', $sequence), 'administration_id' => $admin, 'sales_invoice_id' => $invoice->toString(), 'description' => 'Posting service', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'tax_code_id_snapshot' => $tax, 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'Snapshot VAT', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('sales_invoice_lines')->insert(['id' => sprintf('8f000000-0000-4000-8000-%012d', $sequence), 'administration_id' => $admin, 'sales_invoice_id' => $invoice->toString(), 'description' => 'Posting service', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'tax_code_id_snapshot' => $tax, 'tax_code_snapshot' => 'VAT21', 'tax_name_snapshot' => 'Snapshot VAT', 'tax_rate_snapshot' => '21', 'tax_direction_snapshot' => 'output', 'tax_treatment_snapshot' => 'domestic_standard', 'vat_return_classification_snapshot' => 'domestic_standard', 'icp_classification_snapshot' => 'none', 'created_at' => now(), 'updated_at' => now()]);
         SalesInvoiceRecord::query()->whereKey($invoice->toString())->update(['status' => $status]);
 
         return $invoice;

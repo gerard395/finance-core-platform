@@ -134,6 +134,9 @@ final readonly class PostSalesInvoiceWithTax
                 $input->taxLineId(),
                 TaxPostingType::Original,
                 null,
+                $calculation->treatment(),
+                $calculation->vatReturnClassification(),
+                $calculation->icpClassification(),
             );
         }
 

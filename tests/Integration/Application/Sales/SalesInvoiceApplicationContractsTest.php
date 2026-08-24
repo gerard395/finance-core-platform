@@ -164,7 +164,7 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
 
     private function tax(string $id, string $code, string $rate, string $direction, string $status): void
     {
-        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => self::A, 'code' => $code, 'name' => $code.' name', 'rate' => $rate, 'direction' => $direction, 'status' => $status]);
+        TaxCodeRecord::query()->create(['id' => $id, 'administration_id' => self::A, 'code' => $code, 'name' => $code.' name', 'rate' => $rate, 'direction' => $direction, 'status' => $status, 'treatment' => $rate === '0' ? 'zero_rated' : 'domestic_standard', 'vat_return_classification' => $rate === '0' ? 'domestic_zero_rated' : 'domestic_standard', 'icp_classification' => 'none']);
     }
 
     private function admin(string $id): AdministrationId

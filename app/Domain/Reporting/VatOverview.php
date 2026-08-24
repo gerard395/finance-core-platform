@@ -47,9 +47,25 @@ final readonly class VatOverview
                 $itb = $add ? $itb->add($p->taxableBase()) : $itb->subtract($p->taxableBase());
                 $it = $add ? $it->add($p->taxAmount()) : $it->subtract($p->taxAmount());
             }
-            $key = $p->taxCodeId()->toString().'@'.$p->taxRate()->value();
-            $g = $groups[$key] ?? [$p->taxCodeId(), $p->taxRate(), $zero, $zero, $zero, $zero];
-            $i = $p->direction() === TaxPostingDirection::Output ? 2 : 4;
+            $key = implode('@', [
+                $p->taxCodeId()->toString(),
+                $p->taxRate()->value(),
+                $p->treatment()->value,
+                $p->vatReturnClassification()->value,
+                $p->icpClassification()->value,
+            ]);
+            $g = $groups[$key] ?? [
+                $p->taxCodeId(),
+                $p->taxRate(),
+                $p->treatment(),
+                $p->vatReturnClassification(),
+                $p->icpClassification(),
+                $zero,
+                $zero,
+                $zero,
+                $zero,
+            ];
+            $i = $p->direction() === TaxPostingDirection::Output ? 5 : 7;
             $g[$i] = $add ? $g[$i]->add($p->taxableBase()) : $g[$i]->subtract($p->taxableBase());
             $g[$i + 1] = $add ? $g[$i + 1]->add($p->taxAmount()) : $g[$i + 1]->subtract($p->taxAmount());
             $groups[$key] = $g;

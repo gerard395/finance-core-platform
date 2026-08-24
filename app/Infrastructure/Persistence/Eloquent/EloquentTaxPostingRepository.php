@@ -11,9 +11,12 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
@@ -119,6 +122,9 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             'base_journal_entry_line_id' => $taxPosting->baseJournalEntryLineId()->toString(),
             'tax_journal_entry_line_id' => $taxPosting->taxJournalEntryLineId()?->toString(),
             'reversed_tax_posting_id' => $taxPosting->reversedTaxPostingId()?->toString(),
+            'treatment' => $taxPosting->treatment()->value,
+            'vat_return_classification' => $taxPosting->vatReturnClassification()->value,
+            'icp_classification' => $taxPosting->icpClassification()->value,
         ]);
     }
 
@@ -175,6 +181,9 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             $taxLineId === null ? null : new JournalEntryLineId(new Uuid($taxLineId)),
             TaxPostingType::from($record->getAttribute('type')),
             $reversedId === null ? null : new TaxPostingId(new Uuid($reversedId)),
+            TaxTreatment::from($record->getAttribute('treatment')),
+            VatReturnClassification::from($record->getAttribute('vat_return_classification')),
+            IcpClassification::from($record->getAttribute('icp_classification')),
         );
     }
 }

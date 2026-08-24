@@ -32,6 +32,9 @@ final class TaxPostingRecord extends Model
         'base_journal_entry_line_id',
         'tax_journal_entry_line_id',
         'reversed_tax_posting_id',
+        'treatment',
+        'vat_return_classification',
+        'icp_classification',
     ];
 
     protected function casts(): array

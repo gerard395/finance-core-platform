@@ -332,7 +332,7 @@ over-invoicing en dubbele browser-submits.
 - W4B-004B – International VAT Treatment & ICP Readiness Design
 - W4B-004B0 – Administration Settings Authorization & Management Foundation (verplichte predecessor van W4B-004B1)
 - W4B-004B1 – VAT Identification & Jurisdiction Master Data (typed nullable Relation/Administration masterdata en snapshot-readers gereed)
-- W4B-004B2 – Tax Treatment & Reporting Classification
+- W4B-004B2 – Tax Treatment & Reporting Classification (typed catalogus-, snapshot-, posting- en reversaltruth gereed)
 - W4B-004B3 – Sales International Fiscal Snapshots & Dates
 - W4B-004B4 – Sales International Tax Selector Integration
 - W4B-004B5 – International Fiscal Posting & Credit Reversal
@@ -360,6 +360,12 @@ VAT-return/ICP-classificatie, immutable party- en line-snapshots, supply date en
 fiscale posting/creditreversaltruth. Tot W4B-004B1–B6 zijn voltooid is het productlabel
 **domestic NL Sales VAT supported; international reverse-charge invoicing not
 supported** en blijft de batch mergeblocked.
+
+W4B-004B2 legt inmiddels de typed fiscale betekenis duurzaam vast: BTW21 is domestic
+standard, BTW9 domestic reduced en BTW0 domestic zero-rated, alle met ICP `none`.
+TaxCalculation verandert daardoor niet; ook 0%-postings behouden taxable base en
+rapportageclassificatie. Internationale treatments bestaan in het domeinmodel maar
+worden nog niet door de Sales-selector aangeboden.
 
 ### Toekomstige batch – Dutch VAT & ICP Reporting
 

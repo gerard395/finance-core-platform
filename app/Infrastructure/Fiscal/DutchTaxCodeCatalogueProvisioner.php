@@ -8,8 +8,11 @@ use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Fiscal\TaxCodeCatalogueProvisioningConflict;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Enums\IcpClassification;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 use Illuminate\Support\Facades\DB;
 use Ramsey\Uuid\Uuid;
@@ -19,11 +22,11 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
 {
     private const string ID_NAMESPACE = 'b937274e-20a9-4a89-80d6-f247f342d4c2';
 
-    /** @var array<string, array{name: string, rate: string}> */
+    /** @var array<string, array{name: string, rate: string, treatment: TaxTreatment, vat: VatReturnClassification, icp: IcpClassification}> */
     private const array DEFINITIONS = [
-        'BTW21' => ['name' => 'BTW hoog (algemeen tarief)', 'rate' => '21'],
-        'BTW9' => ['name' => 'BTW laag (verlaagd tarief)', 'rate' => '9'],
-        'BTW0' => ['name' => 'BTW 0%', 'rate' => '0'],
+        'BTW21' => ['name' => 'BTW hoog (algemeen tarief)', 'rate' => '21', 'treatment' => TaxTreatment::DomesticStandard, 'vat' => VatReturnClassification::DomesticStandard, 'icp' => IcpClassification::None],
+        'BTW9' => ['name' => 'BTW laag (verlaagd tarief)', 'rate' => '9', 'treatment' => TaxTreatment::DomesticReduced, 'vat' => VatReturnClassification::DomesticReduced, 'icp' => IcpClassification::None],
+        'BTW0' => ['name' => 'BTW 0%', 'rate' => '0', 'treatment' => TaxTreatment::ZeroRated, 'vat' => VatReturnClassification::DomesticZeroRated, 'icp' => IcpClassification::None],
     ];
 
     public function __construct(private TransactionManager $transactions) {}
@@ -39,7 +42,7 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
                     ->first();
 
                 if ($existing !== null) {
-                    $this->assertCompatible($existing, $code, $definition['rate']);
+                    $this->assertCompatible($existing, $code, $definition);
 
                     continue;
                 }
@@ -60,6 +63,9 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
                     'rate' => $definition['rate'],
                     'direction' => TaxPostingDirection::Output->value,
                     'status' => TaxCodeStatus::Active->value,
+                    'treatment' => $definition['treatment']->value,
+                    'vat_return_classification' => $definition['vat']->value,
+                    'icp_classification' => $definition['icp']->value,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
@@ -67,11 +73,15 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
         });
     }
 
-    private function assertCompatible(stdClass $existing, string $code, string $rate): void
+    /** @param array{name: string, rate: string, treatment: TaxTreatment, vat: VatReturnClassification, icp: IcpClassification} $definition */
+    private function assertCompatible(stdClass $existing, string $code, array $definition): void
     {
         $existingRate = new TaxRate((string) $existing->rate);
-        if ($existingRate->value() !== (new TaxRate($rate))->value()
-            || $existing->direction !== TaxPostingDirection::Output->value) {
+        if ($existingRate->value() !== (new TaxRate($definition['rate']))->value()
+            || $existing->direction !== TaxPostingDirection::Output->value
+            || $existing->treatment !== $definition['treatment']->value
+            || $existing->vat_return_classification !== $definition['vat']->value
+            || $existing->icp_classification !== $definition['icp']->value) {
             throw new TaxCodeCatalogueProvisioningConflict(
                 "Existing TaxCode {$code} conflicts with the Dutch basic Output catalogue.",
             );
