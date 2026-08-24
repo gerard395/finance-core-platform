@@ -27,14 +27,17 @@ Alle vier headers kunnen een immutable customersnapshot met CustomerId, Relation
 
 Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
-Internationale Sales vereist aanvullende immutable fiscale snapshots:
-customer/supplier VAT identity en jurisdiction op documentniveau, eventuele
-verplichte factuurwording per line en een supply date waar de fiscale periode niet uit
-invoice date volgt. TaxTreatment en VAT-return/ICP-classificatie zijn al immutable in
-TaxCode, Sales-taxsnapshot en fiscale postings. Tot de party-/date-integratie en
-selectorstory gereed zijn ondersteunt Sales uitsluitend domestic NL VAT en expliciet
-BTW0, niet reverse charge, exempt of outside-scope. De selector beslist nooit
-automatisch op land, btw-ID, code, naam of nulrate.
+SalesInvoice legt bij create document-level immutable customer- en supplier-fiscale
+snapshots vast met typed nullable VAT ID en jurisdiction. Een optionele typed
+SupplyDate is afzonderlijk van InvoiceDate en wordt nooit uit InvoiceDate of OrderDate
+afgeleid. SalesCreditInvoice kopieert partycontext en oorspronkelijke SupplyDate exact
+uit de source invoice; haar eigen credit date blijft de correctiedatum.
+
+TaxTreatment en VAT-return/ICP-classificatie blijven immutable per line. Reverse-
+charge- en intracommunautaire wording is een typed, treatment-derived
+renderinginstructie en geen vrije tekst of rate-heuristiek. Tot de selectorstory gereed
+is ondersteunt Sales uitsluitend domestic NL VAT en expliciet BTW0. De selector
+beslist nooit automatisch op land, btw-ID, code, naam of nulrate.
 
 ## Statusmachines
 

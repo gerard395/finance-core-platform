@@ -14,5 +14,5 @@ final class SalesInvoiceRecord extends Model
 
     public $incrementing = false;
 
-    protected $fillable = ['id', 'administration_id', 'sales_invoice_number', 'customer_id', 'customer_relation_id_snapshot', 'customer_number_snapshot', 'customer_name_snapshot', 'invoice_address_id_snapshot', 'invoice_address_type_snapshot', 'invoice_address_line_1_snapshot', 'invoice_address_line_2_snapshot', 'invoice_postal_code_snapshot', 'invoice_city_snapshot', 'invoice_country_code_snapshot', 'source_order_id', 'currency', 'invoice_date', 'due_date', 'status'];
+    protected $fillable = ['id', 'administration_id', 'sales_invoice_number', 'customer_id', 'customer_relation_id_snapshot', 'customer_number_snapshot', 'customer_name_snapshot', 'invoice_address_id_snapshot', 'invoice_address_type_snapshot', 'invoice_address_line_1_snapshot', 'invoice_address_line_2_snapshot', 'invoice_postal_code_snapshot', 'invoice_city_snapshot', 'invoice_country_code_snapshot', 'customer_vat_id_snapshot', 'customer_fiscal_jurisdiction_snapshot', 'supplier_vat_id_snapshot', 'supplier_fiscal_jurisdiction_snapshot', 'supply_date', 'source_order_id', 'currency', 'invoice_date', 'due_date', 'status'];
 }

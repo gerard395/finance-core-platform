@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Sales;
 
+use App\Application\Administration\AdministrationFiscalPartyReader;
+use App\Application\Relations\RelationFiscalPartyReader;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\AddressId;
@@ -15,8 +17,11 @@ use App\Domain\Sales\Enums\OrderStatus;
 use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\OrderInvoiceDraftRequestId;
+use App\Domain\Sales\ValueObjects\SalesCustomerFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesInvoiceNumber;
+use App\Domain\Sales\ValueObjects\SalesSupplierFiscalSnapshot;
 use App\Domain\Sales\ValueObjects\SalesTaxSnapshot;
+use App\Domain\Sales\ValueObjects\SupplyDate;
 use DateTimeImmutable;
 use InvalidArgumentException;
 use RuntimeException;
@@ -36,20 +41,22 @@ final readonly class CreateSalesInvoiceFromOrder
         private SalesInvoiceCreator $invoices,
         private OrderInvoicingFactStore $facts,
         private SalesInvoiceReadRepository $invoiceReader,
+        private RelationFiscalPartyReader $relationFiscalParties,
+        private AdministrationFiscalPartyReader $administrationFiscalParties,
     ) {}
 
     /** @param list<CreateSalesInvoiceFromOrderLineInput> $lines */
-    public function execute(AdministrationId $administrationId, OrderId $orderId, OrderInvoiceDraftRequestId $requestId, AddressId $invoiceAddressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines): CreateSalesInvoiceFromOrderResult
+    public function execute(AdministrationId $administrationId, OrderId $orderId, OrderInvoiceDraftRequestId $requestId, AddressId $invoiceAddressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines, ?SupplyDate $supplyDate = null): CreateSalesInvoiceFromOrderResult
     {
         try {
-            return $this->transactions->run(function () use ($administrationId, $orderId, $requestId, $invoiceAddressId, $invoiceDate, $dueDate, $lines): CreateSalesInvoiceFromOrderResult {
+            return $this->transactions->run(function () use ($administrationId, $orderId, $requestId, $invoiceAddressId, $invoiceDate, $dueDate, $lines, $supplyDate): CreateSalesInvoiceFromOrderResult {
                 $order = $this->orders->findLockedForAdministration($administrationId, $orderId);
                 if ($order === null) {
                     return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::NotFound);
                 }
                 $existing = $this->requests->find($administrationId, $requestId);
                 if ($existing !== null) {
-                    return $this->replay($administrationId, $orderId, $existing, $invoiceAddressId, $invoiceDate, $dueDate, $lines);
+                    return $this->replay($administrationId, $orderId, $existing, $invoiceAddressId, $invoiceDate, $dueDate, $lines, $supplyDate);
                 }
                 if (! in_array($order->status(), [OrderStatus::Confirmed, OrderStatus::PartiallyInvoiced], true)) {
                     return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::InvalidOrderState);
@@ -98,6 +105,11 @@ final readonly class CreateSalesInvoiceFromOrder
                 if ($address === null) {
                     return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::MissingInvoiceAddress);
                 }
+                $customerFiscalParty = $this->relationFiscalParties->findFiscalParty($administrationId, $customer->relationId());
+                $supplierFiscalParty = $this->administrationFiscalParties->findFiscalParty($administrationId);
+                if ($customerFiscalParty === null || $supplierFiscalParty === null) {
+                    return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::NotFound);
+                }
                 $numberAllocation = $this->numbers->next($administrationId, SalesNumberType::SalesInvoice);
                 if ($numberAllocation->status() === SalesNumberAllocationStatus::SequenceMissing) {
                     return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::SequenceMissing);
@@ -110,7 +122,7 @@ final readonly class CreateSalesInvoiceFromOrder
                     throw new OrderInvoiceDraftCreationFailed(CreateSalesInvoiceFromOrderStatus::PersistenceConflict);
                 }
                 $invoiceId = $this->identities->salesInvoiceId();
-                $invoice = new SalesInvoice($invoiceId, $number, $administrationId, $order->customerId(), $order->currency(), $invoiceDate, $dueDate, $orderId, SalesInvoiceStatus::Draft, $customer, $address);
+                $invoice = new SalesInvoice($invoiceId, $number, $administrationId, $order->customerId(), $order->currency(), $invoiceDate, $dueDate, $orderId, SalesInvoiceStatus::Draft, $customer, $address, new SalesCustomerFiscalSnapshot($customerFiscalParty->relationId, $customerFiscalParty->vatIdentificationNumber, $customerFiscalParty->fiscalJurisdiction), new SalesSupplierFiscalSnapshot($supplierFiscalParty->administrationId, $supplierFiscalParty->vatIdentificationNumber, $supplierFiscalParty->fiscalJurisdiction), $supplyDate);
                 $reservations = [];
                 foreach ($selected as [$input, $sourceLine, $taxSnapshot]) {
                     $invoiceLineId = $this->identities->salesInvoiceLineId();
@@ -147,7 +159,7 @@ final readonly class CreateSalesInvoiceFromOrder
     }
 
     /** @param list<CreateSalesInvoiceFromOrderLineInput> $lines */
-    private function replay(AdministrationId $administrationId, OrderId $orderId, OrderInvoiceDraftRequest $request, AddressId $addressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines): CreateSalesInvoiceFromOrderResult
+    private function replay(AdministrationId $administrationId, OrderId $orderId, OrderInvoiceDraftRequest $request, AddressId $addressId, DateTimeImmutable $invoiceDate, DateTimeImmutable $dueDate, array $lines, ?SupplyDate $supplyDate): CreateSalesInvoiceFromOrderResult
     {
         if (! $request->orderId()->equals($orderId)) {
             return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::RequestConflict);
@@ -155,7 +167,7 @@ final readonly class CreateSalesInvoiceFromOrder
         $invoice = $this->invoiceReader->findForAdministration($administrationId, $request->salesInvoiceId());
         $reservations = $this->progress->reservationsForDraftRequest($administrationId, $request->id());
         if ($invoice === null || ! $invoice->sourceOrderId()?->equals($orderId) || ! $invoice->invoiceAddressSnapshot()?->addressId()->equals($addressId)
-            || $invoice->invoiceDate() != $invoiceDate || $invoice->dueDate() != $dueDate || count($reservations) !== count($lines)) {
+            || $invoice->invoiceDate() != $invoiceDate || $invoice->dueDate() != $dueDate || ($invoice->supplyDate() === null) !== ($supplyDate === null) || ($invoice->supplyDate() !== null && ! $invoice->supplyDate()->equals($supplyDate)) || count($reservations) !== count($lines)) {
             return CreateSalesInvoiceFromOrderResult::forStatus(CreateSalesInvoiceFromOrderStatus::RequestConflict);
         }
         $byOrderLine = [];

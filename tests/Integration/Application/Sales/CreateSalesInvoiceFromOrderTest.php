@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Application\Sales;
 
+use App\Application\Administration\AdministrationFiscalPartyReader;
+use App\Application\Relations\RelationFiscalPartyReader;
 use App\Application\Sales\AddSalesInvoiceLine;
 use App\Application\Sales\CancelSalesInvoice;
 use App\Application\Sales\CreateSalesInvoice;
@@ -450,7 +452,7 @@ final class CreateSalesInvoiceFromOrderTest extends TestCase
 
     private function useCase(SalesInvoiceCreator $creator): CreateSalesInvoiceFromOrder
     {
-        return new CreateSalesInvoiceFromOrder($this->app->make(TransactionManager::class), $this->app->make(OrderInvoicingSource::class), $this->app->make(OrderInvoiceDraftRequestReader::class), $this->app->make(OrderInvoicingProgressReader::class), $this->app->make(SalesInvoiceAddressResolver::class), $this->app->make(SalesTaxCodeResolver::class), $this->app->make(SalesInvoiceReadinessChecker::class), $this->app->make(SalesNumberAllocator::class), $this->app->make(OrderInvoiceDraftIdentityGenerator::class), $creator, $this->app->make(OrderInvoicingFactStore::class), $this->app->make(SalesInvoiceReadRepository::class));
+        return new CreateSalesInvoiceFromOrder($this->app->make(TransactionManager::class), $this->app->make(OrderInvoicingSource::class), $this->app->make(OrderInvoiceDraftRequestReader::class), $this->app->make(OrderInvoicingProgressReader::class), $this->app->make(SalesInvoiceAddressResolver::class), $this->app->make(SalesTaxCodeResolver::class), $this->app->make(SalesInvoiceReadinessChecker::class), $this->app->make(SalesNumberAllocator::class), $this->app->make(OrderInvoiceDraftIdentityGenerator::class), $creator, $this->app->make(OrderInvoicingFactStore::class), $this->app->make(SalesInvoiceReadRepository::class), $this->app->make(RelationFiscalPartyReader::class), $this->app->make(AdministrationFiscalPartyReader::class));
     }
 
     private function lifecycle(?OrderInvoicingFactStore $facts = null, ?OrderUpdater $orders = null, ?SalesInvoiceUpdater $invoices = null): OrderDerivedSalesInvoiceLifecycle

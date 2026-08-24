@@ -75,7 +75,7 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
     public function test_generic_create_is_direct_only_and_captures_number_customer_address_and_tax_snapshots(): void
     {
         $parameters = (new ReflectionMethod(CreateSalesInvoice::class, 'execute'))->getParameters();
-        self::assertCount(7, $parameters);
+        self::assertCount(8, $parameters);
         self::assertNotContains('sourceOrderId', array_map(static fn ($parameter): string => $parameter->getName(), $parameters));
 
         $id = $this->invoiceId(1);

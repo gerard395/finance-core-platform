@@ -45,7 +45,7 @@ final readonly class CreateSalesCreditInvoiceFromInvoice
                 if (! $number instanceof SalesCreditInvoiceNumber) {
                     return new CreateSalesCreditInvoiceResult(SalesCreditInvoiceWriteResult::SequenceMissing);
                 }
-                $credit = new SalesCreditInvoice($this->identities->creditInvoiceId(), $number, $administrationId, $invoice->customerId(), $invoice->currency(), $creditDate, $invoice->id(), SalesCreditInvoiceStatus::Draft, $customer, $address);
+                $credit = new SalesCreditInvoice($this->identities->creditInvoiceId(), $number, $administrationId, $invoice->customerId(), $invoice->currency(), $creditDate, $invoice->id(), SalesCreditInvoiceStatus::Draft, $customer, $address, $invoice->customerFiscalSnapshot(), $invoice->supplierFiscalSnapshot(), $invoice->supplyDate());
                 foreach ($invoice->lines() as $line) {
                     $credit->addLine(new SalesCreditInvoiceLine(new SalesCreditInvoiceLineId($line->id()->uuid()), $line->description(), $line->quantity(), $line->unitPrice()));
                 }
