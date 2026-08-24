@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Sales\SalesInvoiceCreator;
+use App\Application\Sales\SalesInvoicePostingSource;
 use App\Application\Sales\SalesInvoiceReadRepository;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesInvoiceWriteResult;
@@ -45,11 +46,18 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 
-final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, SalesInvoiceReadRepository, SalesInvoiceUpdater
+final class EloquentSalesInvoiceRepository implements SalesInvoiceCreator, SalesInvoicePostingSource, SalesInvoiceReadRepository, SalesInvoiceUpdater
 {
     public function findForAdministration(AdministrationId $administrationId, SalesInvoiceId $invoiceId): ?SalesInvoice
     {
         $record = SalesInvoiceRecord::query()->where('administration_id', $administrationId->toString())->whereKey($invoiceId->toString())->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function findLockedForAdministration(AdministrationId $administrationId, SalesInvoiceId $invoiceId): ?SalesInvoice
+    {
+        $record = SalesInvoiceRecord::query()->where('administration_id', $administrationId->toString())->whereKey($invoiceId->toString())->lockForUpdate()->first();
 
         return $record === null ? null : $this->hydrate($record);
     }

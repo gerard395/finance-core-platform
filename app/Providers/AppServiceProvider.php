@@ -46,11 +46,13 @@ use App\Application\Relations\RelationUpdater;
 use App\Application\Relations\SupplierClassificationWriter;
 use App\Application\Relations\SupplierReadRepository;
 use App\Application\Relations\SupplierStore;
+use App\Application\Sales\CreateSalesInvoicePostingRequest;
 use App\Application\Sales\OrderCreator;
 use App\Application\Sales\OrderDetailReadRepository;
 use App\Application\Sales\OrderListReadRepository;
 use App\Application\Sales\OrderReadRepository;
 use App\Application\Sales\OrderUpdater;
+use App\Application\Sales\PostSalesInvoiceWithTax;
 use App\Application\Sales\QuotationCreator;
 use App\Application\Sales\QuotationDetailReadRepository;
 use App\Application\Sales\QuotationListReadRepository;
@@ -60,7 +62,10 @@ use App\Application\Sales\SalesCustomerContextReader;
 use App\Application\Sales\SalesInvoiceCreator;
 use App\Application\Sales\SalesInvoiceDetailReadRepository;
 use App\Application\Sales\SalesInvoiceListReadRepository;
+use App\Application\Sales\SalesInvoicePostingClock;
+use App\Application\Sales\SalesInvoicePostingIdentityGenerator;
 use App\Application\Sales\SalesInvoicePostingRepository;
+use App\Application\Sales\SalesInvoicePostingSource;
 use App\Application\Sales\SalesInvoiceReadRepository;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesNumberAllocator;
@@ -68,6 +73,10 @@ use App\Application\Sales\SalesNumberSequenceProvisioner;
 use App\Application\Sales\SalesPostingConfigurationReader;
 use App\Application\Sales\SalesPostingConfigurationStore;
 use App\Application\Shared\TransactionManager;
+use App\Domain\Accounting\Services\PostingEngine;
+use App\Domain\Accounting\Services\PostingValidation;
+use App\Domain\Fiscal\Services\TaxCalculation;
+use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
 use App\Infrastructure\Persistence\Eloquent\EloquentAddressReadRepository;
@@ -108,6 +117,8 @@ use App\Infrastructure\Sales\DatabaseSalesNumberSequence;
 use App\Infrastructure\Sales\EloquentSalesCustomerContextReader;
 use App\Infrastructure\Sales\EloquentSalesInvoicePostingRepository;
 use App\Infrastructure\Sales\EloquentSalesPostingConfiguration;
+use App\Infrastructure\Sales\LaravelSalesInvoicePostingIdentityGenerator;
+use App\Infrastructure\Sales\SystemSalesInvoicePostingClock;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -172,6 +183,19 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SalesPostingConfigurationReader::class, EloquentSalesPostingConfiguration::class);
         $this->app->bind(SalesPostingConfigurationStore::class, EloquentSalesPostingConfiguration::class);
         $this->app->bind(SalesInvoicePostingRepository::class, EloquentSalesInvoicePostingRepository::class);
+        $this->app->bind(SalesInvoicePostingSource::class, EloquentSalesInvoiceRepository::class);
+        $this->app->bind(SalesInvoicePostingIdentityGenerator::class, LaravelSalesInvoicePostingIdentityGenerator::class);
+        $this->app->bind(SalesInvoicePostingClock::class, SystemSalesInvoicePostingClock::class);
+        $this->app->bind(PostSalesInvoiceWithTax::class, function ($app): PostSalesInvoiceWithTax {
+            $identities = $app->make(SalesInvoicePostingIdentityGenerator::class);
+
+            return new PostSalesInvoiceWithTax(
+                new TaxCalculation,
+                new TaxPostingIdentityPolicy,
+                new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
+                new CreateSalesInvoicePostingRequest,
+            );
+        });
         $this->app->bind(RelationClassificationIdentityGenerator::class, LaravelRelationClassificationIdentityGenerator::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);

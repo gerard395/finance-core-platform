@@ -28,14 +28,6 @@ final class CreateSalesInvoicePostingRequest
         PostingDate $postingDate,
         JournalEntryReference $reference,
     ): PostingRequest {
-        if (! in_array($invoice->status(), [
-            SalesInvoiceStatus::Finalized,
-            SalesInvoiceStatus::Posted,
-            SalesInvoiceStatus::Paid,
-        ], true)) {
-            throw new DomainException('A sales invoice must be at least finalized before a posting request can be created.');
-        }
-
         $total = Money::zero($invoice->currency());
 
         foreach ($invoice->lines() as $line) {
@@ -44,15 +36,40 @@ final class CreateSalesInvoicePostingRequest
 
         $description = 'Sales invoice '.$invoice->number()->value();
 
+        return $this->executeForFinancialLines(
+            $invoice,
+            $salesJournalId,
+            [
+                new JournalEntryLine($debtorLineId, $debtorAccountId, $total, null, $description),
+                new JournalEntryLine($revenueLineId, $revenueAccountId, null, $total, $description),
+            ],
+            $postingDate,
+            $reference,
+        );
+    }
+
+    /** @param list<JournalEntryLine> $lines */
+    public function executeForFinancialLines(
+        SalesInvoice $invoice,
+        JournalId $salesJournalId,
+        array $lines,
+        PostingDate $postingDate,
+        JournalEntryReference $reference,
+    ): PostingRequest {
+        if (! in_array($invoice->status(), [
+            SalesInvoiceStatus::Finalized,
+            SalesInvoiceStatus::Posted,
+            SalesInvoiceStatus::Paid,
+        ], true)) {
+            throw new DomainException('A sales invoice must be at least finalized before a posting request can be created.');
+        }
+
         return new PostingRequest(
             $invoice->administrationId(),
             $salesJournalId,
             $postingDate,
             $reference,
-            [
-                new JournalEntryLine($debtorLineId, $debtorAccountId, $total, null, $description),
-                new JournalEntryLine($revenueLineId, $revenueAccountId, null, $total, $description),
-            ],
+            $lines,
         );
     }
 }

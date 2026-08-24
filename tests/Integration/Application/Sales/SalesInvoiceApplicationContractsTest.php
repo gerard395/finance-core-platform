@@ -135,7 +135,7 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
         self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(AddSalesInvoiceLine::class)->execute($this->admin(self::A), $finalized, $this->line(3)));
         self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $finalized));
         self::assertSame(SalesInvoiceStatus::Cancelled, $this->read($finalized)?->status());
-        self::assertFalse(class_exists('App\\Application\\Sales\\PostSalesInvoice'));
+        self::assertTrue(class_exists('App\\Application\\Sales\\PostSalesInvoice'));
         self::assertFalse(class_exists('App\\Application\\Sales\\MarkSalesInvoicePaid'));
     }
 

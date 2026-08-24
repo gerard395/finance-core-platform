@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Application\Sales;
 
 use App\Domain\Accounting\Entities\JournalEntryLine;
-use App\Domain\Accounting\Requests\PostingRequest;
 use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
@@ -32,6 +31,7 @@ final readonly class PostSalesInvoiceWithTax
         private TaxCalculation $taxCalculation,
         private TaxPostingIdentityPolicy $identityPolicy,
         private PostingEngine $postingEngine,
+        private CreateSalesInvoicePostingRequest $postingRequestFactory,
     ) {}
 
     /** @param list<SalesFiscalLineInput> $fiscalLines */
@@ -90,12 +90,12 @@ final readonly class PostSalesInvoiceWithTax
             }
         }
 
-        $request = new PostingRequest(
-            $invoice->administrationId(),
+        $request = $this->postingRequestFactory->executeForFinancialLines(
+            $invoice,
             $salesJournalId,
+            $journalEntryLines,
             $postingDate,
             $reference,
-            $journalEntryLines,
         );
         $postingResult = $this->postingEngine->post($request);
 
