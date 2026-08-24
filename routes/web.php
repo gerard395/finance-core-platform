@@ -19,6 +19,9 @@ use App\Http\Controllers\Sales\OrderLineController;
 use App\Http\Controllers\Sales\QuotationController;
 use App\Http\Controllers\Sales\QuotationLifecycleController;
 use App\Http\Controllers\Sales\QuotationLineController;
+use App\Http\Controllers\Sales\SalesInvoiceController;
+use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
+use App\Http\Controllers\Sales\SalesInvoiceLineController;
 use App\Http\Middleware\EnsureRelationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
@@ -200,3 +203,15 @@ Route::put('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'u
 Route::delete('/sales/orders/{order}/lines/{line}', [OrderLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.lines.destroy');
 Route::post('/sales/orders/{order}/confirm', [OrderLifecycleController::class, 'confirm'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.confirm');
 Route::post('/sales/orders/{order}/cancel', [OrderLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageOrders)])->name('sales.orders.cancel');
+
+Route::get('/sales/invoices', [SalesInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.invoices.index');
+Route::get('/sales/invoices/create', [SalesInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.create');
+Route::post('/sales/invoices', [SalesInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.store');
+Route::get('/sales/invoices/{invoice}', [SalesInvoiceController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::View)])->name('sales.invoices.show');
+Route::get('/sales/invoices/{invoice}/edit', [SalesInvoiceController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.edit');
+Route::put('/sales/invoices/{invoice}', [SalesInvoiceController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.update');
+Route::post('/sales/invoices/{invoice}/lines', [SalesInvoiceLineController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.store');
+Route::put('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.update');
+Route::delete('/sales/invoices/{invoice}/lines/{line}', [SalesInvoiceLineController::class, 'destroy'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::ManageInvoiceDrafts)])->name('sales.invoices.lines.destroy');
+Route::post('/sales/invoices/{invoice}/finalize', [SalesInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureSalesPermission::using(SalesPermission::IssueInvoices)])->name('sales.invoices.finalize');
+Route::post('/sales/invoices/{invoice}/cancel', [SalesInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active'])->name('sales.invoices.cancel');
