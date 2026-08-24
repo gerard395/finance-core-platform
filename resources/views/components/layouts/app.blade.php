@@ -1,4 +1,3 @@
-@props(['domainUser', 'administrationContext', 'canViewRelations' => false, 'canViewSales' => false, 'title'])
 <!DOCTYPE html>
 <html lang="nl">
 <head>

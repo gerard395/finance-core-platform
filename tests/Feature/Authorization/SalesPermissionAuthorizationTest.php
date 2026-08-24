@@ -32,6 +32,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentMembershipRoleRepository;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Testing\TestResponse;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
@@ -115,27 +116,41 @@ final class SalesPermissionAuthorizationTest extends TestCase
         ));
         $this->loginWithAdministration(self::ADMIN_A);
 
-        $dashboard = $this->get('/app')->assertOk();
-        foreach (['sales.quotations.index' => 'Offertes', 'sales.orders.index' => 'Orders', 'sales.invoices.index' => 'Facturen', 'sales.credit-invoices.index' => 'Creditfacturen'] as $route => $label) {
-            $dashboard->assertSee('href="'.route($route).'"', false)->assertSeeText($label);
-        }
-        $dashboard->assertSee('href="'.route('relations.index').'"', false)->assertSeeText('Alle relaties');
+        $this->assertBothNavigationSections($this->get('/app')->assertOk());
+        $this->assertBothNavigationSections($this->get('/relations')->assertOk());
+        $this->assertBothNavigationSections($this->get('/sales/quotations')->assertOk());
 
         $roles = new EloquentMembershipRoleRepository;
         $sales = $roles->findById($salesAssignment);
         self::assertNotNull($sales);
         $sales->deactivate();
         $roles->save($sales);
-        $withoutSales = $this->get('/app')->assertOk()->assertSeeText('Alle relaties');
-        foreach (['Offertes', 'Orders', 'Facturen', 'Creditfacturen'] as $label) {
-            $withoutSales->assertDontSeeText($label);
-        }
+        $withoutSales = $this->get('/relations')->assertOk()->assertSeeText('Alle relaties');
+        $this->assertSalesNavigationHidden($withoutSales);
 
         $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_B]);
         $tenantB = $this->get('/app')->assertOk()->assertDontSeeText('Alle relaties');
-        foreach (['Offertes', 'Orders', 'Facturen', 'Creditfacturen'] as $label) {
-            $tenantB->assertDontSeeText($label);
-        }
+        $this->assertSalesNavigationHidden($tenantB);
+    }
+
+    public function test_sales_only_and_no_view_permissions_keep_navigation_sections_independent(): void
+    {
+        $this->provisionScenario();
+        $this->app->make(RelationsAuthorizationProvisioner::class)->provision();
+        $this->assignRole(SalesRole::Viewer, 'c1000000-0000-4000-8000-000000000022');
+        $this->loginWithAdministration(self::ADMIN_A);
+
+        $salesOnly = $this->get('/sales/quotations')->assertOk()->assertDontSeeText('Alle relaties');
+        $this->assertSalesNavigationVisible($salesOnly);
+
+        $roles = new EloquentMembershipRoleRepository;
+        $assignment = $roles->findById(new MembershipRoleId(new Uuid('c1000000-0000-4000-8000-000000000022')));
+        self::assertNotNull($assignment);
+        $assignment->deactivate();
+        $roles->save($assignment);
+
+        $withoutEither = $this->get('/app')->assertOk()->assertDontSeeText('Alle relaties');
+        $this->assertSalesNavigationHidden($withoutEither);
     }
 
     public function test_inactive_membership_is_rejected_before_sales_permission(): void
@@ -157,6 +172,37 @@ final class SalesPermissionAuthorizationTest extends TestCase
     {
         $response = $this->get($this->path($permission));
         $allowed ? $response->assertOk() : $response->assertForbidden();
+    }
+
+    private function assertBothNavigationSections(TestResponse $response): void
+    {
+        $response->assertSee('href="'.route('relations.index').'"', false)->assertSeeText('Alle relaties');
+        $this->assertSalesNavigationVisible($response);
+    }
+
+    private function assertSalesNavigationVisible(TestResponse $response): void
+    {
+        foreach ($this->salesNavigationItems() as $route => $label) {
+            $response->assertSee('href="'.route($route).'"', false)->assertSeeText($label);
+        }
+    }
+
+    private function assertSalesNavigationHidden(TestResponse $response): void
+    {
+        foreach ($this->salesNavigationItems() as $label) {
+            $response->assertDontSeeText($label);
+        }
+    }
+
+    /** @return array<string, string> */
+    private function salesNavigationItems(): array
+    {
+        return [
+            'sales.quotations.index' => 'Offertes',
+            'sales.orders.index' => 'Orders',
+            'sales.invoices.index' => 'Facturen',
+            'sales.credit-invoices.index' => 'Creditfacturen',
+        ];
     }
 
     private function provisionScenario(): void
