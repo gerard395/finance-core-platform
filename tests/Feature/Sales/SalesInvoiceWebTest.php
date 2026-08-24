@@ -365,9 +365,10 @@ final class SalesInvoiceWebTest extends TestCase
         foreach (['index', 'create', 'store', 'show', 'finalize', 'cancel'] as $name) {
             self::assertTrue(Route::has('sales.credit-invoices.'.$name));
         }
-        foreach (['edit', 'lines.store', 'lines.update', 'lines.destroy', 'post', 'paid', 'refund'] as $name) {
+        foreach (['edit', 'lines.store', 'lines.update', 'lines.destroy', 'paid', 'refund'] as $name) {
             self::assertFalse(Route::has('sales.credit-invoices.'.$name));
         }
+        self::assertTrue(Route::has('sales.credit-invoices.post'));
         self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.store')?->methods());
         self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.finalize')?->methods());
         self::assertSame(['POST'], Route::getRoutes()->getByName('sales.credit-invoices.cancel')?->methods());
@@ -463,7 +464,120 @@ final class SalesInvoiceWebTest extends TestCase
         $this->post('/sales/credit-invoices/'.$credit->getAttribute('id').'/finalize')->assertForbidden();
         $this->assignPermissionOnly(SalesPermission::IssueCreditInvoices, 'CREDIT_ISSUE_ONLY', 45);
         $this->post('/sales/credit-invoices/'.$credit->getAttribute('id').'/finalize')->assertRedirect('/app');
-        self::assertFalse(Route::has('sales.credit-invoices.post'));
+        self::assertTrue(Route::has('sales.credit-invoices.post'));
+        $this->post('/sales/credit-invoices/'.$credit->getAttribute('id').'/post')->assertForbidden();
+    }
+
+    public function test_credit_post_permission_controls_button_and_posts_with_view_redirect_idempotently(): void
+    {
+        $this->assign(SalesRole::Viewer, 46);
+        $this->assign(SalesRole::Poster, 47);
+        $this->login();
+        $source = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 50);
+        $created = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_A), $source, new DateTimeImmutable('2026-08-24'));
+        $creditId = $created->creditInvoiceId();
+        self::assertNotNull($creditId);
+        SalesCreditInvoiceRecord::query()->whereKey($creditId->toString())->update(['status' => 'finalized']);
+
+        $this->get('/sales/credit-invoices/'.$creditId->toString())->assertOk()->assertSee('Creditfactuur boeken');
+        $this->post('/sales/credit-invoices/'.$creditId->toString().'/post')->assertRedirect('/sales/credit-invoices/'.$creditId->toString())->assertSessionHas('status', 'Creditfactuur is geboekt.');
+        $this->assertDatabaseHas('sales_credit_invoices', ['id' => $creditId->toString(), 'status' => 'posted']);
+        $counts = $this->creditPostingCounts();
+        $this->get('/sales/credit-invoices/'.$creditId->toString())->assertOk()->assertDontSee('Creditfactuur boeken');
+        $this->post('/sales/credit-invoices/'.$creditId->toString().'/post')->assertRedirect('/sales/credit-invoices/'.$creditId->toString())->assertSessionHas('status', 'Deze creditfactuur is al geboekt.');
+        self::assertSame($counts, $this->creditPostingCounts());
+    }
+
+    public function test_credit_post_permission_is_independent_tenant_safe_revocable_and_redirects_without_view(): void
+    {
+        $this->assignPermissionOnly(SalesPermission::PostCreditInvoices, 'CREDIT_POST_ONLY', 48);
+        $this->login();
+        $sourceA = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, 51);
+        $sourceB = $this->postedInvoice(self::ADMIN_B, self::CUSTOMER_B, self::ADDRESS_B, 52);
+        $creditA = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_A), $sourceA, new DateTimeImmutable('2026-08-24'))->creditInvoiceId();
+        $creditB = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_B), $sourceB, new DateTimeImmutable('2026-08-24'))->creditInvoiceId();
+        self::assertNotNull($creditA);
+        self::assertNotNull($creditB);
+        SalesCreditInvoiceRecord::query()->whereIn('id', [$creditA->toString(), $creditB->toString()])->update(['status' => 'finalized']);
+
+        $this->post('/sales/credit-invoices/'.$creditB->toString().'/post')->assertNotFound();
+        $this->post('/sales/credit-invoices/not-a-uuid/post')->assertNotFound();
+        $this->post('/sales/credit-invoices/'.$creditA->toString().'/post', ['administration_id' => self::ADMIN_B])->assertRedirect('/app');
+
+        $assignmentId = new MembershipRoleId(new Uuid(sprintf('8e000000-0000-4000-8000-%012d', 48)));
+        $assignment = (new EloquentMembershipRoleRepository)->findById($assignmentId);
+        self::assertNotNull($assignment);
+        $assignment->deactivate();
+        (new EloquentMembershipRoleRepository)->save($assignment);
+        $this->post('/sales/credit-invoices/'.$creditA->toString().'/post')->assertForbidden();
+    }
+
+    public function test_credit_post_route_is_post_only_and_presentation_has_no_financial_logic(): void
+    {
+        $route = Route::getRoutes()->getByName('sales.credit-invoices.post');
+        self::assertNotNull($route);
+        self::assertSame(['POST'], $route->methods());
+        self::assertContains('web', $route->gatherMiddleware());
+        self::assertContains(EnsureSalesPermission::using(SalesPermission::PostCreditInvoices), $route->gatherMiddleware());
+        self::assertFalse(Route::has('sales.credit-invoices.refund'));
+        self::assertFalse(Route::has('sales.credit-invoices.partial'));
+        $this->get('/sales/credit-invoices/8d000000-0000-4000-8000-000000000001/post')->assertMethodNotAllowed();
+
+        $presentation = (string) file_get_contents(app_path('Http/Controllers/Sales/SalesCreditInvoicePostingController.php')).(string) file_get_contents(resource_path('views/sales/credit-invoices/show.blade.php'));
+        foreach (['Eloquent', 'JournalEntryStore', 'TaxPostingStore', 'OpenItemStore', 'MatchOpenItems', 'PostingEngine'] as $forbidden) {
+            self::assertStringNotContainsString($forbidden, $presentation);
+        }
+        self::assertStringNotContainsString('refund', strtolower($presentation));
+        self::assertStringNotContainsString('partial', strtolower($presentation));
+    }
+
+    public function test_credit_post_typed_failures_are_safe_and_leak_no_financial_details(): void
+    {
+        $this->assignPermissionOnly(SalesPermission::PostCreditInvoices, 'CREDIT_POST_ERRORS', 49);
+        $this->login();
+
+        $draft = $this->creditFromPostedSource(53, false);
+        $this->post('/sales/credit-invoices/'.$draft.'/post')->assertSessionHas('error', 'Deze creditfactuur kan in de huidige status niet worden geboekt.');
+
+        $missing = $this->creditFromPostedSource(54);
+        DB::table('sales_posting_configurations')->where('administration_id', self::ADMIN_A)->delete();
+        $this->post('/sales/credit-invoices/'.$missing.'/post')->assertSessionHas('error', 'De verkoopboekingsconfiguratie is nog niet volledig ingesteld.');
+        $this->postingConfiguration(self::ADMIN_A, 1);
+
+        $invalid = $this->creditFromPostedSource(55);
+        DB::table('journals')->where('id', $this->journalId(1))->update(['status' => 'inactive']);
+        $this->post('/sales/credit-invoices/'.$invalid.'/post')->assertSessionHas('error', 'De verkoopboekingsconfiguratie is ongeldig of niet meer beschikbaar.');
+        DB::table('journals')->where('id', $this->journalId(1))->update(['status' => 'active']);
+
+        $sourceInvalid = $this->creditFromPostedSource(56);
+        $sourceId = SalesCreditInvoiceRecord::query()->whereKey($sourceInvalid)->value('source_sales_invoice_id');
+        DB::table('sales_invoice_postings')->where('sales_invoice_id', $sourceId)->delete();
+        $this->post('/sales/credit-invoices/'.$sourceInvalid.'/post')->assertSessionHas('error', 'De oorspronkelijke factuur kan financieel niet veilig worden gecrediteerd.');
+
+        $inconsistent = $this->creditFromPostedSource(57);
+        SalesCreditInvoiceRecord::query()->whereKey($inconsistent)->update(['status' => 'posted']);
+        $this->post('/sales/credit-invoices/'.$inconsistent.'/post')->assertSessionHas('error', 'De financiële status van deze creditfactuur is niet consistent. Controle is vereist.');
+        self::assertSame(0, DB::table('sales_credit_invoice_postings')->count());
+    }
+
+    private function creditPostingCounts(): array
+    {
+        return [
+            DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(),
+            DB::table('open_item_matches')->count(), DB::table('sales_credit_invoice_postings')->count(),
+        ];
+    }
+
+    private function creditFromPostedSource(int $sequence, bool $finalized = true): string
+    {
+        $source = $this->postedInvoice(self::ADMIN_A, self::CUSTOMER_A, self::ADDRESS_A, $sequence);
+        $credit = $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin(self::ADMIN_A), $source, new DateTimeImmutable('2026-08-24'))->creditInvoiceId();
+        self::assertNotNull($credit);
+        if ($finalized) {
+            SalesCreditInvoiceRecord::query()->whereKey($credit->toString())->update(['status' => 'finalized']);
+        }
+
+        return $credit->toString();
     }
 
     private function provision(): void

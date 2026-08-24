@@ -101,7 +101,7 @@ final class SalesCreditInvoiceController extends Controller
     /** @return array<string, mixed> */
     private function viewData(ActiveAdministrationContext $context): array
     {
-        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canViewRelations' => $this->canRelations($context), 'canViewSales' => $this->can($context, SalesPermission::View), 'canManageCreditDrafts' => $this->can($context, SalesPermission::ManageCreditInvoiceDrafts), 'canIssueCredits' => $this->can($context, SalesPermission::IssueCreditInvoices), 'statusPresenter' => SalesCreditInvoiceStatusPresenter::class, 'moneyFormatter' => $this->money];
+        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canViewRelations' => $this->canRelations($context), 'canViewSales' => $this->can($context, SalesPermission::View), 'canManageCreditDrafts' => $this->can($context, SalesPermission::ManageCreditInvoiceDrafts), 'canIssueCredits' => $this->can($context, SalesPermission::IssueCreditInvoices), 'canPostCredits' => $this->can($context, SalesPermission::PostCreditInvoices), 'statusPresenter' => SalesCreditInvoiceStatusPresenter::class, 'moneyFormatter' => $this->money];
     }
 
     private function context(Request $request): ActiveAdministrationContext
