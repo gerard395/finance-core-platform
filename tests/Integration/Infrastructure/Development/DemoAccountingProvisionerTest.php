@@ -12,6 +12,7 @@ use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioningConflict;
 use App\Application\Sales\SalesPostingConfiguration;
 use App\Application\Sales\SalesPostingConfigurationReader;
+use App\Application\Sales\SalesPostingConfigurationReadStatus;
 use App\Application\Sales\SalesPostingConfigurationStore;
 use App\Application\Sales\SalesPostingConfigurationWriteResult;
 use App\Application\Shared\TransactionManager;
@@ -34,6 +35,7 @@ use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Ramsey\Uuid\Uuid as RamseyUuid;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -66,6 +68,10 @@ final class DemoAccountingProvisionerTest extends TestCase
             ['code' => '8000', 'name' => 'Omzet', 'type' => 'revenue', 'status' => 'active'],
         ], DB::table('ledger_accounts')->where('administration_id', self::A)->orderBy('code')->get(['code', 'name', 'type', 'status'])->map(static fn (object $row): array => (array) $row)->all());
         $this->assertConfiguration($result->salesJournal->id(), $result->accountsReceivable->id(), $result->revenue->id(), $result->outputVat->id());
+        self::assertSame(
+            SalesPostingConfigurationReadStatus::Success,
+            $this->app->make(SalesPostingConfigurationReader::class)->read($this->id(self::A))->status(),
+        );
         self::assertSame(0, DB::table('journals')->where('administration_id', self::B)->count());
         self::assertSame(0, DB::table('ledger_accounts')->where('administration_id', self::B)->count());
         self::assertSame(0, DB::table('sales_posting_configurations')->where('administration_id', self::B)->count());
@@ -119,6 +125,63 @@ final class DemoAccountingProvisionerTest extends TestCase
         self::assertSame('Eigen verkoopboek', DB::table('journals')->where('administration_id', self::A)->value('name'));
         self::assertSame(0, DB::table('ledger_accounts')->where('administration_id', self::A)->count());
         self::assertSame(0, DB::table('sales_posting_configurations')->where('administration_id', self::A)->count());
+    }
+
+    public function test_stable_identity_collision_stops_atomically_without_overwrite(): void
+    {
+        $stableId = RamseyUuid::uuid5(
+            '712ac50d-f78b-4b60-aef4-7375ca96e509',
+            self::A.':journal:VERK',
+        )->toString();
+        $conflict = $this->journal($stableId, 'OTHER', 'Other tenant journal', JournalType::General);
+        $this->app->make(JournalStore::class)->save($this->id(self::B), $conflict);
+
+        $this->expectException(DevelopmentAccountingMasterDataProvisioningConflict::class);
+        try {
+            $this->provisioner()->provision($this->id(self::A));
+        } finally {
+            self::assertSame(0, DB::table('journals')->where('administration_id', self::A)->count());
+            self::assertSame(0, DB::table('ledger_accounts')->where('administration_id', self::A)->count());
+            self::assertSame(0, DB::table('sales_posting_configurations')->where('administration_id', self::A)->count());
+            $this->assertDatabaseHas('journals', [
+                'id' => $stableId,
+                'administration_id' => self::B,
+                'code' => 'OTHER',
+                'name' => 'Other tenant journal',
+            ]);
+        }
+    }
+
+    public function test_existing_configuration_conflict_is_typed_and_not_overwritten(): void
+    {
+        $result = $this->provisioner()->provision($this->id(self::A));
+        $alternativeRevenue = $this->account(
+            '30000000-0000-4000-8000-000000000020',
+            '8010',
+            'Alternative revenue',
+            LedgerAccountType::Revenue,
+        );
+        $this->app->make(LedgerAccountStore::class)->save($this->id(self::A), $alternativeRevenue);
+        self::assertSame(
+            SalesPostingConfigurationWriteResult::Saved,
+            $this->app->make(SalesPostingConfigurationStore::class)->save(new SalesPostingConfiguration(
+                $this->id(self::A),
+                $result->salesJournal->id(),
+                $result->accountsReceivable->id(),
+                $alternativeRevenue->id(),
+                $result->outputVat->id(),
+            )),
+        );
+        $before = DB::table('sales_posting_configurations')->where('administration_id', self::A)->first();
+
+        $this->expectException(DevelopmentAccountingMasterDataProvisioningConflict::class);
+        try {
+            $this->provisioner()->provision($this->id(self::A));
+        } finally {
+            self::assertEquals($before, DB::table('sales_posting_configurations')->where('administration_id', self::A)->first());
+            self::assertSame(1, DB::table('journals')->where('administration_id', self::A)->count());
+            self::assertSame(4, DB::table('ledger_accounts')->where('administration_id', self::A)->count());
+        }
     }
 
     public function test_late_configuration_failure_rolls_back_all_master_data(): void
