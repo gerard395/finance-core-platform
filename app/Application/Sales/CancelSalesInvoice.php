@@ -9,14 +9,16 @@ use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 
 final readonly class CancelSalesInvoice
 {
-    public function __construct(private SalesInvoiceMutationService $mutations) {}
+    public function __construct(private SalesInvoiceMutationService $mutations, private SalesInvoiceReadRepository $reader, private OrderDerivedSalesInvoiceLifecycle $orderLifecycle) {}
 
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): SalesInvoiceWriteResult
     {
+        $sourceOrderId = $this->reader->findForAdministration($administrationId, $invoiceId)?->sourceOrderId();
+        if ($sourceOrderId !== null) {
+            return $this->orderLifecycle->cancel($administrationId, $invoiceId, $sourceOrderId);
+        }
+
         return $this->mutations->mutate($administrationId, $invoiceId, static function ($invoice): ?SalesInvoiceWriteResult {
-            if ($invoice->sourceOrderId() !== null) {
-                return SalesInvoiceWriteResult::InvalidState;
-            }
             $invoice->cancel();
 
             return null;

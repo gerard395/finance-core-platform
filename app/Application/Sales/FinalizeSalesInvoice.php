@@ -9,14 +9,16 @@ use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 
 final readonly class FinalizeSalesInvoice
 {
-    public function __construct(private SalesInvoiceReadinessChecker $readiness, private SalesInvoiceMutationService $mutations) {}
+    public function __construct(private SalesInvoiceReadinessChecker $readiness, private SalesInvoiceMutationService $mutations, private SalesInvoiceReadRepository $reader, private OrderDerivedSalesInvoiceLifecycle $orderLifecycle) {}
 
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): SalesInvoiceWriteResult
     {
+        $sourceOrderId = $this->reader->findForAdministration($administrationId, $invoiceId)?->sourceOrderId();
+        if ($sourceOrderId !== null) {
+            return $this->orderLifecycle->finalize($administrationId, $invoiceId, $sourceOrderId);
+        }
+
         return $this->mutations->mutate($administrationId, $invoiceId, function ($invoice): ?SalesInvoiceWriteResult {
-            if ($invoice->sourceOrderId() !== null) {
-                return SalesInvoiceWriteResult::InvalidState;
-            }
             $readiness = $this->readiness->check($invoice);
             if ($readiness->status() !== SalesInvoiceReadinessStatus::Ready) {
                 return $readiness->status() === SalesInvoiceReadinessStatus::TaxCalculationFailed

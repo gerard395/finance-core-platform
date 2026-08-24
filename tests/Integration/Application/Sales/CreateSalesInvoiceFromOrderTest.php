@@ -11,17 +11,24 @@ use App\Application\Sales\CreateSalesInvoiceFromOrder;
 use App\Application\Sales\CreateSalesInvoiceFromOrderLineInput;
 use App\Application\Sales\CreateSalesInvoiceFromOrderStatus;
 use App\Application\Sales\FinalizeSalesInvoice;
+use App\Application\Sales\OrderDerivedSalesInvoiceLifecycle;
 use App\Application\Sales\OrderInvoiceDraftIdentityGenerator;
 use App\Application\Sales\OrderInvoiceDraftRequestReader;
+use App\Application\Sales\OrderInvoiceLifecycleIdentityGenerator;
+use App\Application\Sales\OrderInvoicingFactAppendResult;
 use App\Application\Sales\OrderInvoicingFactStore;
 use App\Application\Sales\OrderInvoicingProgressReader;
 use App\Application\Sales\OrderInvoicingSource;
+use App\Application\Sales\OrderUpdater;
+use App\Application\Sales\OrderWriteResult;
 use App\Application\Sales\RemoveSalesInvoiceLine;
 use App\Application\Sales\SalesInvoiceAddressResolver;
 use App\Application\Sales\SalesInvoiceCreator;
 use App\Application\Sales\SalesInvoiceLineInput;
+use App\Application\Sales\SalesInvoicePostingSource;
 use App\Application\Sales\SalesInvoiceReadinessChecker;
 use App\Application\Sales\SalesInvoiceReadRepository;
+use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesInvoiceWriteResult;
 use App\Application\Sales\SalesNumberAllocator;
 use App\Application\Sales\SalesNumberSequenceProvisioner;
@@ -33,6 +40,11 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
+use App\Domain\Sales\Entities\Order;
+use App\Domain\Sales\Entities\OrderInvoiceAllocation;
+use App\Domain\Sales\Entities\OrderInvoiceDraftRequest;
+use App\Domain\Sales\Entities\OrderInvoiceReservation;
+use App\Domain\Sales\Entities\OrderInvoiceReservationRelease;
 use App\Domain\Sales\Entities\SalesInvoice;
 use App\Domain\Sales\ValueObjects\OrderId;
 use App\Domain\Sales\ValueObjects\OrderInvoiceDraftRequestId;
@@ -166,7 +178,7 @@ final class CreateSalesInvoiceFromOrderTest extends TestCase
         self::assertSame(0, DB::table('order_invoice_reservations')->count());
     }
 
-    public function test_order_derived_lines_finalize_cancel_are_locked_but_header_and_direct_invoice_mutations_remain_supported(): void
+    public function test_order_derived_lines_are_locked_but_header_and_direct_invoice_lifecycle_remain_supported(): void
     {
         $created = $this->create(1, 50, [$this->input(1, '2')]);
         $invoice = $this->invoice($created->salesInvoiceId());
@@ -176,15 +188,206 @@ final class CreateSalesInvoiceFromOrderTest extends TestCase
         self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(AddSalesInvoiceLine::class)->execute($this->admin(self::A), $invoice->id(), $mutation));
         self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(UpdateSalesInvoiceLine::class)->execute($this->admin(self::A), $invoice->id(), $mutation));
         self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(RemoveSalesInvoiceLine::class)->execute($this->admin(self::A), $invoice->id(), $line->id()));
-        self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $invoice->id()));
-        self::assertSame(SalesInvoiceWriteResult::InvalidState, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $invoice->id()));
         self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(UpdateSalesInvoice::class)->execute($this->admin(self::A), $invoice->id(), new DateTimeImmutable('2026-08-25'), new DateTimeImmutable('2026-09-25')));
 
         $directId = new SalesInvoiceId(new Uuid('8e000000-0000-4000-8000-000000000099'));
         self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CreateSalesInvoice::class)->execute($this->admin(self::A), $directId, new CustomerId(new Uuid($this->customer(self::A))), $this->addressId(self::A), new DateTimeImmutable('2026-08-24'), new DateTimeImmutable('2026-09-24')));
         self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(AddSalesInvoiceLine::class)->execute($this->admin(self::A), $directId, new SalesInvoiceLineInput(new SalesInvoiceLineId(new Uuid('8f000000-0000-4000-8000-000000000099')), new LineDescription('Direct'), new Quantity('1'), new Money('5', new Currency('EUR')), $this->taxId(self::A, 1))));
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $directId));
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $directId));
         self::assertNull($this->invoice($directId)?->sourceOrderId());
         self::assertSame(0, DB::table('order_invoice_draft_requests')->where('sales_invoice_id', $directId->toString())->count());
+    }
+
+    public function test_finalize_converts_exact_reservations_and_derives_partial_and_full_status_per_line(): void
+    {
+        $partial = $this->create(1, 70, [$this->input(1, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $partial->salesInvoiceId()));
+        self::assertSame('finalized', $this->invoice($partial->salesInvoiceId())?->status()->value);
+        self::assertSame('partially_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 1)->toString())->value('status'));
+        $progress = $this->app->make(OrderInvoicingProgressReader::class)->progress($this->admin(self::A), $this->orderId(self::A, 1));
+        self::assertSame('0', $progress?->lines()[0]->reserved()->value());
+        self::assertSame('4', $progress?->lines()[0]->allocated()->value());
+        self::assertSame('6', $progress?->lines()[0]->available()->value());
+        self::assertSame(1, DB::table('order_invoice_allocations')->where('sales_invoice_id', $partial->salesInvoiceId()?->toString())->count());
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $partial->salesInvoiceId()));
+        self::assertSame(1, DB::table('order_invoice_allocations')->where('sales_invoice_id', $partial->salesInvoiceId()?->toString())->count());
+
+        $full = $this->create(7, 71, [$this->input(7, '10')]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $full->salesInvoiceId()));
+        self::assertSame('fully_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 7)->toString())->value('status'));
+
+        $this->seedSecondLine(self::A, 2, '5', '3');
+        $multiPartial = $this->create(2, 72, [$this->input(2, '10'), $this->input(2, '3', 2)]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $multiPartial->salesInvoiceId()));
+        self::assertSame('partially_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 2)->toString())->value('status'));
+        $multiFull = $this->create(2, 73, [$this->input(2, '2', 2)]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $multiFull->salesInvoiceId()));
+        self::assertSame('fully_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 2)->toString())->value('status'));
+    }
+
+    public function test_multiple_drafts_finalize_and_cancel_only_their_own_reservations(): void
+    {
+        $a = $this->create(1, 80, [$this->input(1, '6')]);
+        $b = $this->create(1, 81, [$this->input(1, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $a->salesInvoiceId()));
+        $progress = $this->app->make(OrderInvoicingProgressReader::class)->progress($this->admin(self::A), $this->orderId(self::A, 1));
+        self::assertSame('4', $progress?->lines()[0]->reserved()->value());
+        self::assertSame('6', $progress?->lines()[0]->allocated()->value());
+        self::assertSame('0', $progress?->lines()[0]->available()->value());
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $b->salesInvoiceId()));
+        self::assertSame('fully_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 1)->toString())->value('status'));
+
+        $cancelA = $this->create(7, 82, [$this->input(7, '6')]);
+        $cancelB = $this->create(7, 83, [$this->input(7, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $cancelA->salesInvoiceId()));
+        $cancelProgress = $this->app->make(OrderInvoicingProgressReader::class)->progress($this->admin(self::A), $this->orderId(self::A, 7));
+        self::assertSame('4', $cancelProgress?->lines()[0]->reserved()->value());
+        self::assertSame('0', $cancelProgress?->lines()[0]->allocated()->value());
+        self::assertSame('6', $cancelProgress?->lines()[0]->available()->value());
+        self::assertSame('confirmed', DB::table('orders')->where('id', $this->orderId(self::A, 7)->toString())->value('status'));
+        self::assertSame(1, DB::table('order_invoice_reservation_releases')->count());
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $cancelA->salesInvoiceId()));
+        self::assertSame(1, DB::table('order_invoice_reservation_releases')->count());
+
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $cancelB->salesInvoiceId()));
+        self::assertSame(SalesInvoiceWriteResult::Success, $this->app->make(CancelSalesInvoice::class)->execute($this->admin(self::A), $cancelB->salesInvoiceId()));
+        self::assertSame('partially_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 7)->toString())->value('status'));
+        self::assertSame(1, DB::table('order_invoice_allocations')->where('sales_invoice_id', $cancelB->salesInvoiceId()?->toString())->count());
+    }
+
+    public function test_finalize_rejects_inconsistent_or_cross_tenant_state_without_writes(): void
+    {
+        $created = $this->create(1, 90, [$this->input(1, '4')]);
+        DB::table('order_invoice_reservations')->where('sales_invoice_id', $created->salesInvoiceId()?->toString())->delete();
+        self::assertSame(SalesInvoiceWriteResult::ReservationStateInconsistent, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $created->salesInvoiceId()));
+        self::assertSame('draft', $this->invoice($created->salesInvoiceId())?->status()->value);
+        self::assertSame('confirmed', DB::table('orders')->where('id', $this->orderId(self::A, 1)->toString())->value('status'));
+        self::assertSame(0, DB::table('order_invoice_allocations')->count());
+        self::assertSame(SalesInvoiceWriteResult::NotFound, $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::B), $created->salesInvoiceId()));
+    }
+
+    public function test_finalize_and_cancel_failures_roll_back_facts_statuses_and_quantity_ledger(): void
+    {
+        foreach (range(8, 12) as $order) {
+            $this->seedOrder(self::A, $order, 'confirmed', '10', '5');
+        }
+
+        $allocationFailure = $this->create(8, 108, [$this->input(8, '4')]);
+        $failingFacts = new SelectivelyFailingOrderInvoicingFactStore($this->app->make(OrderInvoicingFactStore::class), true, false);
+        self::assertSame(SalesInvoiceWriteResult::PersistenceConflict, $this->lifecycle($failingFacts)->finalize($this->admin(self::A), $allocationFailure->salesInvoiceId(), $this->orderId(self::A, 8)));
+        $this->assertRolledBackDraft(8, $allocationFailure->salesInvoiceId(), '4');
+
+        $orderUpdateFailure = $this->create(9, 109, [$this->input(9, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::PersistenceConflict, $this->lifecycle(null, new FailingOrderUpdater)->finalize($this->admin(self::A), $orderUpdateFailure->salesInvoiceId(), $this->orderId(self::A, 9)));
+        $this->assertRolledBackDraft(9, $orderUpdateFailure->salesInvoiceId(), '4');
+
+        $invoiceUpdateFailure = $this->create(10, 110, [$this->input(10, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::PersistenceConflict, $this->lifecycle(null, null, new FailingSalesInvoiceUpdater)->finalize($this->admin(self::A), $invoiceUpdateFailure->salesInvoiceId(), $this->orderId(self::A, 10)));
+        $this->assertRolledBackDraft(10, $invoiceUpdateFailure->salesInvoiceId(), '4');
+
+        $releaseFailure = $this->create(11, 111, [$this->input(11, '4')]);
+        $failingRelease = new SelectivelyFailingOrderInvoicingFactStore($this->app->make(OrderInvoicingFactStore::class), false, true);
+        self::assertSame(SalesInvoiceWriteResult::PersistenceConflict, $this->lifecycle($failingRelease)->cancel($this->admin(self::A), $releaseFailure->salesInvoiceId(), $this->orderId(self::A, 11)));
+        $this->assertRolledBackDraft(11, $releaseFailure->salesInvoiceId(), '4');
+
+        $cancelUpdateFailure = $this->create(12, 112, [$this->input(12, '4')]);
+        self::assertSame(SalesInvoiceWriteResult::PersistenceConflict, $this->lifecycle(null, null, new FailingSalesInvoiceUpdater)->cancel($this->admin(self::A), $cancelUpdateFailure->salesInvoiceId(), $this->orderId(self::A, 12)));
+        $this->assertRolledBackDraft(12, $cancelUpdateFailure->salesInvoiceId(), '4');
+        self::assertSame(0, DB::table('order_invoice_reservation_releases')->count());
+        self::assertSame(0, DB::table('order_invoice_allocations')->count());
+    }
+
+    public function test_real_mysql_duplicate_finalize_is_idempotent_and_writes_one_allocation(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $created = $this->create(1, 100, [$this->input(1, '10')]);
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'finalize-invoice-'), tempnam(sys_get_temp_dir(), 'finalize-invoice-')];
+        $children = [];
+        foreach ($files as $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    $result = $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $created->salesInvoiceId());
+                    file_put_contents($file, $result->name);
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        self::assertSame(['Success', 'Success'], array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files));
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        self::assertSame(1, DB::table('order_invoice_allocations')->count());
+        self::assertSame(0, DB::table('order_invoice_reservation_releases')->count());
+        self::assertSame('finalized', DB::table('sales_invoices')->where('id', $created->salesInvoiceId()?->toString())->value('status'));
+        self::assertSame('fully_invoiced', DB::table('orders')->where('id', $this->orderId(self::A, 1)->toString())->value('status'));
+        $this->removeCommittedFixtures();
+        DB::beginTransaction();
+    }
+
+    public function test_real_mysql_finalize_and_create_share_order_lock_and_never_over_invoice(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $created = $this->create(1, 120, [$this->input(1, '6')]);
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'finalize-create-'), tempnam(sys_get_temp_dir(), 'finalize-create-')];
+        $children = [];
+        foreach ($files as $index => $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    $result = $index === 0
+                        ? $this->app->make(FinalizeSalesInvoice::class)->execute($this->admin(self::A), $created->salesInvoiceId())->name
+                        : $this->create(1, 121, [$this->input(1, '5')])->status()->name;
+                    file_put_contents($file, $result);
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        sort($results);
+        self::assertSame(['QuantityExceedsRemaining', 'Success'], $results);
+        self::assertSame(1, DB::table('sales_invoices')->where('source_order_id', $this->orderId(self::A, 1)->toString())->count());
+        self::assertSame(1, DB::table('order_invoice_allocations')->count());
+        $progress = $this->app->make(OrderInvoicingProgressReader::class)->progress($this->admin(self::A), $this->orderId(self::A, 1));
+        self::assertSame('0', $progress?->lines()[0]->reserved()->value());
+        self::assertSame('6', $progress?->lines()[0]->allocated()->value());
+        self::assertSame('4', $progress?->lines()[0]->available()->value());
+        $this->removeCommittedFixtures();
+        DB::beginTransaction();
     }
 
     public function test_real_mysql_concurrent_create_never_over_reserves_or_consumes_failed_number(): void
@@ -248,6 +451,26 @@ final class CreateSalesInvoiceFromOrderTest extends TestCase
     private function useCase(SalesInvoiceCreator $creator): CreateSalesInvoiceFromOrder
     {
         return new CreateSalesInvoiceFromOrder($this->app->make(TransactionManager::class), $this->app->make(OrderInvoicingSource::class), $this->app->make(OrderInvoiceDraftRequestReader::class), $this->app->make(OrderInvoicingProgressReader::class), $this->app->make(SalesInvoiceAddressResolver::class), $this->app->make(SalesTaxCodeResolver::class), $this->app->make(SalesInvoiceReadinessChecker::class), $this->app->make(SalesNumberAllocator::class), $this->app->make(OrderInvoiceDraftIdentityGenerator::class), $creator, $this->app->make(OrderInvoicingFactStore::class), $this->app->make(SalesInvoiceReadRepository::class));
+    }
+
+    private function lifecycle(?OrderInvoicingFactStore $facts = null, ?OrderUpdater $orders = null, ?SalesInvoiceUpdater $invoices = null): OrderDerivedSalesInvoiceLifecycle
+    {
+        return new OrderDerivedSalesInvoiceLifecycle(
+            $this->app->make(TransactionManager::class), $this->app->make(OrderInvoicingSource::class), $this->app->make(SalesInvoicePostingSource::class),
+            $this->app->make(OrderInvoiceDraftRequestReader::class), $this->app->make(OrderInvoicingProgressReader::class), $facts ?? $this->app->make(OrderInvoicingFactStore::class),
+            $this->app->make(OrderInvoiceLifecycleIdentityGenerator::class), $orders ?? $this->app->make(OrderUpdater::class), $invoices ?? $this->app->make(SalesInvoiceUpdater::class),
+            $this->app->make(SalesInvoiceReadinessChecker::class),
+        );
+    }
+
+    private function assertRolledBackDraft(int $order, ?SalesInvoiceId $invoiceId, string $reserved): void
+    {
+        self::assertSame('draft', $this->invoice($invoiceId)?->status()->value);
+        self::assertSame('confirmed', DB::table('orders')->where('id', $this->orderId(self::A, $order)->toString())->value('status'));
+        $progress = $this->app->make(OrderInvoicingProgressReader::class)->progress($this->admin(self::A), $this->orderId(self::A, $order));
+        self::assertSame($reserved, $progress?->lines()[0]->reserved()->value());
+        self::assertSame('0', $progress?->lines()[0]->allocated()->value());
+        self::assertSame((string) (10 - (int) $reserved), $progress?->lines()[0]->available()->value());
     }
 
     private function seedTenant(string $admin, string $suffix): void
@@ -333,5 +556,46 @@ final class FailingOrderInvoiceCreator implements SalesInvoiceCreator
     public function create(AdministrationId $administrationId, SalesInvoice $invoice): SalesInvoiceWriteResult
     {
         return SalesInvoiceWriteResult::DuplicateIdentity;
+    }
+}
+
+final readonly class SelectivelyFailingOrderInvoicingFactStore implements OrderInvoicingFactStore
+{
+    public function __construct(private OrderInvoicingFactStore $delegate, private bool $failAllocation, private bool $failRelease) {}
+
+    public function appendDraftRequest(OrderInvoiceDraftRequest $request): OrderInvoicingFactAppendResult
+    {
+        return $this->delegate->appendDraftRequest($request);
+    }
+
+    public function appendReservation(OrderInvoiceReservation $reservation): OrderInvoicingFactAppendResult
+    {
+        return $this->delegate->appendReservation($reservation);
+    }
+
+    public function appendRelease(OrderInvoiceReservationRelease $release): OrderInvoicingFactAppendResult
+    {
+        return $this->failRelease ? OrderInvoicingFactAppendResult::PersistenceConflict : $this->delegate->appendRelease($release);
+    }
+
+    public function appendAllocation(OrderInvoiceAllocation $allocation): OrderInvoicingFactAppendResult
+    {
+        return $this->failAllocation ? OrderInvoicingFactAppendResult::PersistenceConflict : $this->delegate->appendAllocation($allocation);
+    }
+}
+
+final class FailingOrderUpdater implements OrderUpdater
+{
+    public function update(AdministrationId $administrationId, Order $order): OrderWriteResult
+    {
+        return OrderWriteResult::InvalidState;
+    }
+}
+
+final class FailingSalesInvoiceUpdater implements SalesInvoiceUpdater
+{
+    public function update(AdministrationId $administrationId, SalesInvoice $invoice): SalesInvoiceWriteResult
+    {
+        return SalesInvoiceWriteResult::InvalidState;
     }
 }

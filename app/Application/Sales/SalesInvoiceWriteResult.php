@@ -20,4 +20,7 @@ enum SalesInvoiceWriteResult
     case InvalidState;
     case SequenceMissing;
     case SequenceInactive;
+    case ReservationStateInconsistent;
+    case AllocationConflict;
+    case PersistenceConflict;
 }
