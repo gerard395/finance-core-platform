@@ -6,6 +6,9 @@ namespace Tests\Integration\Application\Sales;
 
 use App\Application\Sales\CancelSalesCreditInvoice;
 use App\Application\Sales\CreateSalesCreditInvoiceFromInvoice;
+use App\Application\Sales\EligibleSalesCreditSourceQuery;
+use App\Application\Sales\EligibleSalesCreditSourceReadRepository;
+use App\Application\Sales\EligibleSalesCreditSourceSortField;
 use App\Application\Sales\FinalizeSalesCreditInvoice;
 use App\Application\Sales\PostSalesCreditInvoice;
 use App\Application\Sales\PostSalesInvoice;
@@ -19,11 +22,14 @@ use App\Application\Sales\SalesCreditInvoiceListReadRepository;
 use App\Application\Sales\SalesCreditInvoiceReadRepository;
 use App\Application\Sales\SalesCreditInvoiceWriteResult;
 use App\Application\Sales\SalesCreditSourceReader;
+use App\Application\Sales\SalesCreditSourceStatus;
+use App\Application\Sales\SalesInvoiceSortDirection;
 use App\Application\Sales\SalesNumberAllocator;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Sales\Entities\SalesCreditInvoice;
 use App\Domain\Sales\Enums\SalesCreditInvoiceStatus;
+use App\Domain\Sales\Enums\SalesInvoiceStatus;
 use App\Domain\Sales\ValueObjects\SalesCreditInvoiceId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Identity\Uuid;
@@ -130,6 +136,75 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         DB::table('sales_credit_invoice_lines')->insert(['id' => $this->id(2, 61, 1), 'administration_id' => self::B, 'sales_credit_invoice_id' => $this->creditId()->toString(), 'description' => 'cross tenant', 'quantity' => '1', 'unit_price_amount' => '1', 'currency' => 'EUR', 'created_at' => now(), 'updated_at' => now()]);
     }
 
+    public function test_eligible_source_selector_returns_historical_labels_exact_totals_search_sort_and_pages(): void
+    {
+        $first = $this->postedSource(self::A, 1, 10);
+        $second = $this->postedSource(self::A, 1, 11);
+        SalesInvoiceRecord::query()->whereKey($second->toString())->update(['status' => 'paid']);
+        DB::table('relations')->where('administration_id', self::A)->update(['display_name' => '<script>renamed</script>']);
+        DB::table('customers')->where('administration_id', self::A)->update(['active' => false]);
+
+        $reader = $this->app->make(EligibleSalesCreditSourceReadRepository::class);
+        $page = $reader->listEligible(new EligibleSalesCreditSourceQuery($this->admin(self::A), sortField: EligibleSalesCreditSourceSortField::Number, sortDirection: SalesInvoiceSortDirection::Ascending));
+        self::assertSame(2, $page->total());
+        self::assertSame(['INV-1-10', 'INV-1-11'], array_map(static fn ($item) => $item->number()->value(), $page->items()));
+        $item = $page->items()[0];
+        self::assertSame('C1', $item->customerNumber()->toString());
+        self::assertSame('Snapshot Customer 1', $item->customerName()->toString());
+        self::assertSame('2026-08-20', $item->invoiceDate()->format('Y-m-d'));
+        self::assertSame('EUR', $item->currency()->code());
+        self::assertSame('150', $item->netTotal()->amount());
+        self::assertSame('25.5', $item->taxTotal()->amount());
+        self::assertSame('175.5', $item->grossTotal()->amount());
+        self::assertSame(SalesInvoiceStatus::Posted, $item->status());
+        self::assertSame(SalesInvoiceStatus::Paid, $page->items()[1]->status());
+        self::assertSame(1, $reader->listEligible(new EligibleSalesCreditSourceQuery($this->admin(self::A), search: 'INV-1-11'))->total());
+        self::assertSame(2, $reader->listEligible(new EligibleSalesCreditSourceQuery($this->admin(self::A), search: 'Snapshot Customer'))->total());
+        $secondPage = $reader->listEligible(new EligibleSalesCreditSourceQuery($this->admin(self::A), sortField: EligibleSalesCreditSourceSortField::Number, sortDirection: SalesInvoiceSortDirection::Ascending, page: 2, perPage: 1));
+        self::assertSame(2, $secondPage->total());
+        self::assertSame(2, $secondPage->page());
+        self::assertSame('INV-1-11', $secondPage->items()[0]->number()->value());
+        self::assertSame(SalesCreditSourceStatus::Success, $this->app->make(SalesCreditSourceReader::class)->read($this->admin(self::A), $first)->status());
+    }
+
+    public function test_selector_excludes_every_ineligible_financial_fiscal_credit_and_tenant_state_consistently(): void
+    {
+        $this->seedInvoice(self::A, 1, 20, 'draft');
+        $this->seedInvoice(self::A, 1, 21, 'finalized');
+        $this->seedInvoice(self::A, 1, 22, 'cancelled');
+        $withoutLink = $this->postedSource(self::A, 1, 23);
+        DB::table('sales_invoice_postings')->where('sales_invoice_id', $withoutLink->toString())->delete();
+        $paidWithoutLink = $this->postedSource(self::A, 1, 24);
+        SalesInvoiceRecord::query()->whereKey($paidWithoutLink->toString())->update(['status' => 'paid']);
+        DB::table('sales_invoice_postings')->where('sales_invoice_id', $paidWithoutLink->toString())->delete();
+        $withoutTax = $this->postedSource(self::A, 1, 25);
+        DB::table('tax_postings')->where('source_document_id', $withoutTax->toString())->delete();
+        $credited = $this->postedSource(self::A, 1, 26);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $credited));
+        $ambiguous = $this->postedSource(self::A, 1, 27);
+        $this->duplicateOriginal($ambiguous, 27);
+        $reversed = $this->postedSource(self::A, 1, 28);
+        $this->insertReversal($reversed, 28);
+        $tenantB = $this->postedSource(self::B, 2, 29);
+        $valid = $this->postedSource(self::A, 1, 30);
+        $wrongDirection = $this->postedSource(self::A, 1, 31);
+        DB::table('tax_postings')->where('source_document_id', $wrongDirection->toString())->limit(1)->update(['direction' => 'input']);
+
+        $items = $this->app->make(EligibleSalesCreditSourceReadRepository::class)->listEligible(new EligibleSalesCreditSourceQuery($this->admin(self::A)))->items();
+        self::assertSame([$valid->toString()], array_map(static fn ($item) => $item->id()->toString(), $items));
+        self::assertNotContains($tenantB->toString(), array_map(static fn ($item) => $item->id()->toString(), $items));
+        $single = $this->app->make(SalesCreditSourceReader::class);
+        self::assertSame(SalesCreditSourceStatus::FinancialPostingMissing, $single->read($this->admin(self::A), $withoutLink)->status());
+        self::assertSame(SalesCreditSourceStatus::FinancialPostingMissing, $single->read($this->admin(self::A), $paidWithoutLink)->status());
+        self::assertSame(SalesCreditSourceStatus::ReversalSourceMissing, $single->read($this->admin(self::A), $withoutTax)->status());
+        self::assertSame(SalesCreditSourceStatus::AlreadyCredited, $single->read($this->admin(self::A), $credited)->status());
+        self::assertSame(SalesCreditSourceStatus::ReversalSourceInvalid, $single->read($this->admin(self::A), $ambiguous)->status());
+        self::assertSame(SalesCreditSourceStatus::ReversalSourceInvalid, $single->read($this->admin(self::A), $reversed)->status());
+        self::assertSame(SalesCreditSourceStatus::ReversalSourceInvalid, $single->read($this->admin(self::A), $wrongDirection)->status());
+        self::assertSame(SalesCreditSourceStatus::NotFound, $single->read($this->admin(self::A), $tenantB)->status());
+        self::assertSame(SalesCreditSourceStatus::Success, $single->read($this->admin(self::A), $valid)->status());
+    }
+
     private function create(string $admin, SalesInvoiceId $source): SalesCreditInvoiceWriteResult
     {
         return $this->app->make(CreateSalesCreditInvoiceFromInvoice::class)->execute($this->admin($admin), $source, new DateTimeImmutable('2026-08-24'));
@@ -170,6 +245,30 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         }
 
         return new SalesInvoiceId(new Uuid($invoice));
+    }
+
+    private function duplicateOriginal(SalesInvoiceId $invoice, int $sequence): void
+    {
+        $original = (array) DB::table('tax_postings')->where('source_document_id', $invoice->toString())->first();
+        $original['id'] = $this->id(1, 95, $sequence);
+        $original['created_at'] = now();
+        $original['updated_at'] = now();
+        DB::table('tax_postings')->insert($original);
+    }
+
+    private function insertReversal(SalesInvoiceId $invoice, int $sequence): void
+    {
+        $original = (array) DB::table('tax_postings')->where('source_document_id', $invoice->toString())->first();
+        $originalId = $original['id'];
+        $original['id'] = $this->id(1, 96, $sequence);
+        $original['type'] = 'reversal';
+        $original['source_document_type'] = 'sales_credit_invoice';
+        $original['source_document_id'] = $this->id(1, 97, $sequence);
+        $original['source_line_id'] = $this->id(1, 98, $sequence);
+        $original['reversed_tax_posting_id'] = $originalId;
+        $original['created_at'] = now();
+        $original['updated_at'] = now();
+        DB::table('tax_postings')->insert($original);
     }
 
     private function admin(string $id): AdministrationId

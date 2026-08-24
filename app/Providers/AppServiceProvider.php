@@ -47,6 +47,7 @@ use App\Application\Relations\SupplierClassificationWriter;
 use App\Application\Relations\SupplierReadRepository;
 use App\Application\Relations\SupplierStore;
 use App\Application\Sales\CreateSalesInvoicePostingRequest;
+use App\Application\Sales\EligibleSalesCreditSourceReadRepository;
 use App\Application\Sales\OrderCreator;
 use App\Application\Sales\OrderDetailReadRepository;
 use App\Application\Sales\OrderListReadRepository;
@@ -96,6 +97,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentBankAccountWriter;
 use App\Infrastructure\Persistence\Eloquent\EloquentContactReadRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentContactWriter;
 use App\Infrastructure\Persistence\Eloquent\EloquentCustomerRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentEligibleSalesCreditSourceReadRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentJournalEntryRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentJournalRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentLedgerAccountRepository;
@@ -204,6 +206,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SalesCreditInvoiceDetailReadRepository::class, EloquentSalesCreditInvoiceReadRepository::class);
         $this->app->bind(SalesCreditSourceReader::class, EloquentSalesCreditSourceReader::class);
         $this->app->bind(SalesCreditInvoiceIdentityGenerator::class, LaravelSalesCreditInvoiceIdentityGenerator::class);
+        $this->app->bind(EligibleSalesCreditSourceReadRepository::class, EloquentEligibleSalesCreditSourceReadRepository::class);
         $this->app->bind(PostSalesInvoiceWithTax::class, function ($app): PostSalesInvoiceWithTax {
             $identities = $app->make(SalesInvoicePostingIdentityGenerator::class);
 

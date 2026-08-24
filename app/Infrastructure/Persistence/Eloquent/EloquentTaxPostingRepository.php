@@ -30,6 +30,22 @@ use DomainException;
 
 final class EloquentTaxPostingRepository implements TaxPostingReadRepository, TaxPostingStore
 {
+    public function hasReversalForOriginalSource(AdministrationId $administrationId, TaxSourceDocumentType $sourceDocumentType, TaxSourceDocumentId $sourceDocumentId): bool
+    {
+        return TaxPostingRecord::query()
+            ->from('tax_postings as reversal')
+            ->join('tax_postings as original', function ($join): void {
+                $join->on('original.administration_id', '=', 'reversal.administration_id')
+                    ->on('original.id', '=', 'reversal.reversed_tax_posting_id');
+            })
+            ->where('original.administration_id', $administrationId->toString())
+            ->where('original.source_document_type', $sourceDocumentType->value)
+            ->where('original.source_document_id', $sourceDocumentId->toString())
+            ->where('original.type', TaxPostingType::Original->value)
+            ->where('reversal.type', TaxPostingType::Reversal->value)
+            ->exists();
+    }
+
     public function findOriginalsForSource(AdministrationId $administrationId, TaxSourceDocumentType $sourceDocumentType, TaxSourceDocumentId $sourceDocumentId): array
     {
         return TaxPostingRecord::query()

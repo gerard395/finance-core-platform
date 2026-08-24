@@ -42,6 +42,9 @@ final readonly class EloquentSalesCreditSourceReader implements SalesCreditSourc
         if ($postings === []) {
             return new SalesCreditSource(SalesCreditSourceStatus::ReversalSourceMissing);
         }
+        if ($this->taxPostings->hasReversalForOriginalSource($administrationId, TaxSourceDocumentType::SalesInvoice, new TaxSourceDocumentId($sourceInvoiceId->uuid()))) {
+            return new SalesCreditSource(SalesCreditSourceStatus::ReversalSourceInvalid);
+        }
         $lineIds = array_map(static fn ($line) => $line->id()->toString(), $invoice->lines());
         $postingLineIds = [];
         foreach ($postings as $posting) {
