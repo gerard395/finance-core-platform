@@ -60,10 +60,13 @@ use App\Application\Sales\SalesCustomerContextReader;
 use App\Application\Sales\SalesInvoiceCreator;
 use App\Application\Sales\SalesInvoiceDetailReadRepository;
 use App\Application\Sales\SalesInvoiceListReadRepository;
+use App\Application\Sales\SalesInvoicePostingRepository;
 use App\Application\Sales\SalesInvoiceReadRepository;
 use App\Application\Sales\SalesInvoiceUpdater;
 use App\Application\Sales\SalesNumberAllocator;
 use App\Application\Sales\SalesNumberSequenceProvisioner;
+use App\Application\Sales\SalesPostingConfigurationReader;
+use App\Application\Sales\SalesPostingConfigurationStore;
 use App\Application\Shared\TransactionManager;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
@@ -103,6 +106,8 @@ use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use App\Infrastructure\Relations\LaravelRelationClassificationIdentityGenerator;
 use App\Infrastructure\Sales\DatabaseSalesNumberSequence;
 use App\Infrastructure\Sales\EloquentSalesCustomerContextReader;
+use App\Infrastructure\Sales\EloquentSalesInvoicePostingRepository;
+use App\Infrastructure\Sales\EloquentSalesPostingConfiguration;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -164,6 +169,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SalesInvoiceUpdater::class, EloquentSalesInvoiceRepository::class);
         $this->app->bind(SalesInvoiceListReadRepository::class, EloquentSalesInvoiceReadRepository::class);
         $this->app->bind(SalesInvoiceDetailReadRepository::class, EloquentSalesInvoiceReadRepository::class);
+        $this->app->bind(SalesPostingConfigurationReader::class, EloquentSalesPostingConfiguration::class);
+        $this->app->bind(SalesPostingConfigurationStore::class, EloquentSalesPostingConfiguration::class);
+        $this->app->bind(SalesInvoicePostingRepository::class, EloquentSalesInvoicePostingRepository::class);
         $this->app->bind(RelationClassificationIdentityGenerator::class, LaravelRelationClassificationIdentityGenerator::class);
         $this->app->bind(AdministrationRepository::class, EloquentAdministrationRepository::class);
         $this->app->bind(AdministrationMembershipRepository::class, EloquentAdministrationMembershipRepository::class);
