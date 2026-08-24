@@ -19,7 +19,18 @@ final class StoreRelationRequest extends FormRequest
         return [
             'code' => ['required', 'string', 'min:2', 'max:32', 'regex:/\A[A-Za-z0-9][A-Za-z0-9_-]{1,31}\z/'],
             'name' => ['required', 'string', 'min:2', 'max:255', 'not_regex:/\A\s|\s\z/u'],
+            'vat_identification_number' => ['nullable', 'string', 'max:32', 'regex:/\A\s*[A-Za-z0-9][A-Za-z0-9.-]*\s*\z/'],
+            'fiscal_jurisdiction' => ['nullable', 'string', 'size:2', 'alpha:ascii'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        foreach (['vat_identification_number', 'fiscal_jurisdiction'] as $field) {
+            if ($this->input($field) === '') {
+                $this->merge([$field => null]);
+            }
+        }
     }
 
     /** @return array<string, string> */

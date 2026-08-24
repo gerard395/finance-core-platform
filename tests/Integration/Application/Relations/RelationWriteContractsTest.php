@@ -20,10 +20,12 @@ use App\Domain\Relations\Entities\Relation;
 use App\Domain\Relations\Enums\ContactStatus;
 use App\Domain\Relations\ValueObjects\ContactId;
 use App\Domain\Relations\ValueObjects\ContactName;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
@@ -56,6 +58,9 @@ final class RelationWriteContractsTest extends TestCase
             $this->relationId(1),
             new RelationCode('rel-01'),
             new DisplayName('Created relation'),
+            true,
+            new VatIdentificationNumber('nl123456789b01'),
+            new CountryCode('be'),
         );
 
         self::assertSame(RelationWriteResult::Success, $result);
@@ -65,8 +70,47 @@ final class RelationWriteContractsTest extends TestCase
             'code' => 'REL-01',
             'display_name' => 'Created relation',
             'active' => true,
+            'vat_identification_number' => 'NL123456789B01',
+            'fiscal_jurisdiction' => 'BE',
         ]);
         self::assertNull($this->reader()->findByIdForAdministration($this->administrationId(self::ADMINISTRATION_B), $this->relationId(1)));
+    }
+
+    public function test_fiscal_party_roundtrip_is_tenant_scoped_nullable_and_independent_from_addresses(): void
+    {
+        self::assertSame(RelationWriteResult::Success, $this->createRelation(1, 'FISCAL-01', 'Fiscal party'));
+        $result = $this->update()->execute(
+            $this->administrationId(self::ADMINISTRATION_A),
+            $this->relationId(1),
+            new DisplayName('Fiscal party'),
+            true,
+            new VatIdentificationNumber('de123456789'),
+            new CountryCode('DE'),
+        );
+        self::assertSame(RelationWriteResult::Success, $result);
+
+        $party = (new EloquentRelationRepository)->findFiscalParty($this->administrationId(self::ADMINISTRATION_A), $this->relationId(1));
+        self::assertSame('DE123456789', $party?->vatIdentificationNumber?->toString());
+        self::assertSame('DE', $party?->fiscalJurisdiction?->value());
+        self::assertNull((new EloquentRelationRepository)->findFiscalParty($this->administrationId(self::ADMINISTRATION_B), $this->relationId(1)));
+
+        DB::table('relation_addresses')->insert([
+            'address_id' => $this->uuid('8', 9)->toString(), 'administration_id' => self::ADMINISTRATION_A,
+            'relation_id' => $this->relationId(1)->toString(), 'address_type' => 'invoice',
+            'address_line_1' => 'Rue 1', 'address_line_2' => null, 'postal_code' => '1000',
+            'city' => 'Brussels', 'country_code' => 'BE', 'active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+        self::assertSame('DE', (new EloquentRelationRepository)->findFiscalParty($this->administrationId(self::ADMINISTRATION_A), $this->relationId(1))?->fiscalJurisdiction?->value());
+
+        self::assertSame(RelationWriteResult::Success, $this->create()->execute(
+            $this->administrationId(self::ADMINISTRATION_A), $this->relationId(2), new RelationCode('FISCAL-02'),
+            new DisplayName('Same VAT allowed'), true, new VatIdentificationNumber('DE123456789'), new CountryCode('DE'),
+        ));
+        $this->assertDatabaseCount('relations', 2);
+
+        $this->update()->execute($this->administrationId(self::ADMINISTRATION_A), $this->relationId(1), new DisplayName('Fiscal party'), true, null, null, true);
+        $this->assertDatabaseHas('relation_addresses', ['address_id' => $this->uuid('8', 9)->toString(), 'country_code' => 'BE']);
+        self::assertNull((new EloquentRelationRepository)->findFiscalParty($this->administrationId(self::ADMINISTRATION_A), $this->relationId(1))?->vatIdentificationNumber);
     }
 
     public function test_duplicate_identity_is_typed_and_never_overwrites_existing_relation(): void

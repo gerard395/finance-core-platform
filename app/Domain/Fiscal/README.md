@@ -49,6 +49,8 @@ neemt de oorspronkelijke classificatie exact over.
 
 ## Grenzen
 
+VAT-identificatienummers in masterdata zijn uitsluitend syntactisch gevalideerd. Externe VIES-verificatie, evidence en fiscale-eenheidcontext zijn afzonderlijke toekomstige capabilities. Relation- en Administration-readers leveren snapshotinput; Fiscal leidt jurisdictie nooit uit een adres af.
+
 - Fiscal bevat geen landcodes, land-specifieke fiscale regels of btw-aangiftegedrag.
 - Fiscal is onafhankelijk van Sales en Purchasing.
 - TaxSourceDocumentId en TaxSourceLineId bewaren capabilityneutrale UUID-referenties zonder Sales- of Purchasing-dependency.

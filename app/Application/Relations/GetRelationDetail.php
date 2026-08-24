@@ -31,6 +31,8 @@ final readonly class GetRelationDetail
             $relation->isActive(),
             $classification->isCustomer(),
             $classification->isSupplier(),
+            $relation->vatIdentificationNumber(),
+            $relation->fiscalJurisdiction(),
         );
     }
 }

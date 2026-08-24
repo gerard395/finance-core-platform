@@ -6,9 +6,11 @@ namespace App\Application\Relations;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\Entities\Relation;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 
 final readonly class CreateRelation
 {
@@ -20,10 +22,12 @@ final readonly class CreateRelation
         RelationCode $code,
         DisplayName $displayName,
         bool $active = true,
+        ?VatIdentificationNumber $vatIdentificationNumber = null,
+        ?CountryCode $fiscalJurisdiction = null,
     ): RelationWriteResult {
         return $this->relations->create(
             $administrationId,
-            new Relation($relationId, $code, $displayName, $active),
+            new Relation($relationId, $code, $displayName, $active, $vatIdentificationNumber, $fiscalJurisdiction),
         );
     }
 }

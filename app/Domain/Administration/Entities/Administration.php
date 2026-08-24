@@ -8,7 +8,9 @@ use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use DomainException;
 use InvalidArgumentException;
 
@@ -24,6 +26,10 @@ final class Administration
 
     private ?Organisation $organisation;
 
+    private ?VatIdentificationNumber $vatIdentificationNumber;
+
+    private ?CountryCode $fiscalJurisdiction;
+
     public function __construct(
         private readonly AdministrationId $id,
         private readonly AdministrationCode $code,
@@ -32,6 +38,8 @@ final class Administration
         Currency $baseCurrency,
         AdministrationStatus $status,
         ?Organisation $organisation = null,
+        ?VatIdentificationNumber $vatIdentificationNumber = null,
+        ?CountryCode $fiscalJurisdiction = null,
     ) {
         self::assertValidDescription($description);
 
@@ -40,6 +48,8 @@ final class Administration
         $this->baseCurrency = $baseCurrency;
         $this->status = $status;
         $this->organisation = $organisation;
+        $this->vatIdentificationNumber = $vatIdentificationNumber ?? ($organisation?->vatNumber() === null ? null : new VatIdentificationNumber($organisation->vatNumber()));
+        $this->fiscalJurisdiction = $fiscalJurisdiction;
     }
 
     public function id(): AdministrationId
@@ -85,6 +95,22 @@ final class Administration
     public function hasOrganisation(): bool
     {
         return $this->organisation !== null;
+    }
+
+    public function vatIdentificationNumber(): ?VatIdentificationNumber
+    {
+        return $this->vatIdentificationNumber;
+    }
+
+    public function fiscalJurisdiction(): ?CountryCode
+    {
+        return $this->fiscalJurisdiction;
+    }
+
+    public function changeFiscalMasterData(?VatIdentificationNumber $vatIdentificationNumber, ?CountryCode $fiscalJurisdiction): void
+    {
+        $this->vatIdentificationNumber = $vatIdentificationNumber;
+        $this->fiscalJurisdiction = $fiscalJurisdiction;
     }
 
     public function rename(AdministrationName $name): void

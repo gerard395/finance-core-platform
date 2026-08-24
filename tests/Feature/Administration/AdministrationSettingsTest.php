@@ -67,12 +67,15 @@ final class AdministrationSettingsTest extends TestCase
             'code' => 'HACKED',
             'status' => 'inactive',
             'base_currency' => 'USD',
+            'vat_identification_number' => ' nl123456789b01 ',
+            'fiscal_jurisdiction' => 'be',
         ])->assertRedirect(route('settings.administration.edit'));
 
         $this->assertDatabaseHas('administrations', [
             'id' => self::ADMIN_A, 'name' => 'Nieuwe & Veilige Naam',
             'description' => '<script>alert(1)</script>', 'code' => 'ADMA',
             'status' => 'active', 'base_currency' => 'EUR',
+            'organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'BE',
         ]);
         $this->assertDatabaseHas('administrations', [
             'id' => self::ADMIN_B, 'name' => 'Administratie B',
@@ -159,7 +162,8 @@ final class AdministrationSettingsTest extends TestCase
 
         $this->from('/settings/administration')->put('/settings/administration', [
             'name' => ' x', 'description' => str_repeat('x', 1001),
-        ])->assertRedirect('/settings/administration')->assertSessionHasErrors(['name', 'description']);
+            'vat_identification_number' => 'NL 123', 'fiscal_jurisdiction' => 'NLD',
+        ])->assertRedirect('/settings/administration')->assertSessionHasErrors(['name', 'description', 'vat_identification_number', 'fiscal_jurisdiction']);
         $this->assertDatabaseHas('administrations', ['id' => self::ADMIN_A, 'name' => 'Administratie A']);
     }
 

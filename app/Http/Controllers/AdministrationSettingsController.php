@@ -8,6 +8,8 @@ use App\Application\Administration\AdministrationSettingsWriteResult;
 use App\Application\Administration\GetAdministrationSettings;
 use App\Application\Administration\UpdateAdministrationSettings;
 use App\Domain\Administration\ValueObjects\AdministrationName;
+use App\Domain\Relations\ValueObjects\CountryCode;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Requests\Administration\UpdateAdministrationSettingsRequest;
 use Illuminate\Http\RedirectResponse;
@@ -45,6 +47,9 @@ final readonly class AdministrationSettingsController
                 $context->administration->id(),
                 new AdministrationName($validated['name']),
                 $validated['description'],
+                ($validated['vat_identification_number'] ?? null) === null ? null : new VatIdentificationNumber($validated['vat_identification_number']),
+                ($validated['fiscal_jurisdiction'] ?? null) === null ? null : new CountryCode($validated['fiscal_jurisdiction']),
+                true,
             );
         } catch (InvalidArgumentException) {
             return back()->withInput()->withErrors(['name' => 'De administratiegegevens zijn ongeldig.']);

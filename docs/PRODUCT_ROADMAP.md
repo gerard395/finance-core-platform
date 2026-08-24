@@ -331,7 +331,7 @@ over-invoicing en dubbele browser-submits.
 - W4B-004A – Dutch Tax Catalogue Bootstrap & Development Provisioning
 - W4B-004B – International VAT Treatment & ICP Readiness Design
 - W4B-004B0 – Administration Settings Authorization & Management Foundation (verplichte predecessor van W4B-004B1)
-- W4B-004B1 – VAT Identification & Jurisdiction Master Data
+- W4B-004B1 – VAT Identification & Jurisdiction Master Data (typed nullable Relation/Administration masterdata en snapshot-readers gereed)
 - W4B-004B2 – Tax Treatment & Reporting Classification
 - W4B-004B3 – Sales International Fiscal Snapshots & Dates
 - W4B-004B4 – Sales International Tax Selector Integration

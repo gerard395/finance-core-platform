@@ -20,7 +20,18 @@ final class UpdateRelationRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'min:2', 'max:255', 'not_regex:/\A\s|\s\z/u'],
             'status' => ['required', 'string', Rule::in(['active', 'inactive'])],
+            'vat_identification_number' => ['nullable', 'string', 'max:32', 'regex:/\A\s*[A-Za-z0-9][A-Za-z0-9.-]*\s*\z/'],
+            'fiscal_jurisdiction' => ['nullable', 'string', 'size:2', 'alpha:ascii'],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        foreach (['vat_identification_number', 'fiscal_jurisdiction'] as $field) {
+            if ($this->input($field) === '') {
+                $this->merge([$field => null]);
+            }
+        }
     }
 
     /** @return array<string, string> */

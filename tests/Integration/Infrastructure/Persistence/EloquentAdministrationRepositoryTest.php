@@ -12,7 +12,9 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
 use App\Domain\Administration\ValueObjects\OrganisationId;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
@@ -43,6 +45,25 @@ final class EloquentAdministrationRepositoryTest extends TestCase
         self::assertSame('Finance Core B.V.', $reconstituted->organisation()?->displayName());
         self::assertSame('12345678', $reconstituted->organisation()?->chamberOfCommerceNumber());
         self::assertSame('NL00BANK0123456789', $reconstituted->organisation()?->iban());
+        self::assertSame('NL123456789B01', $reconstituted->vatIdentificationNumber()?->toString());
+        self::assertNull($reconstituted->fiscalJurisdiction());
+    }
+
+    public function test_fiscal_master_data_roundtrips_and_nullable_existing_data_remains_supported(): void
+    {
+        $repository = new EloquentAdministrationRepository;
+        $administration = $this->administration();
+        $administration->changeFiscalMasterData(new VatIdentificationNumber('be0123456789'), new CountryCode('be'));
+        $repository->save($administration);
+
+        $fiscalParty = $repository->findFiscalParty($administration->id());
+        self::assertSame('BE0123456789', $fiscalParty?->vatIdentificationNumber?->toString());
+        self::assertSame('BE', $fiscalParty?->fiscalJurisdiction?->value());
+
+        $administration->changeFiscalMasterData(null, null);
+        $repository->save($administration);
+        self::assertNull($repository->findById($administration->id())?->vatIdentificationNumber());
+        self::assertNull($repository->findById($administration->id())?->fiscalJurisdiction());
     }
 
     public function test_save_updates_an_existing_administration_without_duplication(): void

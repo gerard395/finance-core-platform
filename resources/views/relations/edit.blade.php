@@ -18,6 +18,16 @@
             </select>
             @error('status')<p id="status-error" class="mt-2 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
         </div>
+        <div>
+            <label for="vat_identification_number" class="block font-medium">BTW-identificatienummer</label>
+            <input id="vat_identification_number" name="vat_identification_number" value="{{ old('vat_identification_number', $relation->vatIdentificationNumber()?->toString()) }}" maxlength="32" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 focus:border-blue-700 focus:ring-2 focus:ring-blue-700">
+            @error('vat_identification_number')<p class="mt-2 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+        </div>
+        <div>
+            <label for="fiscal_jurisdiction" class="block font-medium">Fiscale jurisdictie / vestigingsland</label>
+            <input id="fiscal_jurisdiction" name="fiscal_jurisdiction" value="{{ old('fiscal_jurisdiction', $relation->fiscalJurisdiction()?->value()) }}" maxlength="2" placeholder="NL" class="mt-1 min-h-11 w-full rounded-lg border border-slate-300 px-3 uppercase focus:border-blue-700 focus:ring-2 focus:ring-blue-700">
+            @error('fiscal_jurisdiction')<p class="mt-2 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+        </div>
         <div class="flex flex-wrap gap-3">
             <button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Opslaan</button>
             <a href="{{ $canViewRelations ? route('relations.show', $relation->id()->toString()) : route('app') }}" class="inline-flex min-h-11 items-center rounded-lg px-4 font-semibold text-blue-700 focus:ring-2 focus:ring-blue-700">Annuleren</a>

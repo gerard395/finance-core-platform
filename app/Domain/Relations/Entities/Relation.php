@@ -7,9 +7,11 @@ namespace App\Domain\Relations\Entities;
 use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\BankAccountId;
 use App\Domain\Relations\ValueObjects\ContactId;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use DomainException;
 
 final class Relation
@@ -28,6 +30,8 @@ final class Relation
         private readonly RelationCode $code,
         private DisplayName $displayName,
         private bool $active,
+        private ?VatIdentificationNumber $vatIdentificationNumber = null,
+        private ?CountryCode $fiscalJurisdiction = null,
     ) {}
 
     /**
@@ -43,8 +47,10 @@ final class Relation
         array $contacts,
         array $addresses,
         array $bankAccounts,
+        ?VatIdentificationNumber $vatIdentificationNumber = null,
+        ?CountryCode $fiscalJurisdiction = null,
     ): self {
-        $relation = new self($id, $code, $displayName, $active);
+        $relation = new self($id, $code, $displayName, $active, $vatIdentificationNumber, $fiscalJurisdiction);
         $relation->contacts = self::indexContacts($contacts);
         $relation->addresses = self::indexAddresses($addresses);
         $relation->bankAccounts = self::indexBankAccounts($bankAccounts);
@@ -70,6 +76,22 @@ final class Relation
     public function isActive(): bool
     {
         return $this->active;
+    }
+
+    public function vatIdentificationNumber(): ?VatIdentificationNumber
+    {
+        return $this->vatIdentificationNumber;
+    }
+
+    public function fiscalJurisdiction(): ?CountryCode
+    {
+        return $this->fiscalJurisdiction;
+    }
+
+    public function changeFiscalMasterData(?VatIdentificationNumber $vatIdentificationNumber, ?CountryCode $fiscalJurisdiction): void
+    {
+        $this->vatIdentificationNumber = $vatIdentificationNumber;
+        $this->fiscalJurisdiction = $fiscalJurisdiction;
     }
 
     /** @return list<Contact> */

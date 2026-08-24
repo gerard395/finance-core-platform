@@ -8,9 +8,11 @@ use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Relations\CreateRelation;
 use App\Application\Relations\RelationWriteResult;
 use App\Domain\Identity\Definitions\RelationsPermission;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\DisplayName;
 use App\Domain\Relations\ValueObjects\RelationCode;
 use App\Domain\Relations\ValueObjects\RelationId;
+use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Controllers\Controller;
@@ -47,6 +49,9 @@ final class RelationCreateController extends Controller
                 $relationId,
                 new RelationCode($validated['code']),
                 new DisplayName($validated['name']),
+                true,
+                $this->vatId($validated['vat_identification_number'] ?? null),
+                $this->jurisdiction($validated['fiscal_jurisdiction'] ?? null),
             );
         } catch (InvalidArgumentException) {
             return back()->withInput()->withErrors(['code' => 'De relatiegegevens zijn ongeldig.']);
@@ -81,6 +86,16 @@ final class RelationCreateController extends Controller
     {
         /** @var ActiveAdministrationContext */
         return $request->attributes->get('administration_context');
+    }
+
+    private function vatId(?string $value): ?VatIdentificationNumber
+    {
+        return $value === null ? null : new VatIdentificationNumber($value);
+    }
+
+    private function jurisdiction(?string $value): ?CountryCode
+    {
+        return $value === null ? null : new CountryCode($value);
     }
 
     private function can(ActiveAdministrationContext $context, RelationsPermission $permission): bool
