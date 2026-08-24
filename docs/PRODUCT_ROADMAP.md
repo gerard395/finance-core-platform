@@ -385,6 +385,7 @@ is demo-masterdata en nadrukkelijk geen production default chart of accounts.
 
 - W4D-000 – Development Accounting Master Data Provisioning
 - W4D-001 – Sales Posting Configuration Settings UI
+- W4D-002 – Journal & Ledger Account Master Data Management
 
 W4D-001 laat een Administration user via Beheer → Instellingen expliciet het Sales
 Journal en de Accounts Receivable-, Revenue- en Output VAT-rekening selecteren uit
@@ -393,6 +394,8 @@ geldige masterdata van dezelfde Administration.
 Latere afzonderlijke productcapabilities beheren Journalmasterdata en het
 LedgerAccount-rekeningschema. W4D-001 kiest geen accounts heuristisch en maakt geen
 financiële defaults; het onderhoudt alleen expliciete tenant-owned references.
+W4D-002 levert daarna de ontbrekende productmatige lifecycle voor tenant-owned Journal-
+en LedgerAccount-masterdata; development provisioning is daarvoor geen workaround.
 
 ## Releases
 

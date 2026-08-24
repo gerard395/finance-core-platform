@@ -99,6 +99,7 @@ final class AdministrationSettingsTest extends TestCase
 
         $this->get('/settings/administration')->assertForbidden();
         $this->put('/settings/administration', ['name' => 'Denied', 'description' => null])->assertForbidden();
+        $this->put('/settings/administration/sales-posting', [])->assertForbidden();
         $this->get('/app')->assertOk()->assertDontSee('href="'.route('settings.administration.edit').'"', false);
     }
 
@@ -138,6 +139,7 @@ final class AdministrationSettingsTest extends TestCase
         $assignment->deactivate();
         $roles->save($assignment);
         $this->get('/settings/administration')->assertForbidden();
+        $this->put('/settings/administration/sales-posting', [])->assertForbidden();
     }
 
     public function test_inactive_membership_is_denied_before_settings_authorization(): void
@@ -153,6 +155,7 @@ final class AdministrationSettingsTest extends TestCase
         $memberships->save($membership);
 
         $this->get('/settings/administration')->assertRedirect('/administrations/select');
+        $this->put('/settings/administration/sales-posting', [])->assertRedirect('/administrations/select');
     }
 
     public function test_validation_is_safe_and_does_not_persist_invalid_input(): void

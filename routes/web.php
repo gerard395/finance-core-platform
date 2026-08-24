@@ -62,6 +62,9 @@ Route::get('/settings/administration', [AdministrationSettingsController::class,
 Route::put('/settings/administration', [AdministrationSettingsController::class, 'update'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.update');
+Route::put('/settings/administration/sales-posting', [AdministrationSettingsController::class, 'updateSalesPosting'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.sales-posting.update');
 
 Route::get('/relations', RelationIndexController::class)
     ->middleware([
