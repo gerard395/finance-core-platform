@@ -10,6 +10,7 @@ R2 voegt drie operationele rapportages toe:
 
 - `GeneralLedgerReport` leest uitsluitend Posted JournalEntries en berekent per regel de period movement balance als `vorige + debit - credit`;
 - `OpenItemsReport` gebruikt uitsluitend `OpenItem::openAmountAt()` en `statusAt()` voor de gevraagde peildatum;
+- Open Items rapporteert bruto Debit- en Credit-openstanden afzonderlijk en netto Receivables als Debit minus Credit; customer credit blijft Receivable/Credit en wordt niet als Payable getoond;
 - `VatOverview` gebruikt uitsluitend immutable Fiscal-owned `TaxPosting`-feiten, inclusief afzonderlijke Original- en Reversal-records.
 
 Rapportresultaten zijn reproduceerbare berekeningen. Reporting schrijft geen saldi, totalen of andere financiële waarheid terug naar Accounting of een andere capability en bevat geen database-, repository-, infrastructuur-, Laravel- of UI-code.

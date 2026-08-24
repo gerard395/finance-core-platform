@@ -232,7 +232,8 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - Geposte JournalEntries zijn onveranderlijk.
 - Correcties op geposte JournalEntries gebeuren via tegenboekingen, nooit door de oorspronkelijke boeking te wijzigen.
 - OpenItems ontstaan pas na de succesvolle geposte JournalEntry voor een verkoop- of inkoopfactuur; `openedOn` is diens PostingDate.
-- OpenItem bewaart immutable Applied- en Reversal-settlementfeiten. Open bedrag en status worden uit originalAmount plus deze historie afgeleid en nooit los gemuteerd.
+- OpenItem bewaart naast `OpenItemType` (Receivable/Payable) een immutable `OpenItemSide` (Debit/Credit). OriginalAmount is een positieve magnitude. Receivable/Credit modelleert een customer credit balance en is geen Payable.
+- OpenItem bewaart immutable Applied- en Reversal-settlementfeiten; append-only OpenItemMatch-facts verbinden same-tenant, same-Relation, same-Currency OpenItems van hetzelfde type en tegengestelde zijde. Open bedrag en status worden uit originalAmount plus deze gedateerde historie afgeleid en nooit los gemuteerd.
 - Betalingen sluiten OpenItems via Application-orchestratie pas nadat de veroorzakende financiële boeking succesvol is gepost.
 - Grootboeksaldi worden berekend uit geposte JournalEntries en niet afzonderlijk opgeslagen.
 

@@ -56,7 +56,7 @@ final readonly class GetDashboardOverview
 
         $outstandingReceivables = $this->openItemsReport
             ->generate($receivables, $administrationId, $currency, $periodEnd)
-            ->totalOpenAmount();
+            ->netReceivableOpenAmount();
         $outstandingPayables = $this->openItemsReport
             ->generate($payables, $administrationId, $currency, $periodEnd)
             ->totalOpenAmount();

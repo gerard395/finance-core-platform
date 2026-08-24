@@ -4,16 +4,22 @@ declare(strict_types=1);
 
 namespace App\Infrastructure\Persistence\Eloquent;
 
+use App\Application\Accounting\OpenItemMatchAppendResult;
+use App\Application\Accounting\OpenItemMatchPair;
+use App\Application\Accounting\OpenItemMatchRepository;
 use App\Application\Accounting\OpenItemReadRepository;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Accounting\OpenItemStore;
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Entities\OpenItemMatch;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
+use App\Domain\Accounting\ValueObjects\OpenItemMatchId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -22,14 +28,16 @@ use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\OpenItemMatchRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemSettlementRecord;
 use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
-final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenItemSettlementStore, OpenItemStore
+final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenItemReadRepository, OpenItemSettlementStore, OpenItemStore
 {
     public function findForAdministrationAsOf(
         AdministrationId $administrationId,
@@ -68,11 +76,62 @@ final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenIt
                 'relation_id' => $openItem->relationId()->toString(),
                 'journal_entry_id' => $openItem->journalEntryId()->toString(),
                 'open_item_type' => $openItem->type()->value,
+                'side' => $openItem->side()->value,
                 'original_amount' => $openItem->originalAmount()->amount(),
                 'currency' => $openItem->originalAmount()->currency()->code(),
                 'opened_on' => $openItem->openedOn()->value()->format('Y-m-d'),
             ]);
         });
+    }
+
+    public function findLockedPair(AdministrationId $administrationId, OpenItemId $debitOpenItemId, OpenItemId $creditOpenItemId): ?OpenItemMatchPair
+    {
+        $ids = [$debitOpenItemId->toString(), $creditOpenItemId->toString()];
+        sort($ids);
+        $records = OpenItemRecord::query()
+            ->with('settlements')
+            ->where('administration_id', $administrationId->toString())
+            ->whereIn('id', $ids)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->keyBy('id');
+
+        $debit = $records->get($debitOpenItemId->toString());
+        $credit = $records->get($creditOpenItemId->toString());
+
+        return $debit instanceof OpenItemRecord && $credit instanceof OpenItemRecord
+            ? new OpenItemMatchPair($this->hydrate($debit), $this->hydrate($credit))
+            : null;
+    }
+
+    public function appendMatch(OpenItemMatch $match): OpenItemMatchAppendResult
+    {
+        if (OpenItemMatchRecord::query()->whereKey($match->id()->toString())->exists()) {
+            return OpenItemMatchAppendResult::AlreadyExists;
+        }
+
+        $this->assertPostedJournalEntry($match->administrationId(), $match->sourceJournalEntryId());
+
+        try {
+            OpenItemMatchRecord::query()->create([
+                'id' => $match->id()->toString(),
+                'administration_id' => $match->administrationId()->toString(),
+                'debit_open_item_id' => $match->debitOpenItemId()->toString(),
+                'credit_open_item_id' => $match->creditOpenItemId()->toString(),
+                'amount' => $match->amount()->amount(),
+                'currency' => $match->amount()->currency()->code(),
+                'occurred_on' => $match->occurredOn()->value()->format('Y-m-d'),
+                'source_journal_entry_id' => $match->sourceJournalEntryId()->toString(),
+            ]);
+        } catch (QueryException $exception) {
+            if (OpenItemMatchRecord::query()->whereKey($match->id()->toString())->exists()) {
+                return OpenItemMatchAppendResult::AlreadyExists;
+            }
+            throw $exception;
+        }
+
+        return OpenItemMatchAppendResult::Appended;
     }
 
     public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement): void
@@ -140,6 +199,23 @@ final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenIt
                 $reversedId === null ? null : new OpenItemSettlementId(new Uuid($reversedId)),
             );
         })->all();
+        $matches = OpenItemMatchRecord::query()
+            ->where('administration_id', $record->getAttribute('administration_id'))
+            ->where(static fn ($query) => $query
+                ->where('debit_open_item_id', $record->getAttribute('id'))
+                ->orWhere('credit_open_item_id', $record->getAttribute('id')))
+            ->orderBy('occurred_on')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (OpenItemMatchRecord $match): OpenItemMatch => new OpenItemMatch(
+                new OpenItemMatchId(new Uuid($match->getAttribute('id'))),
+                new AdministrationId(new Uuid($match->getAttribute('administration_id'))),
+                new OpenItemId(new Uuid($match->getAttribute('debit_open_item_id'))),
+                new OpenItemId(new Uuid($match->getAttribute('credit_open_item_id'))),
+                new Money((string) $match->getAttribute('amount'), new Currency($match->getAttribute('currency'))),
+                new PostingDate(new DateTimeImmutable($match->getAttribute('occurred_on')->format('Y-m-d'))),
+                new JournalEntryId(new Uuid($match->getAttribute('source_journal_entry_id'))),
+            ))->all();
 
         return OpenItem::reconstitute(
             new OpenItemId(new Uuid($record->getAttribute('id'))),
@@ -150,6 +226,8 @@ final class EloquentOpenItemRepository implements OpenItemReadRepository, OpenIt
             new Money((string) $record->getAttribute('original_amount'), new Currency($record->getAttribute('currency'))),
             new PostingDate(new DateTimeImmutable($record->getAttribute('opened_on')->format('Y-m-d'))),
             $settlements,
+            OpenItemSide::from($record->getAttribute('side')),
+            $matches,
         );
     }
 

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Domain\Accounting\Entities;
 
 use App\Domain\Accounting\Enums\OpenItemSettlementType;
+use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
@@ -21,6 +22,11 @@ final class OpenItem
     /** @var array<string, OpenItemSettlement> */
     private array $settlements = [];
 
+    /** @var array<string, OpenItemMatch> */
+    private array $matches = [];
+
+    private readonly OpenItemSide $side;
+
     public function __construct(
         private readonly OpenItemId $id,
         private readonly AdministrationId $administrationId,
@@ -29,13 +35,19 @@ final class OpenItem
         private readonly OpenItemType $type,
         private readonly Money $originalAmount,
         private readonly PostingDate $openedOn,
+        ?OpenItemSide $side = null,
     ) {
         if (! $originalAmount->isPositive()) {
             throw new DomainException('Original amount must be positive.');
         }
+
+        $this->side = $side ?? match ($type) {
+            OpenItemType::Receivable => OpenItemSide::Debit,
+            OpenItemType::Payable => OpenItemSide::Credit,
+        };
     }
 
-    /** @param list<OpenItemSettlement> $settlements */
+    /** @param list<OpenItemSettlement> $settlements @param list<OpenItemMatch> $matches */
     public static function reconstitute(
         OpenItemId $id,
         AdministrationId $administrationId,
@@ -45,8 +57,10 @@ final class OpenItem
         Money $originalAmount,
         PostingDate $openedOn,
         array $settlements,
+        ?OpenItemSide $side = null,
+        array $matches = [],
     ): self {
-        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn);
+        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn, $side);
         $indexed = [];
         $reversed = [];
 
@@ -87,7 +101,23 @@ final class OpenItem
             $indexed[$key] = $settlement;
         }
 
-        $item->calculateOpenAmount(array_values($indexed));
+        foreach ($matches as $match) {
+            if (! $match->administrationId()->equals($administrationId) || ! $match->involves($id)) {
+                throw new DomainException('Open item match must belong to this OpenItem and Administration.');
+            }
+            if (! $originalAmount->currency()->equals($match->amount()->currency())) {
+                throw new DomainException('Open item match currency must match the open item currency.');
+            }
+            if ($match->occurredOn()->value() < $openedOn->value()) {
+                throw new DomainException('Open item match date cannot precede the opening date.');
+            }
+            if (isset($item->matches[$match->id()->toString()])) {
+                throw new DomainException('Open item match identity must be unique.');
+            }
+            $item->matches[$match->id()->toString()] = $match;
+        }
+
+        $item->calculateOpenAmount(array_values($indexed), array_values($item->matches));
         $item->settlements = $indexed;
 
         return $item;
@@ -118,6 +148,11 @@ final class OpenItem
         return $this->type;
     }
 
+    public function side(): OpenItemSide
+    {
+        return $this->side;
+    }
+
     public function originalAmount(): Money
     {
         return $this->originalAmount;
@@ -134,6 +169,12 @@ final class OpenItem
         return self::ordered(array_values($this->settlements));
     }
 
+    /** @return list<OpenItemMatch> */
+    public function matches(): array
+    {
+        return self::orderedMatches(array_values($this->matches));
+    }
+
     public function settlement(OpenItemSettlementId $id): ?OpenItemSettlement
     {
         return $this->settlements[$id->toString()] ?? null;
@@ -146,7 +187,7 @@ final class OpenItem
 
     public function openAmount(): Money
     {
-        return $this->calculateOpenAmount($this->settlements());
+        return $this->calculateOpenAmount($this->settlements(), $this->matches());
     }
 
     public function status(): OpenItemStatus
@@ -161,6 +202,9 @@ final class OpenItem
         return $this->calculateOpenAmount(array_values(array_filter(
             $this->settlements(),
             static fn (OpenItemSettlement $settlement): bool => $settlement->effectiveDate()->value() <= $date->value(),
+        )), array_values(array_filter(
+            $this->matches(),
+            static fn (OpenItemMatch $match): bool => $match->occurredOn()->value() <= $date->value(),
         )));
     }
 
@@ -263,12 +307,12 @@ final class OpenItem
     private function appendWhenHistoryRemainsValid(OpenItemSettlement $candidate): void
     {
         $history = self::ordered([...$this->settlements(), $candidate]);
-        $this->calculateOpenAmount($history);
+        $this->calculateOpenAmount($history, $this->matches());
         $this->settlements[$candidate->id()->toString()] = $candidate;
     }
 
-    /** @param list<OpenItemSettlement> $settlements */
-    private function calculateOpenAmount(array $settlements): Money
+    /** @param list<OpenItemSettlement> $settlements @param list<OpenItemMatch> $matches */
+    private function calculateOpenAmount(array $settlements, array $matches): Money
     {
         $openAmount = $this->originalAmount;
 
@@ -283,6 +327,13 @@ final class OpenItem
 
             if ($openAmount->subtract($this->originalAmount)->isPositive()) {
                 throw new DomainException('Settlement history cannot increase the open amount above the original amount.');
+            }
+        }
+
+        foreach ($matches as $match) {
+            $openAmount = $openAmount->subtract($match->amount());
+            if ($openAmount->isNegative()) {
+                throw new DomainException('Open item matches cannot reduce the open amount below zero.');
             }
         }
 
@@ -313,5 +364,17 @@ final class OpenItem
         });
 
         return $settlements;
+    }
+
+    /** @param list<OpenItemMatch> $matches @return list<OpenItemMatch> */
+    private static function orderedMatches(array $matches): array
+    {
+        usort($matches, static function (OpenItemMatch $left, OpenItemMatch $right): int {
+            $dateOrder = $left->occurredOn()->value() <=> $right->occurredOn()->value();
+
+            return $dateOrder !== 0 ? $dateOrder : strcmp($left->id()->toString(), $right->id()->toString());
+        });
+
+        return $matches;
     }
 }

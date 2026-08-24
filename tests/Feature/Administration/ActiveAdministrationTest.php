@@ -244,6 +244,7 @@ final class ActiveAdministrationTest extends TestCase
                 'relation_id' => $relationId,
                 'journal_entry_id' => $entryId,
                 'open_item_type' => $type,
+                'side' => $type === 'receivable' ? 'debit' : 'credit',
                 'original_amount' => $amount,
                 'currency' => 'EUR',
                 'opened_on' => $date,
