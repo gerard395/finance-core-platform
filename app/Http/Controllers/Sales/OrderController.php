@@ -9,6 +9,7 @@ use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\RelationReadRepository;
 use App\Application\Sales\CreateOrder;
 use App\Application\Sales\OrderDetailReadRepository;
+use App\Application\Sales\OrderInvoicingProgressReader;
 use App\Application\Sales\OrderListQuery;
 use App\Application\Sales\OrderListReadRepository;
 use App\Application\Sales\OrderSortDirection;
@@ -39,6 +40,7 @@ final class OrderController extends Controller
     public function __construct(
         private readonly OrderListReadRepository $list,
         private readonly OrderDetailReadRepository $details,
+        private readonly OrderInvoicingProgressReader $invoicingProgress,
         private readonly CustomerReadRepository $customers,
         private readonly RelationReadRepository $relations,
         private readonly CreateOrder $createOrder,
@@ -89,9 +91,19 @@ final class OrderController extends Controller
         $context = $this->context($request);
         $detail = $this->details->find($context->administration->id(), $this->orderId($order));
         abort_if($detail === null, 404);
+        $progress = $this->invoicingProgress->progress($context->administration->id(), $detail->id());
+        abort_if($progress === null, 404);
+        $progressByLine = [];
+        foreach ($progress->lines() as $line) {
+            $progressByLine[$line->orderLineId()->toString()] = $line;
+        }
 
         return view('sales.orders.show', $this->viewData($context) + [
             'order' => $detail,
+            'progressByLine' => $progressByLine,
+            'canCreateInvoice' => $this->can($context, SalesPermission::ManageInvoiceDrafts)
+                && in_array($detail->status(), [OrderStatus::Confirmed, OrderStatus::PartiallyInvoiced], true)
+                && collect($progress->lines())->contains(static fn ($line): bool => ! $line->available()->isZero()),
             'statusPresenter' => OrderStatusPresenter::class,
         ]);
     }
@@ -192,6 +204,7 @@ final class OrderController extends Controller
             'canViewRelations' => $this->permissions->allows($context->permissionIds, RelationsPermission::View->id()),
             'canViewSales' => $this->can($context, SalesPermission::View),
             'canManageOrders' => $this->can($context, SalesPermission::ManageOrders),
+            'canManageInvoiceDrafts' => $this->can($context, SalesPermission::ManageInvoiceDrafts),
         ];
     }
 
