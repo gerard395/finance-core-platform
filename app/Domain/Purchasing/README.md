@@ -61,4 +61,11 @@ volledige Finalized snapshot plus actuele configuration en levert via PostingEng
 Payable/Credit OpenItem, één duurzame linkage en de status Posted. Fouten rollen alle
 facts terug; headerlocking en linkage-uniciteit maken double post idempotent.
 
+P3-004 ontsluit deze contracten in Web zonder financiële Presentation-logica. De
+request-scoped navigatie en routes scheiden View, Draft Manage, Finalize en Post exact.
+Draft-formulieren gebruiken uitsluitend same-tenant actieve Supplier-, Expense/Asset- en
+ondersteunde Input-TaxCode-selectors; detail blijft historische snapshots tonen. Post
+vereist een expliciete PostingDate en presenteert daarna linkage en het Payable/Credit
+OpenItem. Er bestaat geen GET-mutatie, automatische finalize/post of paymentactie.
+
 `PurchaseCreditInvoice` blijft een bestaand prototype en valt buiten P3.

@@ -538,7 +538,15 @@ Input VAT debet, AP gross credit, immutable line-level Input TaxPostings op
 FiscalReportingDate, één volledig open Payable/Credit met DueDate, en één tenant-safe
 postinglinkage. Configuratie is alleen bij Post vereist. Sequential en concurrent double
 post zijn idempotent en iedere persistencefout rolt JournalEntry, tax, OpenItem, linkage
-en status gezamenlijk terug. Web, credits, payments en VAT/ICP blijven vervolgscope.
+en status gezamenlijk terug.
+
+P3-004 sluit de domestic PurchaseInvoice-productflow af met permission-aware Weblijst en
+-detail, expliciete Draft-aanmaak/-wijziging, Cancel, Finalize en Post met PostingDate.
+Same-tenant Supplier-, Expense/Asset- en ondersteunde Input-TaxCode-selectors voeren de
+bestaande Application-contracten; Posted detail toont het duurzame Payable/Credit
+OpenItem. PurchaseCreditInvoice, supplier payments, attachments/OCR, international en
+reverse-charge Purchase VAT, partial/non-deductible VAT, multi-step approval en VAT/ICP-
+reporting blijven expliciet vervolgscope.
 
 ## Releases
 

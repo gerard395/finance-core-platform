@@ -638,3 +638,10 @@ source line behoudt fiscale trace, inclusief zero-tax zonder fictieve VAT-journa
 Het ene OpenItem is Payable/Credit met historische Relation, gross en DueDate. Een
 same-tenant append-only linkage en invoice row lock borgen at-most-once; alle facts plus
 de Posted-status committen of rollen gezamenlijk terug.
+
+P3-004 maakt de keten productmatig beschikbaar via list/detail, coherente Draft-mutatie,
+Finalize en Post. De vier Purchasing-permissions blijven onafhankelijk en worden per
+request geëvalueerd. Selectors zijn actief en tenant-scoped; bestaand documentdetail
+gebruikt uitsluitend historische snapshots. Presentation levert een expliciete
+PostingDate aan de Application-use-case en toont na succes het Payable/Credit OpenItem,
+maar berekent of schrijft zelf geen financiële waarheid en biedt geen paymentflow.

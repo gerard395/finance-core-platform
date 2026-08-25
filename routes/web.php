@@ -2,6 +2,7 @@
 
 use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
+use App\Domain\Identity\Definitions\PurchasingPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AccountingMasterDataController;
@@ -9,6 +10,9 @@ use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
+use App\Http\Controllers\Purchasing\PurchaseInvoiceLifecycleController;
+use App\Http\Controllers\Purchasing\PurchaseInvoicePostingController;
 use App\Http\Controllers\Relations\AddressController;
 use App\Http\Controllers\Relations\BankAccountController;
 use App\Http\Controllers\Relations\ContactController;
@@ -37,6 +41,7 @@ use App\Http\Controllers\Sales\SalesInvoiceLineController;
 use App\Http\Controllers\Sales\SalesInvoicePostingController;
 use App\Http\Middleware\EnsureAdministrationPermission;
 use App\Http\Middleware\EnsureDeliveryOperationsPermission;
+use App\Http\Middleware\EnsurePurchasingPermission;
 use App\Http\Middleware\EnsureRelationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use Illuminate\Support\Facades\Route;
@@ -61,6 +66,16 @@ Route::middleware(['auth', 'domain.active'])->group(function (): void {
 Route::get('/app', DashboardController::class)
     ->middleware(['auth', 'domain.active', 'administration.active'])
     ->name('app');
+
+Route::get('/purchasing/invoices', [PurchaseInvoiceController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::View)])->name('purchasing.invoices.index');
+Route::get('/purchasing/invoices/create', [PurchaseInvoiceController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.create');
+Route::post('/purchasing/invoices', [PurchaseInvoiceController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.store');
+Route::get('/purchasing/invoices/{invoice}', [PurchaseInvoiceController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::View)])->name('purchasing.invoices.show');
+Route::get('/purchasing/invoices/{invoice}/edit', [PurchaseInvoiceController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.edit');
+Route::put('/purchasing/invoices/{invoice}', [PurchaseInvoiceController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.update');
+Route::post('/purchasing/invoices/{invoice}/cancel', [PurchaseInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.cancel');
+Route::post('/purchasing/invoices/{invoice}/finalize', [PurchaseInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::FinalizeInvoices)])->name('purchasing.invoices.finalize');
+Route::post('/purchasing/invoices/{invoice}/post', PurchaseInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::PostInvoices)])->name('purchasing.invoices.post');
 
 Route::get('/settings/administration', [AdministrationSettingsController::class, 'edit'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
