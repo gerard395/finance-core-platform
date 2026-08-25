@@ -435,6 +435,10 @@ queue, bewaakte worker/scheduler, durable MySQL/artifactvolumes en applicationhe
 W4E-003C legt vervolgens de operationele resolutionpermission vast; daarna hervat
 W4E-003A readiness/recovery. W4E-004 blijft tot voltooiing van W4E-003A geblokkeerd.
 
+W4E-003C levert `DELIVERY.OUTCOME_RESOLVE` via de smalle canonieke
+`DELIVERY_OPERATOR`-rol, zonder automatische membershipassignment. Daarmee zijn de
+deployment- en authorizationpredecessors voor hervatting van W4E-003A expliciet.
+
 - W4E-000 – Sales Document Delivery Design
 - W4E-001A – Quotation Document Address Semantics
 - W4E-001 – Recipient, Issuer & Sender Readiness
