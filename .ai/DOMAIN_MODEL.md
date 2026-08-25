@@ -176,7 +176,7 @@ Order kan vanuit Draft of Confirmed worden geannuleerd. SalesInvoice kan vanuit 
 Een PurchaseInvoice doorloopt:
 
 ```text
-Draft → Finalized → Posted → Paid
+Draft → Finalized → Posted
 ```
 
 Een PurchaseCreditInvoice doorloopt:
@@ -191,9 +191,15 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 
 - Iedere PurchaseInvoice en PurchaseCreditInvoice heeft een leverancier.
 - Iedere PurchaseInvoice en PurchaseCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
+- P3 PurchaseInvoice gebruikt het verplichte externe supplier invoice number; Administration, Supplier en het case-sensitive canonieke nummer zijn samen uniek. Er bestaat geen interne Purchase-numbersequence.
+- P3 finaliseert met immutable Domain UserId en timestamp. Finalized bevriest supplier/address/date-, line/account-, TaxCode- en bedragtruth maar maakt nog geen financiële feiten.
+- P3 bewaart SupplierInvoiceDate, ReceivedDate, nullable SupplyDate, een afzonderlijke FiscalReportingDate en later de expliciete Accounting PostingDate. Supplier-, VAT/jurisdiction- en documentaddressdata worden immutable gesnapshot; live Relationdata is geen historische waarheid.
+- P3 ondersteunt uitsluitend EUR en volledig aftrekbare domestic Input VAT. Standard/reduced kunnen positieve tax hebben; zero/exempt/outside-scope bewaren zero-tax fiscal truth zonder VAT-journalregel. International/reverse-charge en non-/partial-deductible VAT zijn uitgesloten.
+- Iedere P3 line kiest expliciet een active same-tenant Expense/Asset-account en active same-tenant Input TaxCode. Er is geen first-account-, first-TaxCode- of rateheuristiek.
 - `PostingEngine` verwerkt alle financiële mutaties.
 - PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
-- Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert dit OpenItem niet rechtstreeks.
+- P3-posting bewaart atomair JournalEntry, Input TaxPostings, één Payable/Credit OpenItem, append-only linkage en Posted-status. Paymentstatus wordt uit OpenItem afgeleid; PurchaseInvoice heeft geen handmatige Paid/PartiallyPaid-status.
+- Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert settlement/matching niet rechtstreeks.
 
 #### Hergebruik
 

@@ -48,13 +48,23 @@ Dit document benoemt de businessautorisaties van Finance Core Platform. Het besc
 
 ## Purchasing
 
-| Permission Name | Korte beschrijving |
+P3-000 vervangt de oude beschrijvende placeholderset voor de eerste domestic
+PurchaseInvoice-flow door het volgende typed contract. Stable IDs en implementatie
+volgen in P3-001.
+
+| Permission Code | Korte beschrijving |
 | --- | --- |
-| View Purchase Documents | Inkoopdocumenten en hun verwerkingsstatus raadplegen. |
-| Register Purchase Invoice | Een ontvangen inkoopfactuur registreren. |
-| Change Purchase Invoice | Een nog wijzigbare inkoopfactuur corrigeren of aanvullen. |
-| Approve Purchase Invoice | Een inkoopfactuur inhoudelijk goedkeuren voor verdere verwerking. |
-| Register Purchase Credit Invoice | Een ontvangen inkoopcreditfactuur registreren. |
+| `PURCHASING.VIEW` | Inkoopfacturen, status, postinglink en Payable read-only raadplegen. |
+| `PURCHASING.INVOICES_DRAFT_MANAGE` | Domestic Draft-inkoopfacturen aanmaken, wijzigen en vóór posting annuleren; geeft geen finalisatie- of postingrecht. |
+| `PURCHASING.INVOICES_FINALIZE` | Een valide Draft inhoudelijk vaststellen als immutable Finalized document; geeft geen postingrecht. |
+| `PURCHASING.INVOICES_POST` | Een Finalized factuur via de enige transactionele Purchase-postingorchestrator financieel/fiscaal posten; geeft geen draftbeheer of finalisatierecht. |
+
+Voorgestelde canonieke rolebundles voor P3-001: `PURCHASING_MANAGER` bevat View,
+DraftManage en Finalize; `PURCHASING_POSTER` bevat alleen View en Post. Er is geen
+impliciete permissionhiërarchie, role-name authorization of automatische
+membershipassignment. PurchasePostingConfiguration gebruikt de bestaande
+`ADMINISTRATION.SETTINGS_UPDATE`-permission. Credit- en paymentpermissions blijven
+buiten P3.
 
 ## Accounting
 

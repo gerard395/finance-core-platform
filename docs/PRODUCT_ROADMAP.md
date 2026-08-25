@@ -505,6 +505,19 @@ reverse-charge purchases volgen afzonderlijk. Het huidige fiscale model kan
 purchase-side reverse charge nog niet veilig als gelijktijdige verschuldigde Output VAT
 en mogelijke Input VAT representeren. VAT/ICP-reporting blijft daarom geparkeerd.
 
+P3-000 heeft de productcontracten definitief uitgelijnd. P3 gebruikt Draft → Finalized
+→ Posted, bewaart finalization actor/tijd plus immutable supplier/address/date- en
+line-fiscalsnapshots, gebruikt een case-sensitive externe supplier invoice identity en
+leidt paymentstatus uitsluitend uit Payable af. Domestic V1 is EUR-only en ondersteunt
+volledig aftrekbare Input standard/reduced plus zero/exempt/outside-scope fiscal truth;
+non-/partial-deductible en international/reverse-charge blijven geblokkeerd.
+
+De vervolgsplit blijft: P3-001 authorization, create-missing-only Input catalogue en
+PurchasePostingConfiguration; P3-002 PurchaseInvoice persistence/Application;
+P3-003 atomische domestic posting met TaxPostings en Payable; P3-004 Web plus review.
+De designblockers voor start van P3-001 zijn opgelost. PurchaseCreditInvoice, payments,
+attachments/OCR, FX-reporting en VAT/ICP blijven vervolgscope.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
