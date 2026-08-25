@@ -447,6 +447,15 @@ permission-scoped OutcomeUnknown-resolution. Quotation `Sent` volgt niet langer 
 legacy klik maar uitsluitend uit transportacceptatie of HandledExternally, met veilige
 schedulerreconciliation. Invoice-/Creditdelivery laat financiële waarheid ongemoeid.
 
+W4E-005 heeft de capability end-to-end gereviewd en de volledige regressie-, security-,
+tenant-, concurrency- en operationsmatrix gevalideerd. De review heeft document-
+readiness gelijkgetrokken met de bestaande typed render-modelvalidatie, zodat Web nooit
+`Ready` toont wanneer artifactpreparation inhoudelijk zou blokkeren. W4E is compleet en
+merge-ready. Deferred blijven bounce/delivery-webhooks, inboxbevestiging, open/click-
+tracking, tenant SMTP-credentials, template-editing, arbitrary attachments, bulk of
+scheduled delivery, membership-rolebeheer, generieke mutation-audit en optimistic
+settings locking.
+
 - W4E-000 – Sales Document Delivery Design
 - W4E-001A – Quotation Document Address Semantics
 - W4E-001 – Recipient, Issuer & Sender Readiness
@@ -469,6 +478,15 @@ queue-delivery; dat begint bij W4E-003 en W4E-004.
 
 Dutch VAT & ICP Reporting blijft tijdens W4E geparkeerd. W4E introduceert geen
 Purchasing Web, generiek documentmanagement, e-invoicing of ontvangstbewijsclaim.
+
+### Aanbevolen volgende hoofdproductbatch – Purchasing Persistence & Web
+
+Na de operationele Sales-kern en W4E documentdelivery is Purchasing de grootste
+productflow zonder persistence- en Webbediening. De volgende batch hoort daarom de
+bestaande PurchaseInvoice- en PurchaseCreditInvoice-domeincontracten tenant-safe naar
+persistence en Application/Web te brengen en de vereiste Accounting-configuratie
+expliciet te ontwerpen. VAT/ICP-reporting blijft geparkeerd totdat deze primaire
+inkoopflow en haar financiële afhankelijkheden productmatig beschikbaar zijn.
 
 ## Releases
 

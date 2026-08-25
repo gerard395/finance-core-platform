@@ -11,6 +11,7 @@ final readonly class AssessSalesDocumentDeliveryReadiness
 {
     public function __construct(
         private SalesDocumentDeliverySourceReader $sources,
+        private SalesDocumentReadinessChecker $documents,
         private SalesDocumentRecipientReader $recipients,
         private SalesDocumentIssuerReadiness $issuers,
         private SalesDocumentSenderReader $senders,
@@ -33,6 +34,14 @@ final readonly class AssessSalesDocumentDeliveryReadiness
         }
         if ($source->type === SalesDocumentType::Quotation && ! $view->hasDocumentAddress) {
             return new SalesDocumentDeliveryReadiness(SalesDocumentDeliveryReadinessStatus::MissingDocumentAddress, $history);
+        }
+        $document = $this->documents->check($administrationId, $source);
+        if ($document !== PrepareSalesDocumentArtifactStatus::Success) {
+            return new SalesDocumentDeliveryReadiness(match ($document) {
+                PrepareSalesDocumentArtifactStatus::MissingDocumentAddress => SalesDocumentDeliveryReadinessStatus::MissingDocumentAddress,
+                PrepareSalesDocumentArtifactStatus::MissingIssuerData, PrepareSalesDocumentArtifactStatus::MissingPaymentData => SalesDocumentDeliveryReadinessStatus::MissingIssuer,
+                default => SalesDocumentDeliveryReadinessStatus::IneligibleStatus,
+            }, $history);
         }
         $purpose = self::purpose($source->type);
         if ($recipientOverride === null && $this->recipients->read($administrationId, $view->relationId, $purpose)->status !== SalesDocumentRecipientStatus::Success) {

@@ -7,6 +7,7 @@ namespace Tests\Unit\Application\Sales;
 use App\Application\Sales\AssessSalesDocumentDeliveryReadiness;
 use App\Application\Sales\DeliveryInfrastructureReadiness;
 use App\Application\Sales\DeliveryInfrastructureReadinessStatus;
+use App\Application\Sales\PrepareSalesDocumentArtifactStatus;
 use App\Application\Sales\SalesDocumentDeliveryHistory;
 use App\Application\Sales\SalesDocumentDeliveryHistoryReader;
 use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
@@ -16,6 +17,7 @@ use App\Application\Sales\SalesDocumentDeliverySourceReader;
 use App\Application\Sales\SalesDocumentIssuer;
 use App\Application\Sales\SalesDocumentIssuerReader;
 use App\Application\Sales\SalesDocumentIssuerReadiness;
+use App\Application\Sales\SalesDocumentReadinessChecker;
 use App\Application\Sales\SalesDocumentRecipient;
 use App\Application\Sales\SalesDocumentRecipientReader;
 use App\Application\Sales\SalesDocumentRecipientStatus;
@@ -60,6 +62,17 @@ final class AssessSalesDocumentDeliveryReadinessTest extends TestCase
         self::assertSame(SalesDocumentDeliveryReadinessStatus::Ready, $this->assessor(SalesDocumentType::Quotation, 'draft', $authorized)->execute($this->admin(), $this->source(SalesDocumentType::Quotation), true)->status);
     }
 
+    public function test_invalid_document_state_is_not_reported_as_ready(): void
+    {
+        $history = new SalesDocumentDeliveryHistory([], []);
+
+        self::assertSame(
+            SalesDocumentDeliveryReadinessStatus::IneligibleStatus,
+            $this->assessor(SalesDocumentType::Quotation, 'draft', $history, PrepareSalesDocumentArtifactStatus::InvalidSource)
+                ->execute($this->admin(), $this->source(SalesDocumentType::Quotation), false)->status,
+        );
+    }
+
     public static function eligibilityCases(): array
     {
         return [
@@ -76,8 +89,12 @@ final class AssessSalesDocumentDeliveryReadinessTest extends TestCase
         ];
     }
 
-    private function assessor(SalesDocumentType $type, string $status, SalesDocumentDeliveryHistory $history): AssessSalesDocumentDeliveryReadiness
-    {
+    private function assessor(
+        SalesDocumentType $type,
+        string $status,
+        SalesDocumentDeliveryHistory $history,
+        PrepareSalesDocumentArtifactStatus $documentStatus = PrepareSalesDocumentArtifactStatus::Success,
+    ): AssessSalesDocumentDeliveryReadiness {
         $source = Mockery::mock(SalesDocumentDeliverySourceReader::class);
         $source->shouldReceive('read')->andReturn(new SalesDocumentDeliverySource($this->source($type), 'N000001', new RelationId(new Uuid('a1000000-0000-4000-8000-000000000002')), 'Customer', $status, true));
         $recipients = Mockery::mock(SalesDocumentRecipientReader::class);
@@ -92,7 +109,10 @@ final class AssessSalesDocumentDeliveryReadinessTest extends TestCase
         $histories = Mockery::mock(SalesDocumentDeliveryHistoryReader::class);
         $histories->shouldReceive('history')->andReturn($history);
 
-        return new AssessSalesDocumentDeliveryReadiness($source, $recipients, $issuers, $senders, $infrastructure, $histories);
+        $documents = Mockery::mock(SalesDocumentReadinessChecker::class);
+        $documents->shouldReceive('check')->andReturn($documentStatus);
+
+        return new AssessSalesDocumentDeliveryReadiness($source, $documents, $recipients, $issuers, $senders, $infrastructure, $histories);
     }
 
     private function source(SalesDocumentType $type): SalesDocumentSource
