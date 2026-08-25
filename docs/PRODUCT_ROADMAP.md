@@ -525,6 +525,14 @@ Instellingen. W4D blijft de productroute voor Purchase Journal en vereiste
 LedgerAccounts. Internationale/reverse-charge en gedeeltelijk/niet-aftrekbare VAT zijn
 niet gefaket en blijven vervolgscope. Daarmee kan P3-002 op de foundation starten.
 
+P3-002 levert nu de duurzame tenant-safe PurchaseInvoice-header/regels, case-sensitive
+externe supplier-invoice identity, immutable supplier/documentadres/account/Input-Tax-
+snapshots, Draft-mutaties en actor/tijd-geregistreerde Finalize plus pre-post Cancel.
+List/detail/selectors zijn Application-contracten zonder Web. Echte MySQL-concurrency
+borgt duplicate create en double finalize. Er ontstaan nog geen JournalEntries,
+TaxPostings, Payables/OpenItems of postinglinkages; P3-003 blijft exclusief verantwoordelijk
+voor expliciete PostingDate, actuele PurchasePostingConfiguration en atomische posting.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

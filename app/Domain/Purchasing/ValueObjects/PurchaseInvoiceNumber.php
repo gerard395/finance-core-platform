@@ -6,6 +6,7 @@ namespace App\Domain\Purchasing\ValueObjects;
 
 use InvalidArgumentException;
 
+/** @deprecated Use SupplierInvoiceNumber for external supplier document identity. */
 final readonly class PurchaseInvoiceNumber
 {
     private string $value;

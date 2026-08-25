@@ -611,3 +611,22 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 - Symmetrische fiscale orchestration is bewust expliciet maar bevat duplicatie; `VatOverviewLine` gebruikt nog `mixed` returntypes voor gedelegeerde auditgetters.
 
 **R2-status:** Completed (R2-005). General Ledger, historische Open Items en VAT Overview zijn betrouwbaar reproduceerbaar vanuit Accounting- en Fiscal-bronwaarheid.
+
+## 10. Purchasing – duurzame PurchaseInvoice
+
+`PurchaseInvoice` is de aggregate root voor een ontvangen leveranciersfactuur. Zij is
+Administration-owned en bezit `PurchaseInvoiceLine` children. De lifecycle is Draft →
+Finalized → Posted, met pre-post Cancel vanuit Draft of Finalized. P3-002 biedt geen
+Application-transition naar Posted en paymentstate is geen documentstatus.
+
+De aggregate bewaart de case-sensitive externe SupplierInvoiceNumber met harde
+Administration + Supplier uniqueness, expliciete supplier-/documentaddress-snapshots,
+SupplierInvoiceDate, ReceivedDate, nullable SupplyDate, afgeleide FiscalReportingDate,
+DueDate en EUR. Iedere regel bewaart intended Expense/Asset-accounttruth en volledige
+ondersteunde domestic Input-Tax truth plus exacte net/tax/gross Money-bedragen. Finalize
+maakt alle inhoud immutable en registreert Domain UserId en applicatie-clock timestamp.
+
+Persistence gebruikt tenant-scoped repository/readcontracten, composite same-tenant
+foreign keys en RESTRICT delete-policy. P3-002 heeft geen Accounting/Fiscal side effects:
+JournalEntry, TaxPosting, OpenItem en PurchaseInvoicePosting ontstaan uitsluitend in de
+latere P3-003 postingorchestratie.

@@ -4,254 +4,59 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Domain\Purchasing\Entities;
 
-use App\Domain\Administration\ValueObjects\AdministrationId;
-use App\Domain\Purchasing\Entities\PurchaseInvoice;
-use App\Domain\Purchasing\Entities\PurchaseInvoiceLine;
+use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceNumber;
-use App\Domain\Purchasing\ValueObjects\SupplierReference;
-use App\Domain\Relations\ValueObjects\SupplierId;
-use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
-use App\Domain\Shared\Commerce\ValueObjects\Quantity;
-use App\Domain\Shared\Finance\Currency;
-use App\Domain\Shared\Finance\Money;
+use App\Domain\Purchasing\ValueObjects\SupplierInvoiceNumber;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
 use InvalidArgumentException;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PurchaseInvoiceTestFactory;
 
 final class PurchaseInvoiceTest extends TestCase
 {
-    public function test_constructor_exposes_all_immutable_state(): void
+    public function test_draft_totals_finalize_actor_immutability_and_cancel_policy(): void
     {
-        $reference = new SupplierReference('SUP-REF-001');
-        $invoice = $this->createInvoice(supplierReference: $reference);
-
-        self::assertSame('550e8400-e29b-41d4-a716-446655440000', $invoice->id()->toString());
-        self::assertSame('PINV-001', $invoice->number()->value());
-        self::assertSame('550e8400-e29b-41d4-a716-446655440001', $invoice->administrationId()->toString());
-        self::assertSame('550e8400-e29b-41d4-a716-446655440002', $invoice->supplierId()->toString());
-        self::assertSame('EUR', $invoice->currency()->code());
-        self::assertSame('2026-07-15', $invoice->invoiceDate()->format('Y-m-d'));
-        self::assertSame('2026-08-14', $invoice->dueDate()->format('Y-m-d'));
-        self::assertSame($reference, $invoice->supplierReference());
-        self::assertSame(PurchaseInvoiceStatus::Draft, $invoice->status());
+        $line = PurchaseInvoiceTestFactory::line('cccccccc-0000-4000-8000-000000000001', '2', '50', '21');
+        $invoice = PurchaseInvoiceTestFactory::invoice(lines: [$line]);
+        self::assertSame('100', $invoice->netTotal()->amount());
+        self::assertSame('21', $invoice->taxTotal()->amount());
+        self::assertSame('121', $invoice->grossTotal()->amount());
+        $actor = new UserId(new Uuid('cccccccc-0000-4000-8000-000000000002'));
+        $at = new DateTimeImmutable('2026-08-25 12:00:00');
+        self::assertTrue($invoice->finalize($actor, $at));
+        self::assertFalse($invoice->finalize($actor, new DateTimeImmutable('2026-08-26')));
+        self::assertSame($at, $invoice->finalizedAt());
+        $this->expectException(DomainException::class);
+        $invoice->addLine(PurchaseInvoiceTestFactory::line('cccccccc-0000-4000-8000-000000000003'));
     }
 
-    public function test_supplier_reference_is_optional(): void
+    public function test_draft_can_replace_header_and_lines_but_cancelled_is_immutable(): void
     {
-        self::assertNull($this->createInvoice()->supplierReference());
+        $invoice = PurchaseInvoiceTestFactory::invoice(lines: [PurchaseInvoiceTestFactory::line('cccccccc-0000-4000-8000-000000000004')]);
+        $invoice->replaceDraft(new SupplierInvoiceNumber(' Ext-2 '), new DateTimeImmutable('2026-08-01'), new DateTimeImmutable('2026-08-03'), null, new DateTimeImmutable('2026-08-31'), $invoice->documentAddress(), []);
+        self::assertSame('Ext-2', $invoice->number()->value());
+        self::assertSame('2026-08-03', $invoice->fiscalReportingDate()->format('Y-m-d'));
+        self::assertTrue($invoice->cancel());
+        self::assertFalse($invoice->cancel());
+        self::assertSame(PurchaseInvoiceStatus::Cancelled, $invoice->status());
+        $this->expectException(DomainException::class);
+        $invoice->removeLine(PurchaseInvoiceTestFactory::line('cccccccc-0000-4000-8000-000000000004')->id());
     }
 
-    public function test_due_date_may_equal_invoice_date(): void
+    public function test_posted_can_be_reconstituted_and_cannot_be_cancelled(): void
     {
-        $date = new DateTimeImmutable('2026-07-15');
-        $invoice = $this->createInvoice(invoiceDate: $date, dueDate: $date);
-
-        self::assertSame($date, $invoice->invoiceDate());
-        self::assertSame($date, $invoice->dueDate());
+        $invoice = PurchaseInvoiceTestFactory::invoice(status: PurchaseInvoiceStatus::Posted);
+        self::assertSame(PurchaseInvoiceStatus::Posted, $invoice->status());
+        $this->expectException(DomainException::class);
+        $invoice->cancel();
     }
 
     public function test_due_date_before_invoice_date_is_rejected(): void
     {
+        $invoice = PurchaseInvoiceTestFactory::invoice();
         $this->expectException(InvalidArgumentException::class);
-        $this->createInvoice(dueDate: new DateTimeImmutable('2026-07-14'));
-    }
-
-    public function test_lines_are_owned_and_managed_by_the_aggregate(): void
-    {
-        $invoice = $this->createInvoice(withLine: false);
-        $first = $this->createLine('550e8400-e29b-41d4-a716-446655440010');
-        $second = $this->createLine('550e8400-e29b-41d4-a716-446655440011');
-
-        $invoice->addLine($first);
-        $invoice->addLine($second);
-
-        self::assertSame([$first, $second], $invoice->lines());
-        self::assertTrue($invoice->hasLine($first->id()));
-        self::assertSame($first, $invoice->line($first->id()));
-
-        $invoice->removeLine($first->id());
-        $invoice->removeLine($first->id());
-
-        self::assertFalse($invoice->hasLine($first->id()));
-        self::assertNull($invoice->line($first->id()));
-    }
-
-    public function test_duplicate_line_identity_is_rejected(): void
-    {
-        $invoice = $this->createInvoice();
-
-        $this->expectException(DomainException::class);
-        $invoice->addLine($this->createLine());
-    }
-
-    public function test_invoice_without_lines_cannot_be_finalized(): void
-    {
-        $this->expectException(DomainException::class);
-        $this->createInvoice(withLine: false)->finalize();
-    }
-
-    public function test_invoice_with_a_line_can_be_finalized(): void
-    {
-        $invoice = $this->createInvoice();
-
-        $invoice->finalize();
-
-        self::assertSame(PurchaseInvoiceStatus::Finalized, $invoice->status());
-    }
-
-    public function test_lines_cannot_be_changed_after_finalization(): void
-    {
-        $invoice = $this->createInvoice();
-        $invoice->finalize();
-
-        try {
-            $invoice->addLine($this->createLine('550e8400-e29b-41d4-a716-446655440099'));
-            self::fail('Expected adding a line after finalization to be rejected.');
-        } catch (DomainException) {
-            self::assertCount(1, $invoice->lines());
-        }
-
-        $this->expectException(DomainException::class);
-        $invoice->removeLine($invoice->lines()[0]->id());
-    }
-
-    /** @param list<string> $transitions */
-    #[DataProvider('validTransitions')]
-    public function test_valid_status_transitions(array $transitions, PurchaseInvoiceStatus $expected): void
-    {
-        $invoice = $this->createInvoice();
-
-        foreach ($transitions as $transition) {
-            $invoice->{$transition}();
-        }
-
-        self::assertSame($expected, $invoice->status());
-    }
-
-    /** @return iterable<string, array{list<string>, PurchaseInvoiceStatus}> */
-    public static function validTransitions(): iterable
-    {
-        yield 'Draft to Finalized' => [['finalize'], PurchaseInvoiceStatus::Finalized];
-        yield 'Draft to Cancelled' => [['cancel'], PurchaseInvoiceStatus::Cancelled];
-        yield 'Finalized to Posted' => [['finalize', 'post'], PurchaseInvoiceStatus::Posted];
-        yield 'Finalized to Cancelled' => [['finalize', 'cancel'], PurchaseInvoiceStatus::Cancelled];
-        yield 'Posted to Paid' => [['finalize', 'post', 'markAsPaid'], PurchaseInvoiceStatus::Paid];
-    }
-
-    /** @param list<string> $transitions */
-    #[DataProvider('invalidTransitions')]
-    public function test_invalid_status_transitions_are_rejected(array $transitions): void
-    {
-        $invoice = $this->createInvoice();
-        $this->expectException(DomainException::class);
-
-        foreach ($transitions as $transition) {
-            $invoice->{$transition}();
-        }
-    }
-
-    /** @return iterable<string, array{list<string>}> */
-    public static function invalidTransitions(): iterable
-    {
-        yield 'Draft to Posted' => [['post']];
-        yield 'Draft to Paid' => [['markAsPaid']];
-        yield 'Finalized to Paid' => [['finalize', 'markAsPaid']];
-        yield 'Posted to Cancelled' => [['finalize', 'post', 'cancel']];
-        yield 'Posted to Finalized' => [['finalize', 'post', 'finalize']];
-        yield 'Paid to Cancelled' => [['finalize', 'post', 'markAsPaid', 'cancel']];
-        yield 'Cancelled to Finalized' => [['cancel', 'finalize']];
-    }
-
-    /** @param list<string> $transitions */
-    #[DataProvider('idempotentTransitions')]
-    public function test_repeating_the_same_transition_is_idempotent(array $transitions, PurchaseInvoiceStatus $expected): void
-    {
-        $invoice = $this->createInvoice();
-
-        foreach ($transitions as $transition) {
-            $invoice->{$transition}();
-        }
-
-        self::assertSame($expected, $invoice->status());
-    }
-
-    /** @return iterable<string, array{list<string>, PurchaseInvoiceStatus}> */
-    public static function idempotentTransitions(): iterable
-    {
-        yield 'Finalized' => [['finalize', 'finalize'], PurchaseInvoiceStatus::Finalized];
-        yield 'Posted' => [['finalize', 'post', 'post'], PurchaseInvoiceStatus::Posted];
-        yield 'Paid' => [['finalize', 'post', 'markAsPaid', 'markAsPaid'], PurchaseInvoiceStatus::Paid];
-        yield 'Cancelled' => [['cancel', 'cancel'], PurchaseInvoiceStatus::Cancelled];
-    }
-
-    public function test_transitions_do_not_change_immutable_context(): void
-    {
-        $reference = new SupplierReference('SUP-REF-001');
-        $invoice = $this->createInvoice(supplierReference: $reference);
-        $context = [
-            $invoice->id(),
-            $invoice->number(),
-            $invoice->administrationId(),
-            $invoice->supplierId(),
-            $invoice->currency(),
-            $invoice->invoiceDate(),
-            $invoice->dueDate(),
-            $invoice->supplierReference(),
-        ];
-
-        $invoice->finalize();
-
-        self::assertSame($context, [
-            $invoice->id(),
-            $invoice->number(),
-            $invoice->administrationId(),
-            $invoice->supplierId(),
-            $invoice->currency(),
-            $invoice->invoiceDate(),
-            $invoice->dueDate(),
-            $invoice->supplierReference(),
-        ]);
-    }
-
-    private function createInvoice(
-        PurchaseInvoiceStatus $status = PurchaseInvoiceStatus::Draft,
-        ?SupplierReference $supplierReference = null,
-        ?DateTimeImmutable $invoiceDate = null,
-        ?DateTimeImmutable $dueDate = null,
-        bool $withLine = true,
-    ): PurchaseInvoice {
-        $invoice = new PurchaseInvoice(
-            new PurchaseInvoiceId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
-            new PurchaseInvoiceNumber('pinv-001'),
-            new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-446655440001')),
-            new SupplierId(new Uuid('550e8400-e29b-41d4-a716-446655440002')),
-            new Currency('EUR'),
-            $invoiceDate ?? new DateTimeImmutable('2026-07-15'),
-            $dueDate ?? new DateTimeImmutable('2026-08-14'),
-            $supplierReference,
-            $status,
-        );
-
-        if ($withLine && $status === PurchaseInvoiceStatus::Draft) {
-            $invoice->addLine($this->createLine());
-        }
-
-        return $invoice;
-    }
-
-    private function createLine(string $uuid = '550e8400-e29b-41d4-a716-446655440010'): PurchaseInvoiceLine
-    {
-        return new PurchaseInvoiceLine(
-            new PurchaseInvoiceLineId(new Uuid($uuid)),
-            new LineDescription('Purchased goods'),
-            new Quantity('2'),
-            new Money('12.50', new Currency('EUR')),
-        );
+        $invoice->replaceDraft(new SupplierInvoiceNumber('DATE-1'), new DateTimeImmutable('2026-08-20'), new DateTimeImmutable('2026-08-21'), null, new DateTimeImmutable('2026-08-19'), $invoice->documentAddress(), []);
     }
 }

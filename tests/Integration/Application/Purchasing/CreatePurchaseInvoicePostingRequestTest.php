@@ -14,23 +14,16 @@ use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
-use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Entities\PurchaseInvoice;
 use App\Domain\Purchasing\Entities\PurchaseInvoiceLine;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceNumber;
-use App\Domain\Relations\ValueObjects\SupplierId;
-use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
-use App\Domain\Shared\Commerce\ValueObjects\Quantity;
-use App\Domain\Shared\Finance\Currency;
-use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PurchaseInvoiceTestFactory;
 
 final class CreatePurchaseInvoicePostingRequestTest extends TestCase
 {
@@ -39,7 +32,7 @@ final class CreatePurchaseInvoicePostingRequestTest extends TestCase
         $invoice = $this->createInvoice();
         $invoice->addLine($this->createInvoiceLine('550e8400-e29b-41d4-a716-446655440010', '2', '10'));
         $invoice->addLine($this->createInvoiceLine('550e8400-e29b-41d4-a716-446655440011', '3', '2.5'));
-        $invoice->finalize();
+        $invoice->finalize(new UserId(new Uuid('550e8400-e29b-41d4-a716-446655440099')), new DateTimeImmutable('2026-07-16'));
         $journalId = new JournalId(new Uuid('550e8400-e29b-41d4-a716-446655440020'));
         $creditorAccountId = new LedgerAccountId(new Uuid('550e8400-e29b-41d4-a716-446655440021'));
         $expenseAccountId = new LedgerAccountId(new Uuid('550e8400-e29b-41d4-a716-446655440022'));
@@ -125,17 +118,7 @@ final class CreatePurchaseInvoicePostingRequestTest extends TestCase
 
     private function createInvoice(): PurchaseInvoice
     {
-        return new PurchaseInvoice(
-            new PurchaseInvoiceId(new Uuid('550e8400-e29b-41d4-a716-446655440000')),
-            new PurchaseInvoiceNumber('pinv-001'),
-            new AdministrationId(new Uuid('550e8400-e29b-41d4-a716-446655440001')),
-            new SupplierId(new Uuid('550e8400-e29b-41d4-a716-446655440002')),
-            new Currency('EUR'),
-            new DateTimeImmutable('2026-07-15'),
-            new DateTimeImmutable('2026-08-14'),
-            null,
-            PurchaseInvoiceStatus::Draft,
-        );
+        return PurchaseInvoiceTestFactory::invoice();
     }
 
     private function createInvoiceLine(
@@ -143,11 +126,6 @@ final class CreatePurchaseInvoicePostingRequestTest extends TestCase
         string $quantity = '1',
         string $unitPrice = '10',
     ): PurchaseInvoiceLine {
-        return new PurchaseInvoiceLine(
-            new PurchaseInvoiceLineId(new Uuid($uuid)),
-            new LineDescription('Consulting services'),
-            new Quantity($quantity),
-            new Money($unitPrice, new Currency('EUR')),
-        );
+        return PurchaseInvoiceTestFactory::line($uuid, $quantity, $unitPrice);
     }
 }
