@@ -212,7 +212,7 @@ final class PurchaseInvoiceApplicationContractsTest extends TestCase
         self::assertSame(0, DB::table('journal_entry_lines')->count());
         self::assertSame(0, DB::table('tax_postings')->count());
         self::assertSame(0, DB::table('open_items')->count());
-        self::assertFalse(\Schema::hasTable('purchase_invoice_postings'));
+        self::assertSame(0, DB::table('purchase_invoice_postings')->count());
     }
 
     private function fixtures(): void

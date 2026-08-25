@@ -54,9 +54,11 @@ header en regels atomair met same-tenant foreign keys en RESTRICT delete-policy.
 detail lezen historische snapshots. Selectors lezen uitsluitend actuele actieve
 Suppliers, Expense/Asset-rekeningen en ondersteunde Input TaxCodes.
 
-P3-002 maakt geen JournalEntry, TaxPosting, OpenItem of postinglinkage en vereist geen
-PurchasePostingConfiguration voor Draft of Finalize. P3-003 leest de volledige
-Finalized snapshot plus actuele PurchasePostingConfiguration en levert als enige de
-transactionele financiële posting.
+Create en Finalize maken geen JournalEntry, TaxPosting, OpenItem of postinglinkage en
+vereisen geen PurchasePostingConfiguration. P3-003 `PostPurchaseInvoice` leest de
+volledige Finalized snapshot plus actuele configuration en levert via PostingEngine in
+één transaction de geposte Purchase JournalEntry, immutable Input TaxPostings, één
+Payable/Credit OpenItem, één duurzame linkage en de status Posted. Fouten rollen alle
+facts terug; headerlocking en linkage-uniciteit maken double post idempotent.
 
 `PurchaseCreditInvoice` blijft een bestaand prototype en valt buiten P3.

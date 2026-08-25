@@ -533,6 +533,13 @@ borgt duplicate create en double finalize. Er ontstaan nog geen JournalEntries,
 TaxPostings, Payables/OpenItems of postinglinkages; P3-003 blijft exclusief verantwoordelijk
 voor expliciete PostingDate, actuele PurchasePostingConfiguration en atomische posting.
 
+P3-003 levert die atomische domestic posting nu via PostingEngine: Expense/Asset en
+Input VAT debet, AP gross credit, immutable line-level Input TaxPostings op
+FiscalReportingDate, één volledig open Payable/Credit met DueDate, en één tenant-safe
+postinglinkage. Configuratie is alleen bij Post vereist. Sequential en concurrent double
+post zijn idempotent en iedere persistencefout rolt JournalEntry, tax, OpenItem, linkage
+en status gezamenlijk terug. Web, credits, payments en VAT/ICP blijven vervolgscope.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

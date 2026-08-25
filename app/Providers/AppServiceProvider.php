@@ -33,9 +33,13 @@ use App\Application\Identity\PermissionRepository;
 use App\Application\Identity\RolePermissionRepository;
 use App\Application\Identity\RoleRepository;
 use App\Application\Identity\UserRepository;
+use App\Application\Purchasing\PostPurchaseInvoice;
 use App\Application\Purchasing\PurchaseInvoiceClock;
 use App\Application\Purchasing\PurchaseInvoiceIdentityGenerator;
 use App\Application\Purchasing\PurchaseInvoiceMasterDataReader;
+use App\Application\Purchasing\PurchaseInvoicePostingClock;
+use App\Application\Purchasing\PurchaseInvoicePostingIdentityGenerator;
+use App\Application\Purchasing\PurchaseInvoicePostingRepository;
 use App\Application\Purchasing\PurchaseInvoiceRepository;
 use App\Application\Purchasing\PurchasePostingConfigurationReader;
 use App\Application\Purchasing\PurchasePostingConfigurationStore;
@@ -186,10 +190,13 @@ use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
 use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use App\Infrastructure\Purchasing\EloquentPurchaseInvoiceMasterDataReader;
+use App\Infrastructure\Purchasing\EloquentPurchaseInvoicePostingRepository;
 use App\Infrastructure\Purchasing\EloquentPurchaseInvoiceRepository;
 use App\Infrastructure\Purchasing\EloquentPurchasePostingConfiguration;
 use App\Infrastructure\Purchasing\LaravelPurchaseInvoiceIdentityGenerator;
+use App\Infrastructure\Purchasing\LaravelPurchaseInvoicePostingIdentityGenerator;
 use App\Infrastructure\Purchasing\SystemPurchaseInvoiceClock;
+use App\Infrastructure\Purchasing\SystemPurchaseInvoicePostingClock;
 use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use App\Infrastructure\Relations\LaravelRelationClassificationIdentityGenerator;
 use App\Infrastructure\Sales\BrowsershotSalesDocumentPdfRenderer;
@@ -325,6 +332,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PurchaseInvoiceMasterDataReader::class, EloquentPurchaseInvoiceMasterDataReader::class);
         $this->app->bind(PurchaseInvoiceIdentityGenerator::class, LaravelPurchaseInvoiceIdentityGenerator::class);
         $this->app->bind(PurchaseInvoiceClock::class, SystemPurchaseInvoiceClock::class);
+        $this->app->bind(PurchaseInvoicePostingRepository::class, EloquentPurchaseInvoicePostingRepository::class);
+        $this->app->bind(PurchaseInvoicePostingIdentityGenerator::class, LaravelPurchaseInvoicePostingIdentityGenerator::class);
+        $this->app->bind(PurchaseInvoicePostingClock::class, SystemPurchaseInvoicePostingClock::class);
         $this->app->bind(SalesInvoicePostingRepository::class, EloquentSalesInvoicePostingRepository::class);
         $this->app->bind(SalesInvoicePostingSource::class, EloquentSalesInvoiceRepository::class);
         $this->app->bind(SalesInvoicePostingIdentityGenerator::class, LaravelSalesInvoicePostingIdentityGenerator::class);
@@ -349,6 +359,23 @@ class AppServiceProvider extends ServiceProvider
                 new TaxPostingIdentityPolicy,
                 new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
                 new CreateSalesInvoicePostingRequest,
+            );
+        });
+        $this->app->bind(PostPurchaseInvoice::class, function ($app): PostPurchaseInvoice {
+            $identities = $app->make(PurchaseInvoicePostingIdentityGenerator::class);
+
+            return new PostPurchaseInvoice(
+                $app->make(TransactionManager::class),
+                $app->make(PurchaseInvoiceRepository::class),
+                $app->make(PurchaseInvoicePostingRepository::class),
+                $app->make(PurchasePostingConfigurationReader::class),
+                $app->make(PurchaseInvoiceMasterDataReader::class),
+                new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
+                $app->make(JournalEntryStore::class),
+                $app->make(TaxPostingStore::class),
+                $app->make(OpenItemStore::class),
+                $identities,
+                $app->make(PurchaseInvoicePostingClock::class),
             );
         });
         $this->app->bind(PostSalesCreditInvoiceWithTax::class, function ($app): PostSalesCreditInvoiceWithTax {

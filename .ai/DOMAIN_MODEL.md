@@ -630,3 +630,11 @@ Persistence gebruikt tenant-scoped repository/readcontracten, composite same-ten
 foreign keys en RESTRICT delete-policy. P3-002 heeft geen Accounting/Fiscal side effects:
 JournalEntry, TaxPosting, OpenItem en PurchaseInvoicePosting ontstaan uitsluitend in de
 latere P3-003 postingorchestratie.
+
+P3-003 realiseert die orchestratie nu: een expliciete PostingDate stuurt de Purchase
+JournalEntry, terwijl TaxPosting de persisted FiscalReportingDate gebruikt. Expense/
+Asset net en positieve Input VAT zijn debet; Accounts Payable gross is credit. Iedere
+source line behoudt fiscale trace, inclusief zero-tax zonder fictieve VAT-journalregel.
+Het ene OpenItem is Payable/Credit met historische Relation, gross en DueDate. Een
+same-tenant append-only linkage en invoice row lock borgen at-most-once; alle facts plus
+de Posted-status committen of rollen gezamenlijk terug.

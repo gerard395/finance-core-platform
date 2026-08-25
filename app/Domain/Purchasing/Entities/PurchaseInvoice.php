@@ -185,6 +185,19 @@ final class PurchaseInvoice
         return true;
     }
 
+    public function markPosted(): bool
+    {
+        if ($this->status === PurchaseInvoiceStatus::Posted) {
+            return false;
+        }
+        if ($this->status !== PurchaseInvoiceStatus::Finalized) {
+            throw new DomainException('Only a Finalized purchase invoice can be posted.');
+        }
+        $this->status = PurchaseInvoiceStatus::Posted;
+
+        return true;
+    }
+
     public function cancel(): bool
     {
         if ($this->status === PurchaseInvoiceStatus::Cancelled) {
