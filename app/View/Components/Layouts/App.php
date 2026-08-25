@@ -6,6 +6,7 @@ namespace App\View\Components\Layouts;
 
 use App\Application\Identity\PermissionAuthorizer;
 use App\Domain\Identity\Definitions\AdministrationPermission;
+use App\Domain\Identity\Definitions\PurchasingPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Identity\Entities\User;
@@ -21,6 +22,8 @@ final class App extends Component
 
     public readonly bool $canUpdateAdministrationSettings;
 
+    public readonly bool $canViewPurchasing;
+
     public function __construct(
         public readonly User $domainUser,
         public readonly ActiveAdministrationContext $administrationContext,
@@ -34,6 +37,10 @@ final class App extends Component
         $this->canViewSales = $permissionAuthorizer->allows(
             $administrationContext->permissionIds,
             SalesPermission::View->id(),
+        );
+        $this->canViewPurchasing = $permissionAuthorizer->allows(
+            $administrationContext->permissionIds,
+            PurchasingPermission::View->id(),
         );
         $this->canUpdateAdministrationSettings = $permissionAuthorizer->allows(
             $administrationContext->permissionIds,

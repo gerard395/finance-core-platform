@@ -154,7 +154,6 @@ final readonly class PostPurchaseInvoiceWithTax
         if (! in_array($invoice->status(), [
             PurchaseInvoiceStatus::Finalized,
             PurchaseInvoiceStatus::Posted,
-            PurchaseInvoiceStatus::Paid,
         ], true)) {
             throw new DomainException('A purchase invoice must be at least finalized before fiscal posting.');
         }

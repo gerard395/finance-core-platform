@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace App\Domain\Purchasing\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
+use App\Domain\Purchasing\ValueObjects\PurchaseDocumentAddress;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceNumber;
-use App\Domain\Purchasing\ValueObjects\SupplierReference;
+use App\Domain\Purchasing\ValueObjects\PurchaseSupplierSnapshot;
+use App\Domain\Purchasing\ValueObjects\SupplierInvoiceNumber;
 use App\Domain\Relations\ValueObjects\SupplierId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
 use DomainException;
 use InvalidArgumentException;
@@ -21,19 +24,18 @@ final class PurchaseInvoice
     /** @var array<string, PurchaseInvoiceLine> */
     private array $lines = [];
 
-    public function __construct(
-        private readonly PurchaseInvoiceId $id,
-        private readonly PurchaseInvoiceNumber $number,
-        private readonly AdministrationId $administrationId,
-        private readonly SupplierId $supplierId,
-        private readonly Currency $currency,
-        private readonly DateTimeImmutable $invoiceDate,
-        private readonly DateTimeImmutable $dueDate,
-        private readonly ?SupplierReference $supplierReference,
-        private PurchaseInvoiceStatus $status,
-    ) {
-        if ($dueDate < $invoiceDate) {
-            throw new InvalidArgumentException('Due date cannot precede invoice date.');
+    /** @param list<PurchaseInvoiceLine> $lines */
+    public function __construct(private readonly PurchaseInvoiceId $id, private SupplierInvoiceNumber $supplierInvoiceNumber, private readonly AdministrationId $administrationId, private readonly PurchaseSupplierSnapshot $supplier, private readonly Currency $currency, private DateTimeImmutable $supplierInvoiceDate, private DateTimeImmutable $receivedDate, private ?DateTimeImmutable $supplyDate, private DateTimeImmutable $fiscalReportingDate, private DateTimeImmutable $dueDate, private PurchaseDocumentAddress $documentAddress, private PurchaseInvoiceStatus $status = PurchaseInvoiceStatus::Draft, array $lines = [], private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null)
+    {
+        $this->assertHeader();
+        if ($status === PurchaseInvoiceStatus::Draft && ($finalizedBy !== null || $finalizedAt !== null)) {
+            throw new InvalidArgumentException('Draft cannot have finalization facts.');
+        }
+        if (in_array($status, [PurchaseInvoiceStatus::Finalized, PurchaseInvoiceStatus::Posted], true) && ($finalizedBy === null || $finalizedAt === null)) {
+            throw new InvalidArgumentException('Finalized or Posted requires finalization facts.');
+        }
+        foreach ($lines as $line) {
+            $this->addReconstitutedLine($line);
         }
     }
 
@@ -42,9 +44,14 @@ final class PurchaseInvoice
         return $this->id;
     }
 
-    public function number(): PurchaseInvoiceNumber
+    public function number(): SupplierInvoiceNumber
     {
-        return $this->number;
+        return $this->supplierInvoiceNumber;
+    }
+
+    public function supplierInvoiceNumber(): SupplierInvoiceNumber
+    {
+        return $this->supplierInvoiceNumber;
     }
 
     public function administrationId(): AdministrationId
@@ -54,7 +61,12 @@ final class PurchaseInvoice
 
     public function supplierId(): SupplierId
     {
-        return $this->supplierId;
+        return $this->supplier->supplierId;
+    }
+
+    public function supplierSnapshot(): PurchaseSupplierSnapshot
+    {
+        return $this->supplier;
     }
 
     public function currency(): Currency
@@ -64,7 +76,27 @@ final class PurchaseInvoice
 
     public function invoiceDate(): DateTimeImmutable
     {
-        return $this->invoiceDate;
+        return $this->supplierInvoiceDate;
+    }
+
+    public function supplierInvoiceDate(): DateTimeImmutable
+    {
+        return $this->supplierInvoiceDate;
+    }
+
+    public function receivedDate(): DateTimeImmutable
+    {
+        return $this->receivedDate;
+    }
+
+    public function supplyDate(): ?DateTimeImmutable
+    {
+        return $this->supplyDate;
+    }
+
+    public function fiscalReportingDate(): DateTimeImmutable
+    {
+        return $this->fiscalReportingDate;
     }
 
     public function dueDate(): DateTimeImmutable
@@ -72,14 +104,24 @@ final class PurchaseInvoice
         return $this->dueDate;
     }
 
-    public function supplierReference(): ?SupplierReference
+    public function documentAddress(): PurchaseDocumentAddress
     {
-        return $this->supplierReference;
+        return $this->documentAddress;
     }
 
     public function status(): PurchaseInvoiceStatus
     {
         return $this->status;
+    }
+
+    public function finalizedBy(): ?UserId
+    {
+        return $this->finalizedBy;
+    }
+
+    public function finalizedAt(): ?DateTimeImmutable
+    {
+        return $this->finalizedAt;
     }
 
     /** @return list<PurchaseInvoiceLine> */
@@ -88,79 +130,137 @@ final class PurchaseInvoice
         return array_values($this->lines);
     }
 
-    public function line(PurchaseInvoiceLineId $lineId): ?PurchaseInvoiceLine
+    public function line(PurchaseInvoiceLineId $id): ?PurchaseInvoiceLine
     {
-        return $this->lines[$lineId->toString()] ?? null;
+        return $this->lines[$id->toString()] ?? null;
     }
 
-    public function hasLine(PurchaseInvoiceLineId $lineId): bool
+    public function hasLine(PurchaseInvoiceLineId $id): bool
     {
-        return isset($this->lines[$lineId->toString()]);
+        return isset($this->lines[$id->toString()]);
+    }
+
+    /** @param list<PurchaseInvoiceLine> $lines */
+    public function replaceDraft(SupplierInvoiceNumber $number, DateTimeImmutable $invoiceDate, DateTimeImmutable $receivedDate, ?DateTimeImmutable $supplyDate, DateTimeImmutable $dueDate, PurchaseDocumentAddress $address, array $lines): void
+    {
+        $this->assertDraft();
+        $this->supplierInvoiceNumber = $number;
+        $this->supplierInvoiceDate = $invoiceDate;
+        $this->receivedDate = $receivedDate;
+        $this->supplyDate = $supplyDate;
+        $this->dueDate = $dueDate;
+        $this->fiscalReportingDate = max($invoiceDate, $receivedDate);
+        $this->documentAddress = $address;
+        $this->lines = [];
+        $this->assertHeader();
+        foreach ($lines as $line) {
+            $this->addLine($line);
+        }
     }
 
     public function addLine(PurchaseInvoiceLine $line): void
     {
-        $this->assertDraftForLineChanges();
-        $key = $line->id()->toString();
+        $this->assertDraft();
+        $this->assertLine($line);
+        $this->addReconstitutedLine($line);
+    }
 
-        if (isset($this->lines[$key])) {
-            throw new DomainException('Purchase invoice already contains a line with this identity.');
+    public function removeLine(PurchaseInvoiceLineId $id): void
+    {
+        $this->assertDraft();
+        unset($this->lines[$id->toString()]);
+    }
+
+    public function finalize(UserId $actor, DateTimeImmutable $at): bool
+    {
+        if ($this->status === PurchaseInvoiceStatus::Finalized) {
+            return false;
+        } $this->assertDraft();
+        if ($this->lines === []) {
+            throw new DomainException('Purchase invoice requires at least one line.');
+        } $this->finalizedBy = $actor;
+        $this->finalizedAt = $at;
+        $this->status = PurchaseInvoiceStatus::Finalized;
+
+        return true;
+    }
+
+    public function markPosted(): bool
+    {
+        if ($this->status === PurchaseInvoiceStatus::Posted) {
+            return false;
+        }
+        if ($this->status !== PurchaseInvoiceStatus::Finalized) {
+            throw new DomainException('Only a Finalized purchase invoice can be posted.');
+        }
+        $this->status = PurchaseInvoiceStatus::Posted;
+
+        return true;
+    }
+
+    public function cancel(): bool
+    {
+        if ($this->status === PurchaseInvoiceStatus::Cancelled) {
+            return false;
+        } if (! in_array($this->status, [PurchaseInvoiceStatus::Draft, PurchaseInvoiceStatus::Finalized], true)) {
+            throw new DomainException('Purchase invoice cannot be cancelled.');
+        } $this->status = PurchaseInvoiceStatus::Cancelled;
+
+        return true;
+    }
+
+    public function netTotal(): Money
+    {
+        return $this->sum('net');
+    }
+
+    public function taxTotal(): Money
+    {
+        return $this->sum('taxAmount');
+    }
+
+    public function grossTotal(): Money
+    {
+        return $this->sum('gross');
+    }
+
+    private function sum(string $method): Money
+    {
+        $total = Money::zero($this->currency);
+        foreach ($this->lines as $line) {
+            $total = $total->add($line->{$method}());
         }
 
-        $this->lines[$key] = $line;
+        return $total;
     }
 
-    public function removeLine(PurchaseInvoiceLineId $lineId): void
-    {
-        $this->assertDraftForLineChanges();
-        unset($this->lines[$lineId->toString()]);
-    }
-
-    public function finalize(): void
-    {
-        if ($this->status === PurchaseInvoiceStatus::Draft && $this->lines === []) {
-            throw new DomainException('Purchase invoice must contain at least one line before it can be finalized.');
-        }
-
-        $this->transitionTo(PurchaseInvoiceStatus::Finalized, [PurchaseInvoiceStatus::Draft]);
-    }
-
-    public function post(): void
-    {
-        $this->transitionTo(PurchaseInvoiceStatus::Posted, [PurchaseInvoiceStatus::Finalized]);
-    }
-
-    public function markAsPaid(): void
-    {
-        $this->transitionTo(PurchaseInvoiceStatus::Paid, [PurchaseInvoiceStatus::Posted]);
-    }
-
-    public function cancel(): void
-    {
-        $this->transitionTo(PurchaseInvoiceStatus::Cancelled, [
-            PurchaseInvoiceStatus::Draft,
-            PurchaseInvoiceStatus::Finalized,
-        ]);
-    }
-
-    /** @param list<PurchaseInvoiceStatus> $allowedFrom */
-    private function transitionTo(PurchaseInvoiceStatus $target, array $allowedFrom): void
-    {
-        if ($this->status === $target) {
-            return;
-        }
-
-        if (! in_array($this->status, $allowedFrom, true)) {
-            throw new DomainException("Purchase invoice cannot transition from {$this->status->value} to {$target->value}.");
-        }
-
-        $this->status = $target;
-    }
-
-    private function assertDraftForLineChanges(): void
+    private function assertDraft(): void
     {
         if ($this->status !== PurchaseInvoiceStatus::Draft) {
-            throw new DomainException('Purchase invoice lines can only be changed while the purchase invoice is in draft.');
+            throw new DomainException('Purchase invoice can only be changed while Draft.');
         }
+    }
+
+    private function assertHeader(): void
+    {
+        if ($this->currency->code() !== 'EUR' || $this->dueDate < $this->supplierInvoiceDate || $this->fiscalReportingDate != max($this->supplierInvoiceDate, $this->receivedDate)) {
+            throw new InvalidArgumentException('Purchase invoice date or EUR contract is invalid.');
+        }
+    }
+
+    private function assertLine(PurchaseInvoiceLine $line): void
+    {
+        if (! $line->unitPrice()->currency()->equals($this->currency)) {
+            throw new DomainException('Line currency differs from document currency.');
+        }
+    }
+
+    private function addReconstitutedLine(PurchaseInvoiceLine $line): void
+    {
+        $key = $line->id()->toString();
+        if (isset($this->lines[$key])) {
+            throw new DomainException('Duplicate line identity.');
+        } $this->assertLine($line);
+        $this->lines[$key] = $line;
     }
 }

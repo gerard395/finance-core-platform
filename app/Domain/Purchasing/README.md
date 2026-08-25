@@ -2,23 +2,15 @@
 
 ## Doel
 
-Purchasing beheert ontvangen inkoopdocumenten als zelfstandige, frameworkonafhankelijke aggregates. `PurchaseInvoice` en `PurchaseCreditInvoice` gebruiken geen inheritance of runtime-afhankelijkheid op Sales en beheren hun eigen child entities.
+Purchasing beheert ontvangen inkoopdocumenten als zelfstandige,
+frameworkonafhankelijke aggregates. `PurchaseInvoice` bezit zijn eigen regels en heeft
+geen runtime-afhankelijkheid op Sales, Accounting of Fiscal persistence.
 
 ## PurchaseInvoice
 
-PurchaseInvoice bevat immutable identiteit, factuurnummer, AdministrationId, SupplierId, Currency, factuurdatum, vervaldatum en optionele SupplierReference. Alleen de status is wijzigbaar via expliciete domeinmethoden.
-
-```text
-Draft → Finalized → Posted → Paid
-Draft → Cancelled
-Finalized → Cancelled
-```
-
-Paid en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; iedere andere overgang resulteert in een `DomainException`. Posted kan niet worden geannuleerd.
-
-## PurchaseCreditInvoice
-
-PurchaseCreditInvoice is een zelfstandig Aggregate Root met immutable identiteit, creditfactuurnummer, AdministrationId, SupplierId, Currency, creditfactuurdatum en een optionele verwijzing naar de bron-PurchaseInvoice.
+De duurzame PurchaseInvoice legt de externe leveranciersfactuur als factual truth vast:
+Administration, Supplier/Relation-snapshot, case-sensitive extern factuurnummer, vijf
+document-/fiscale datums, EUR, expliciet overgenomen documentadres, regels en totalen.
 
 ```text
 Draft → Finalized → Posted
@@ -26,22 +18,54 @@ Draft → Cancelled
 Finalized → Cancelled
 ```
 
-Posted en Cancelled zijn eindstatussen. Dezelfde overgang herhalen is idempotent; iedere andere overgang resulteert in een `DomainException`.
+P3-002 biedt Create, coherente Draft-replacement, Finalize en pre-post Cancel.
+`Posted` is reconstitueerbaar voor P3-003, maar er bestaat in P3-002 geen Application-
+transition naar Posted. Paymentstatus is later uitsluitend afgeleid van Payable en is
+geen PurchaseInvoice-status.
 
 ## Invarianten
 
-- DueDate ligt op of na InvoiceDate.
-- Identiteit, nummer, AdministrationId, SupplierId, Currency en datums zijn immutable.
-- SupplierReference is optioneel en immutable en bevat geen lege waarde of omliggende whitespace.
-- Status wijzigt uitsluitend via `finalize()`, `post()`, `markAsPaid()` en `cancel()`.
-- Iedere PurchaseInvoice en PurchaseCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
-- Regels hebben binnen hun aggregate een unieke immutable identiteit en kunnen alleen worden toegevoegd of verwijderd zolang het document Draft is.
-- Line totals worden zonder floats exact afgeleid via gedeelde `Money`, `Quantity` en `LineDescription` value objects.
-- De context van een PurchaseCreditInvoice is immutable en de status wijzigt uitsluitend via `finalize()`, `post()` en `cancel()`.
+- `SupplierInvoiceNumber` trimt alleen Unicode-boundary whitespace, bewaart case,
+  punctuation en interne whitespace en is per Administration + Supplier database-uniek.
+- Supplier is bij Create active en same-tenant. Naam, Supplier/Relation-identiteit,
+  nummer, VAT ID en jurisdictie worden gesnapshot; latere masterdatawijziging vernieuwt
+  een bestaand document nooit stilzwijgend.
+- Het adres is expliciete received-document-input (`line1`, nullable `line2`, postcode,
+  plaats, land); er is geen first-/purpose-/countryfallback.
+- SupplierInvoiceDate en ReceivedDate zijn verplicht. SupplyDate is nullable,
+  FiscalReportingDate is exact de latere van InvoiceDate/ReceivedDate en DueDate ligt
+  niet vóór InvoiceDate. PostingDate is pas expliciete P3-003-use-case-input.
+- P3 gebruikt uitsluitend EUR, positieve Quantity en net-exclusive Money zonder floats.
+- Iedere regel verwijst bij Draft-mutatie naar een active same-tenant Expense/Asset-
+  rekening en een active Input TaxCode. Accountidentiteit/type/code/naam en volledige
+  taxcode/rate/treatment/VAT/ICP-snapshot worden vastgelegd.
+- Alleen domestic standard/reduced volledig aftrekbare positieve Input VAT en expliciete
+  zero/exempt/outside-scope zero VAT zijn ondersteund. Output, international,
+  reverse-charge en positieve partial/non-deductible VAT worden geweigerd.
+- Net, tax en gross worden exact uit de regels opgeteld. Finalize vereist minstens één
+  regel en bewaart de Domain UserId en applicatie-clock timestamp éénmaal.
+- Finalized, Posted en Cancelled zijn inhoudelijk immutable. Cancelled documenten
+  blijven duurzaam en geven de duplicate identity niet vrij.
 
-## Grenzen
+## Persistence en grenzen
 
-- Btw behoort tot Tax.
-- Financiële mutaties en JournalEntries lopen uitsluitend via Accounting; `PostingRequest` en `PostingEngine` behoren tot Accounting en blijven buiten Purchasing.
-- Btw, boekingen, betalingen en OpenItems worden niet door Purchasing beheerd.
-- Purchasing bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
+Application repository- en readcontracten zijn tenant-scoped; Infrastructure bewaart
+header en regels atomair met same-tenant foreign keys en RESTRICT delete-policy. List en
+detail lezen historische snapshots. Selectors lezen uitsluitend actuele actieve
+Suppliers, Expense/Asset-rekeningen en ondersteunde Input TaxCodes.
+
+Create en Finalize maken geen JournalEntry, TaxPosting, OpenItem of postinglinkage en
+vereisen geen PurchasePostingConfiguration. P3-003 `PostPurchaseInvoice` leest de
+volledige Finalized snapshot plus actuele configuration en levert via PostingEngine in
+één transaction de geposte Purchase JournalEntry, immutable Input TaxPostings, één
+Payable/Credit OpenItem, één duurzame linkage en de status Posted. Fouten rollen alle
+facts terug; headerlocking en linkage-uniciteit maken double post idempotent.
+
+P3-004 ontsluit deze contracten in Web zonder financiële Presentation-logica. De
+request-scoped navigatie en routes scheiden View, Draft Manage, Finalize en Post exact.
+Draft-formulieren gebruiken uitsluitend same-tenant actieve Supplier-, Expense/Asset- en
+ondersteunde Input-TaxCode-selectors; detail blijft historische snapshots tonen. Post
+vereist een expliciete PostingDate en presenteert daarna linkage en het Payable/Credit
+OpenItem. Er bestaat geen GET-mutatie, automatische finalize/post of paymentactie.
+
+`PurchaseCreditInvoice` blijft een bestaand prototype en valt buiten P3.

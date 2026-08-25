@@ -505,6 +505,49 @@ reverse-charge purchases volgen afzonderlijk. Het huidige fiscale model kan
 purchase-side reverse charge nog niet veilig als gelijktijdige verschuldigde Output VAT
 en mogelijke Input VAT representeren. VAT/ICP-reporting blijft daarom geparkeerd.
 
+P3-000 heeft de productcontracten definitief uitgelijnd. P3 gebruikt Draft → Finalized
+→ Posted, bewaart finalization actor/tijd plus immutable supplier/address/date- en
+line-fiscalsnapshots, gebruikt een case-sensitive externe supplier invoice identity en
+leidt paymentstatus uitsluitend uit Payable af. Domestic V1 is EUR-only en ondersteunt
+volledig aftrekbare Input standard/reduced plus zero/exempt/outside-scope fiscal truth;
+non-/partial-deductible en international/reverse-charge blijven geblokkeerd.
+
+De vervolgsplit blijft: P3-001 authorization, create-missing-only Input catalogue en
+PurchasePostingConfiguration; P3-002 PurchaseInvoice persistence/Application;
+P3-003 atomische domestic posting met TaxPostings en Payable; P3-004 Web plus review.
+De designblockers voor start van P3-001 zijn opgelost. PurchaseCreditInvoice, payments,
+attachments/OCR, FX-reporting en VAT/ICP blijven vervolgscope.
+
+P3-001 levert typed Purchasing-authorization en canonieke rollen zonder automatische
+membershiptoekenning, tenant-safe PurchasePostingConfiguration/readiness en een
+productmatige create-missing-only domestic Input-TaxCode-catalogusactie in Beheer →
+Instellingen. W4D blijft de productroute voor Purchase Journal en vereiste
+LedgerAccounts. Internationale/reverse-charge en gedeeltelijk/niet-aftrekbare VAT zijn
+niet gefaket en blijven vervolgscope. Daarmee kan P3-002 op de foundation starten.
+
+P3-002 levert nu de duurzame tenant-safe PurchaseInvoice-header/regels, case-sensitive
+externe supplier-invoice identity, immutable supplier/documentadres/account/Input-Tax-
+snapshots, Draft-mutaties en actor/tijd-geregistreerde Finalize plus pre-post Cancel.
+List/detail/selectors zijn Application-contracten zonder Web. Echte MySQL-concurrency
+borgt duplicate create en double finalize. Er ontstaan nog geen JournalEntries,
+TaxPostings, Payables/OpenItems of postinglinkages; P3-003 blijft exclusief verantwoordelijk
+voor expliciete PostingDate, actuele PurchasePostingConfiguration en atomische posting.
+
+P3-003 levert die atomische domestic posting nu via PostingEngine: Expense/Asset en
+Input VAT debet, AP gross credit, immutable line-level Input TaxPostings op
+FiscalReportingDate, één volledig open Payable/Credit met DueDate, en één tenant-safe
+postinglinkage. Configuratie is alleen bij Post vereist. Sequential en concurrent double
+post zijn idempotent en iedere persistencefout rolt JournalEntry, tax, OpenItem, linkage
+en status gezamenlijk terug.
+
+P3-004 sluit de domestic PurchaseInvoice-productflow af met permission-aware Weblijst en
+-detail, expliciete Draft-aanmaak/-wijziging, Cancel, Finalize en Post met PostingDate.
+Same-tenant Supplier-, Expense/Asset- en ondersteunde Input-TaxCode-selectors voeren de
+bestaande Application-contracten; Posted detail toont het duurzame Payable/Credit
+OpenItem. PurchaseCreditInvoice, supplier payments, attachments/OCR, international en
+reverse-charge Purchase VAT, partial/non-deductible VAT, multi-step approval en VAT/ICP-
+reporting blijven expliciet vervolgscope.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

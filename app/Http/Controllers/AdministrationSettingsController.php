@@ -7,6 +7,11 @@ namespace App\Http\Controllers;
 use App\Application\Administration\AdministrationSettingsWriteResult;
 use App\Application\Administration\GetAdministrationSettings;
 use App\Application\Administration\UpdateAdministrationSettings;
+use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
+use App\Application\Fiscal\TaxCodeReadRepository;
+use App\Application\Purchasing\GetPurchasePostingConfigurationSettings;
+use App\Application\Purchasing\UpdatePurchasePostingConfiguration;
+use App\Application\Purchasing\UpdatePurchasePostingConfigurationResult;
 use App\Application\Sales\GetSalesPostingConfigurationSettings;
 use App\Application\Sales\SalesDocumentMasterData;
 use App\Application\Sales\SalesDocumentMasterDataStore;
@@ -16,6 +21,7 @@ use App\Application\Sales\UpdateSalesPostingConfigurationResult;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
+use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Relations\ValueObjects\AddressLine;
 use App\Domain\Relations\ValueObjects\Bic;
 use App\Domain\Relations\ValueObjects\City;
@@ -27,6 +33,7 @@ use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Requests\Administration\UpdateAdministrationSettingsRequest;
+use App\Http\Requests\Administration\UpdatePurchasePostingConfigurationRequest;
 use App\Http\Requests\Administration\UpdateSalesDocumentMasterDataRequest;
 use App\Http\Requests\Administration\UpdateSalesPostingConfigurationRequest;
 use Illuminate\Http\RedirectResponse;
@@ -41,6 +48,10 @@ final readonly class AdministrationSettingsController
         private UpdateAdministrationSettings $updateSettings,
         private GetSalesPostingConfigurationSettings $getSalesPostingSettings,
         private UpdateSalesPostingConfiguration $updateSalesPostingSettings,
+        private GetPurchasePostingConfigurationSettings $getPurchasePostingSettings,
+        private UpdatePurchasePostingConfiguration $updatePurchasePostingSettings,
+        private TaxCodeCatalogueProvisioner $taxCodeCatalogue,
+        private TaxCodeReadRepository $taxCodes,
         private SalesDocumentMasterDataStore $documentSettings,
         private UpdateSalesDocumentMasterData $updateDocumentSettings,
     ) {}
@@ -56,8 +67,39 @@ final readonly class AdministrationSettingsController
             'administrationContext' => $context,
             'settings' => $settings,
             'salesPostingSettings' => $this->getSalesPostingSettings->execute($context->administration->id()),
+            'purchasePostingSettings' => $this->getPurchasePostingSettings->execute($context->administration->id()),
+            'inputTaxCodes' => $this->taxCodes->findActiveForAdministrationAndDirection($context->administration->id(), TaxPostingDirection::Input),
             'documentSettings' => $this->documentSettings->readMasterData($context->administration->id()),
         ]);
+    }
+
+    public function updatePurchasePosting(UpdatePurchasePostingConfigurationRequest $request): RedirectResponse
+    {
+        $context = $this->context($request);
+        $data = $request->validated();
+        try {
+            $result = $this->updatePurchasePostingSettings->execute(
+                $context->administration->id(),
+                new JournalId(new Uuid($data['purchase_journal_id'])),
+                new LedgerAccountId(new Uuid($data['accounts_payable_ledger_account_id'])),
+                new LedgerAccountId(new Uuid($data['input_vat_ledger_account_id'])),
+            );
+        } catch (InvalidArgumentException) {
+            return back()->withInput()->withErrors(['purchase_posting' => 'De inkoopboekingsinstellingen zijn ongeldig.']);
+        }
+        if ($result === UpdatePurchasePostingConfigurationResult::InvalidReference) {
+            return back()->withInput()->withErrors(['purchase_posting' => 'Selecteer uitsluitend geldige, actieve dagboeken en grootboekrekeningen van deze administratie.']);
+        }
+
+        return redirect()->route('settings.administration.edit')->with('status', 'Inkoopboekingsinstellingen opgeslagen.');
+    }
+
+    public function provisionPurchaseTaxCodes(Request $request): RedirectResponse
+    {
+        $context = $this->context($request);
+        $this->taxCodeCatalogue->ensureDutchBasicInputForAdministration($context->administration->id());
+
+        return redirect()->route('settings.administration.edit')->with('status', 'Binnenlandse voorbelastingcodes beschikbaar gemaakt.');
     }
 
     public function updateSalesPosting(UpdateSalesPostingConfigurationRequest $request): RedirectResponse

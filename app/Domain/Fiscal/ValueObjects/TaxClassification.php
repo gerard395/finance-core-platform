@@ -22,6 +22,8 @@ final readonly class TaxClassification
             TaxTreatment::DomesticStandard,
             TaxTreatment::DomesticReduced,
             TaxTreatment::ZeroRated,
+            TaxTreatment::Exempt,
+            TaxTreatment::OutsideScope,
         ], true)) {
             throw new DomainException('International Output treatments cannot be used for Input TaxCodes.');
         }

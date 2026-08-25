@@ -80,6 +80,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
                 'original_amount' => $openItem->originalAmount()->amount(),
                 'currency' => $openItem->originalAmount()->currency()->code(),
                 'opened_on' => $openItem->openedOn()->value()->format('Y-m-d'),
+                'due_date' => $openItem->dueDate()?->format('Y-m-d'),
             ]);
         });
     }
@@ -252,6 +253,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
             $settlements,
             OpenItemSide::from($record->getAttribute('side')),
             $matches,
+            ($dueDate = $record->getAttribute('due_date')) === null ? null : new DateTimeImmutable($dueDate->format('Y-m-d')),
         );
     }
 

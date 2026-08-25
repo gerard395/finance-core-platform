@@ -48,13 +48,28 @@ Dit document benoemt de businessautorisaties van Finance Core Platform. Het besc
 
 ## Purchasing
 
-| Permission Name | Korte beschrijving |
+P3-001 implementeert de volgende typed, onafhankelijke permissions voor de eerste
+domestic PurchaseInvoice-flow.
+
+| Permission Code | Korte beschrijving |
 | --- | --- |
-| View Purchase Documents | Inkoopdocumenten en hun verwerkingsstatus raadplegen. |
-| Register Purchase Invoice | Een ontvangen inkoopfactuur registreren. |
-| Change Purchase Invoice | Een nog wijzigbare inkoopfactuur corrigeren of aanvullen. |
-| Approve Purchase Invoice | Een inkoopfactuur inhoudelijk goedkeuren voor verdere verwerking. |
-| Register Purchase Credit Invoice | Een ontvangen inkoopcreditfactuur registreren. |
+| `PURCHASING.VIEW` | Inkoopfacturen, status, postinglink en Payable read-only raadplegen. |
+| `PURCHASING.INVOICES_DRAFT_MANAGE` | Domestic Draft-inkoopfacturen aanmaken, wijzigen en vóór posting annuleren; geeft geen finalisatie- of postingrecht. |
+| `PURCHASING.INVOICES_FINALIZE` | Een valide Draft inhoudelijk vaststellen als immutable Finalized document; geeft geen postingrecht. |
+| `PURCHASING.INVOICES_POST` | Een Finalized factuur via de enige transactionele Purchase-postingorchestrator financieel/fiscaal posten; geeft geen draftbeheer of finalisatierecht. |
+
+De canonieke rolebundles zijn: `PURCHASING_MANAGER` bevat View,
+DraftManage en Finalize; `PURCHASING_POSTER` bevat alleen View en Post. Er is geen
+impliciete permissionhiërarchie, role-name authorization of automatische
+membershipassignment. PurchasePostingConfiguration gebruikt de bestaande
+`ADMINISTRATION.SETTINGS_UPDATE`-permission. Credit- en paymentpermissions blijven
+buiten P3. De stabiele permission-IDs zijn respectievelijk
+`6e854eb8-7cc4-4c61-8328-6aa41cb0ac01`,
+`0f950710-7de5-42e7-a716-08ae09b17b5c`,
+`7593b1f9-39b1-480e-ab8b-46792141d4bb` en
+`c4926113-c69a-49b2-94a3-0f98bcaee9b3`. Role-IDs zijn
+`8c0eb3c2-2c80-4960-85bd-8649508cba83` en
+`09544538-b049-4cf5-a691-8b88427f7b31`.
 
 ## Accounting
 

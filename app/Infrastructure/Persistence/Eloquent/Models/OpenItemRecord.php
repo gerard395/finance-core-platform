@@ -25,11 +25,12 @@ final class OpenItemRecord extends Model
         'original_amount',
         'currency',
         'opened_on',
+        'due_date',
     ];
 
     protected function casts(): array
     {
-        return ['opened_on' => 'immutable_date'];
+        return ['opened_on' => 'immutable_date', 'due_date' => 'immutable_date'];
     }
 
     public function settlements(): HasMany

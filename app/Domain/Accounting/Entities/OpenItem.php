@@ -15,6 +15,7 @@ use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Finance\Money;
+use DateTimeImmutable;
 use DomainException;
 
 final class OpenItem
@@ -36,6 +37,7 @@ final class OpenItem
         private readonly Money $originalAmount,
         private readonly PostingDate $openedOn,
         ?OpenItemSide $side = null,
+        private readonly ?DateTimeImmutable $dueDate = null,
     ) {
         if (! $originalAmount->isPositive()) {
             throw new DomainException('Original amount must be positive.');
@@ -59,8 +61,9 @@ final class OpenItem
         array $settlements,
         ?OpenItemSide $side = null,
         array $matches = [],
+        ?DateTimeImmutable $dueDate = null,
     ): self {
-        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn, $side);
+        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn, $side, $dueDate);
         $indexed = [];
         $reversed = [];
 
@@ -161,6 +164,11 @@ final class OpenItem
     public function openedOn(): PostingDate
     {
         return $this->openedOn;
+    }
+
+    public function dueDate(): ?DateTimeImmutable
+    {
+        return $this->dueDate;
     }
 
     /** @return list<OpenItemSettlement> */

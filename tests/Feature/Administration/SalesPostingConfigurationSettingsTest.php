@@ -70,6 +70,59 @@ final class SalesPostingConfigurationSettingsTest extends TestCase
             ->assertSee('disabled', false);
     }
 
+    public function test_purchase_setup_section_provisions_only_same_tenant_domestic_input_catalogue(): void
+    {
+        $this->get('/settings/administration')->assertOk()
+            ->assertSee('Inkoopboekingen')
+            ->assertSee('De binnenlandse voorbelastingcatalogus ontbreekt nog.')
+            ->assertSee('Maak eerst via Grootboekbeheer een actief inkoopdagboek');
+
+        $this->post('/settings/administration/purchase-tax-codes', ['administration_id' => self::B])
+            ->assertRedirect(route('settings.administration.edit'))
+            ->assertSessionHas('status', 'Binnenlandse voorbelastingcodes beschikbaar gemaakt.');
+
+        self::assertSame(5, DB::table('tax_codes')->where('administration_id', self::A)->where('direction', 'input')->count());
+        self::assertSame(0, DB::table('tax_codes')->where('administration_id', self::B)->where('direction', 'input')->count());
+        self::assertSame(0, DB::table('tax_codes')->where('direction', 'output')->count());
+        $this->get('/settings/administration')->assertOk()->assertSee('5 binnenlandse voorbelastingcodes beschikbaar.');
+    }
+
+    public function test_purchase_setup_action_observes_runtime_settings_revocation(): void
+    {
+        DB::table('administration_membership_roles')->where('membership_id', self::MEMBERSHIP)->update(['active' => false]);
+
+        $this->post('/settings/administration/purchase-tax-codes')->assertForbidden();
+        self::assertSame(0, DB::table('tax_codes')->count());
+    }
+
+    public function test_purchase_settings_selectors_are_tenant_and_type_safe_and_save_ignores_body_tenant(): void
+    {
+        $now = now();
+        DB::table('journals')->insert([
+            ['id' => '76000000-0000-4000-8000-000000000001', 'administration_id' => self::A, 'code' => 'INK', 'name' => 'Inkoop', 'type' => 'purchase', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => '76000000-0000-4000-8000-000000000002', 'administration_id' => self::B, 'code' => 'BINK', 'name' => 'B Inkoop', 'type' => 'purchase', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now],
+        ]);
+        DB::table('ledger_accounts')->insert([
+            ['id' => '76000000-0000-4000-8000-000000000003', 'administration_id' => self::A, 'code' => 'AP', 'name' => 'Crediteuren', 'type' => 'liability', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => '76000000-0000-4000-8000-000000000004', 'administration_id' => self::A, 'code' => 'IVAT', 'name' => '<script>input</script>', 'type' => 'asset', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => '76000000-0000-4000-8000-000000000005', 'administration_id' => self::B, 'code' => 'BAP', 'name' => 'B Crediteuren', 'type' => 'liability', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now],
+        ]);
+
+        $this->get('/settings/administration')->assertOk()
+            ->assertSee('INK – Inkoop')->assertDontSee('BINK – B Inkoop')
+            ->assertSee('AP – Crediteuren')->assertDontSee('BAP – B Crediteuren')
+            ->assertSee('&lt;script&gt;input&lt;/script&gt;', false)->assertDontSee('<script>input</script>', false);
+
+        $this->put('/settings/administration/purchase-posting', [
+            'administration_id' => self::B,
+            'purchase_journal_id' => '76000000-0000-4000-8000-000000000001',
+            'accounts_payable_ledger_account_id' => '76000000-0000-4000-8000-000000000003',
+            'input_vat_ledger_account_id' => '76000000-0000-4000-8000-000000000004',
+        ])->assertRedirect(route('settings.administration.edit'));
+        $this->assertDatabaseHas('purchase_posting_configurations', ['administration_id' => self::A]);
+        $this->assertDatabaseMissing('purchase_posting_configurations', ['administration_id' => self::B]);
+    }
+
     public function test_provisioned_configuration_and_safe_same_tenant_options_are_displayed_and_saved(): void
     {
         $masterData = $this->app->make(DevelopmentAccountingMasterDataProvisioner::class)->provision($this->administration(self::A));

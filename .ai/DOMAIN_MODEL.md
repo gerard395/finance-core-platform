@@ -176,7 +176,7 @@ Order kan vanuit Draft of Confirmed worden geannuleerd. SalesInvoice kan vanuit 
 Een PurchaseInvoice doorloopt:
 
 ```text
-Draft → Finalized → Posted → Paid
+Draft → Finalized → Posted
 ```
 
 Een PurchaseCreditInvoice doorloopt:
@@ -191,9 +191,17 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 
 - Iedere PurchaseInvoice en PurchaseCreditInvoice heeft een leverancier.
 - Iedere PurchaseInvoice en PurchaseCreditInvoice bevat minimaal één eigen regel voordat deze wordt gefinaliseerd.
+- P3 PurchaseInvoice gebruikt het verplichte externe supplier invoice number; Administration, Supplier en het case-sensitive canonieke nummer zijn samen uniek. Er bestaat geen interne Purchase-numbersequence.
+- P3 finaliseert met immutable Domain UserId en timestamp. Finalized bevriest supplier/address/date-, line/account-, TaxCode- en bedragtruth maar maakt nog geen financiële feiten.
+- P3 bewaart SupplierInvoiceDate, ReceivedDate, nullable SupplyDate, een afzonderlijke FiscalReportingDate en later de expliciete Accounting PostingDate. Supplier-, VAT/jurisdiction- en documentaddressdata worden immutable gesnapshot; live Relationdata is geen historische waarheid.
+- P3 ondersteunt uitsluitend EUR en volledig aftrekbare domestic Input VAT. Standard/reduced kunnen positieve tax hebben; zero/exempt/outside-scope bewaren zero-tax fiscal truth zonder VAT-journalregel. International/reverse-charge en non-/partial-deductible VAT zijn uitgesloten.
+- Iedere P3 line kiest expliciet een active same-tenant Expense/Asset-account en active same-tenant Input TaxCode. Er is geen first-account-, first-TaxCode- of rateheuristiek.
 - `PostingEngine` verwerkt alle financiële mutaties.
 - PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
-- Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert dit OpenItem niet rechtstreeks.
+- P3-posting bewaart atomair JournalEntry, Input TaxPostings, één Payable/Credit OpenItem, append-only linkage en Posted-status. Paymentstatus wordt uit OpenItem afgeleid; PurchaseInvoice heeft geen handmatige Paid/PartiallyPaid-status.
+- Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert settlement/matching niet rechtstreeks.
+- `PurchasePostingConfiguration` is Administration-owned en verwijst met harde tenant-FK's naar exact een active Purchase Journal, active Liability/AP en active Asset/Input VAT. De typed reader kent Missing, Success en exacte InvalidReference; er bestaat geen default Expense-account of heuristische replacement.
+- De domestic Input-catalogus bevat uitsluitend typed Input standard/reduced/zero/exempt/outside-scope codes en wordt expliciet create-missing-only via Administration-settings beschikbaar gemaakt. TaxCodekeuze blijft later line-owned.
 
 #### Hergebruik
 
@@ -603,3 +611,37 @@ Operational Reporting blijft een read-only afleiding en sluit aan op de R1-conte
 - Symmetrische fiscale orchestration is bewust expliciet maar bevat duplicatie; `VatOverviewLine` gebruikt nog `mixed` returntypes voor gedelegeerde auditgetters.
 
 **R2-status:** Completed (R2-005). General Ledger, historische Open Items en VAT Overview zijn betrouwbaar reproduceerbaar vanuit Accounting- en Fiscal-bronwaarheid.
+
+## 10. Purchasing – duurzame PurchaseInvoice
+
+`PurchaseInvoice` is de aggregate root voor een ontvangen leveranciersfactuur. Zij is
+Administration-owned en bezit `PurchaseInvoiceLine` children. De lifecycle is Draft →
+Finalized → Posted, met pre-post Cancel vanuit Draft of Finalized. P3-002 biedt geen
+Application-transition naar Posted en paymentstate is geen documentstatus.
+
+De aggregate bewaart de case-sensitive externe SupplierInvoiceNumber met harde
+Administration + Supplier uniqueness, expliciete supplier-/documentaddress-snapshots,
+SupplierInvoiceDate, ReceivedDate, nullable SupplyDate, afgeleide FiscalReportingDate,
+DueDate en EUR. Iedere regel bewaart intended Expense/Asset-accounttruth en volledige
+ondersteunde domestic Input-Tax truth plus exacte net/tax/gross Money-bedragen. Finalize
+maakt alle inhoud immutable en registreert Domain UserId en applicatie-clock timestamp.
+
+Persistence gebruikt tenant-scoped repository/readcontracten, composite same-tenant
+foreign keys en RESTRICT delete-policy. P3-002 heeft geen Accounting/Fiscal side effects:
+JournalEntry, TaxPosting, OpenItem en PurchaseInvoicePosting ontstaan uitsluitend in de
+latere P3-003 postingorchestratie.
+
+P3-003 realiseert die orchestratie nu: een expliciete PostingDate stuurt de Purchase
+JournalEntry, terwijl TaxPosting de persisted FiscalReportingDate gebruikt. Expense/
+Asset net en positieve Input VAT zijn debet; Accounts Payable gross is credit. Iedere
+source line behoudt fiscale trace, inclusief zero-tax zonder fictieve VAT-journalregel.
+Het ene OpenItem is Payable/Credit met historische Relation, gross en DueDate. Een
+same-tenant append-only linkage en invoice row lock borgen at-most-once; alle facts plus
+de Posted-status committen of rollen gezamenlijk terug.
+
+P3-004 maakt de keten productmatig beschikbaar via list/detail, coherente Draft-mutatie,
+Finalize en Post. De vier Purchasing-permissions blijven onafhankelijk en worden per
+request geëvalueerd. Selectors zijn actief en tenant-scoped; bestaand documentdetail
+gebruikt uitsluitend historische snapshots. Presentation levert een expliciete
+PostingDate aan de Application-use-case en toont na succes het Payable/Credit OpenItem,
+maar berekent of schrijft zelf geen financiële waarheid en biedt geen paymentflow.

@@ -15,7 +15,6 @@ use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
-use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
@@ -28,22 +27,16 @@ use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
+use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Entities\PurchaseInvoice;
 use App\Domain\Purchasing\Entities\PurchaseInvoiceLine;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
-use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceNumber;
-use App\Domain\Relations\ValueObjects\SupplierId;
-use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
-use App\Domain\Shared\Commerce\ValueObjects\Quantity;
-use App\Domain\Shared\Finance\Currency;
-use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
 use DomainException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Tests\Support\PurchaseInvoiceTestFactory;
 
 final class PostPurchaseInvoiceWithTaxTest extends TestCase
 {
@@ -264,29 +257,14 @@ final class PostPurchaseInvoiceWithTaxTest extends TestCase
     /** @param list<array{string, string}> $lines */
     private function invoiceWithLines(array $lines, bool $finalize = true): PurchaseInvoice
     {
-        $invoice = new PurchaseInvoice(
-            new PurchaseInvoiceId($this->nextUuid('1')),
-            new PurchaseInvoiceNumber('pinv-fiscal-001'),
-            new AdministrationId($this->nextUuid('2')),
-            new SupplierId($this->nextUuid('3')),
-            new Currency('EUR'),
-            new DateTimeImmutable('2026-08-01'),
-            new DateTimeImmutable('2026-08-31'),
-            null,
-            PurchaseInvoiceStatus::Draft,
-        );
+        $invoice = PurchaseInvoiceTestFactory::invoice($this->nextUuid('1')->toString());
 
         foreach ($lines as [$quantity, $unitPrice]) {
-            $invoice->addLine(new PurchaseInvoiceLine(
-                new PurchaseInvoiceLineId($this->nextUuid('4')),
-                new LineDescription('Fiscal purchase line'),
-                new Quantity($quantity),
-                new Money($unitPrice, new Currency('EUR')),
-            ));
+            $invoice->addLine(PurchaseInvoiceTestFactory::line($this->nextUuid('4')->toString(), $quantity, $unitPrice));
         }
 
         if ($finalize) {
-            $invoice->finalize();
+            $invoice->finalize(new UserId($this->nextUuid('8')), new DateTimeImmutable('2026-08-02'));
         }
 
         return $invoice;
