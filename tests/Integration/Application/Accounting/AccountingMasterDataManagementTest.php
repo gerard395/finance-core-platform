@@ -131,6 +131,49 @@ final class AccountingMasterDataManagementTest extends TestCase
         DB::beginTransaction();
     }
 
+    public function test_real_mysql_concurrent_duplicate_account_code_has_exactly_one_durable_row(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required for the masterdata concurrency test.');
+        }
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'account-create-'), tempnam(sys_get_temp_dir(), 'account-create-')];
+        $children = [];
+        foreach ($files as $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    $result = $this->app->make(CreateLedgerAccount::class)->execute($this->id(self::A), 'RACE', 'Concurrent', LedgerAccountType::Expense);
+                    file_put_contents($file, $result->name);
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        sort($results);
+        self::assertSame('Success', $results[1]);
+        self::assertContains($results[0], ['DuplicateCode', 'PersistenceConflict']);
+        self::assertSame(1, DB::table('ledger_accounts')->where('administration_id', self::A)->where('code', 'RACE')->count());
+        DB::table('ledger_accounts')->where('administration_id', self::A)->delete();
+        DB::table('administrations')->whereIn('id', [self::A, self::B])->delete();
+        DB::beginTransaction();
+    }
+
     private function id(string $id): AdministrationId
     {
         return new AdministrationId(new Uuid($id));

@@ -122,8 +122,14 @@ final class AdministrationSettingsTest extends TestCase
         $this->login(self::ADMIN_A);
 
         foreach (['/app', '/relations', '/sales/quotations'] as $path) {
-            $this->get($path)->assertOk()->assertSee('href="'.route('settings.administration.edit').'"', false);
+            $this->get($path)->assertOk()
+                ->assertSee('href="'.route('settings.administration.edit').'"', false)
+                ->assertSee('href="'.route('settings.journals.index').'"', false)
+                ->assertSee('href="'.route('settings.ledger-accounts.index').'"', false);
         }
+        $this->get('/settings/administration')->assertOk()->assertSee('href="'.route('settings.journals.index').'"', false);
+        $this->get('/settings/journals')->assertOk()->assertSee('href="'.route('settings.ledger-accounts.index').'"', false);
+        $this->get('/settings/ledger-accounts')->assertOk()->assertSee('href="'.route('settings.journals.index').'"', false);
     }
 
     public function test_permission_is_tenant_scoped_and_revocation_applies_on_next_request(): void
