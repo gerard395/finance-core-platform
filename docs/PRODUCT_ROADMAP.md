@@ -488,6 +488,23 @@ persistence en Application/Web te brengen en de vereiste Accounting-configuratie
 expliciet te ontwerpen. VAT/ICP-reporting blijft geparkeerd totdat deze primaire
 inkoopflow en haar financiële afhankelijkheden productmatig beschikbaar zijn.
 
+PROJECT-GAP-002 bevestigt dat Purchasing Domain-aggregates en in-memory fiscale
+postingprototypes bestaan, maar persistence, Application-lifecycle, permissions,
+postingconfiguration, Input TaxCodes, Payable-orchestratie en Web ontbreken. Supplier-
+classificatie en W4D Journal/LedgerAccount-masterdata zijn bruikbare predecessors;
+historische supplier/address snapshots, external supplier-invoice-numbering,
+received/supply/fiscal-datebeleid en at-most-once postinglinkage moeten vóór duurzame
+Purchase persistence worden uitgelijnd.
+
+De exact aanbevolen volgende implementatiebatch is **P3 – Domestic Purchase Invoice
+to Payable**: vijf sequentiële stories voor contractalignment, authorization en Purchase
+postingconfiguration, PurchaseInvoice persistence/Application, transactionele domestic
+Input-VAT-posting plus Payable OpenItem, en PurchaseInvoice Web/review. Purchase credits,
+supplier payments, incoming attachments/OCR, non-EUR VAT-policy en internationale
+reverse-charge purchases volgen afzonderlijk. Het huidige fiscale model kan
+purchase-side reverse charge nog niet veilig als gelijktijdige verschuldigde Output VAT
+en mogelijke Input VAT representeren. VAT/ICP-reporting blijft daarom geparkeerd.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
