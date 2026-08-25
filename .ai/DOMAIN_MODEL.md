@@ -200,6 +200,8 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
 - P3-posting bewaart atomair JournalEntry, Input TaxPostings, één Payable/Credit OpenItem, append-only linkage en Posted-status. Paymentstatus wordt uit OpenItem afgeleid; PurchaseInvoice heeft geen handmatige Paid/PartiallyPaid-status.
 - Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert settlement/matching niet rechtstreeks.
+- `PurchasePostingConfiguration` is Administration-owned en verwijst met harde tenant-FK's naar exact een active Purchase Journal, active Liability/AP en active Asset/Input VAT. De typed reader kent Missing, Success en exacte InvalidReference; er bestaat geen default Expense-account of heuristische replacement.
+- De domestic Input-catalogus bevat uitsluitend typed Input standard/reduced/zero/exempt/outside-scope codes en wordt expliciet create-missing-only via Administration-settings beschikbaar gemaakt. TaxCodekeuze blijft later line-owned.
 
 #### Hergebruik
 

@@ -14,4 +14,11 @@ interface TaxCodeCatalogueProvisioner
      * @throws TaxCodeCatalogueProvisioningConflict
      */
     public function ensureDutchBasicOutputForAdministration(AdministrationId $administrationId): void;
+
+    /**
+     * Creates missing fully deductible domestic Input TaxCodes without changing existing codes.
+     *
+     * @throws TaxCodeCatalogueProvisioningConflict
+     */
+    public function ensureDutchBasicInputForAdministration(AdministrationId $administrationId): void;
 }

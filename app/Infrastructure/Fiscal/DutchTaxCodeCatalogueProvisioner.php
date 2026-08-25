@@ -33,12 +33,32 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
         'VRIJGESTELD' => ['name' => 'Vrijgesteld', 'rate' => '0', 'treatment' => TaxTreatment::Exempt, 'vat' => VatReturnClassification::Exempt, 'icp' => IcpClassification::None],
     ];
 
+    /** @var array<string, array{name: string, rate: string, treatment: TaxTreatment, vat: VatReturnClassification, icp: IcpClassification}> */
+    private const array INPUT_DEFINITIONS = [
+        'INBTW21' => ['name' => 'Voorbelasting hoog (21%)', 'rate' => '21', 'treatment' => TaxTreatment::DomesticStandard, 'vat' => VatReturnClassification::DomesticStandard, 'icp' => IcpClassification::None],
+        'INBTW9' => ['name' => 'Voorbelasting laag (9%)', 'rate' => '9', 'treatment' => TaxTreatment::DomesticReduced, 'vat' => VatReturnClassification::DomesticReduced, 'icp' => IcpClassification::None],
+        'INBTW0' => ['name' => 'Inkoop binnenland 0%', 'rate' => '0', 'treatment' => TaxTreatment::ZeroRated, 'vat' => VatReturnClassification::DomesticZeroRated, 'icp' => IcpClassification::None],
+        'INVRIJ' => ['name' => 'Inkoop vrijgesteld', 'rate' => '0', 'treatment' => TaxTreatment::Exempt, 'vat' => VatReturnClassification::Exempt, 'icp' => IcpClassification::None],
+        'INBUITEN' => ['name' => 'Inkoop buiten btw-scope', 'rate' => '0', 'treatment' => TaxTreatment::OutsideScope, 'vat' => VatReturnClassification::OutsideScope, 'icp' => IcpClassification::None],
+    ];
+
     public function __construct(private TransactionManager $transactions) {}
 
     public function ensureDutchBasicOutputForAdministration(AdministrationId $administrationId): void
     {
-        $this->transactions->run(function () use ($administrationId): void {
-            foreach (self::DEFINITIONS as $code => $definition) {
+        $this->provision($administrationId, self::DEFINITIONS, TaxPostingDirection::Output, 'Dutch basic Output');
+    }
+
+    public function ensureDutchBasicInputForAdministration(AdministrationId $administrationId): void
+    {
+        $this->provision($administrationId, self::INPUT_DEFINITIONS, TaxPostingDirection::Input, 'Dutch basic Input');
+    }
+
+    /** @param array<string, array{name: string, rate: string, treatment: TaxTreatment, vat: VatReturnClassification, icp: IcpClassification}> $definitions */
+    private function provision(AdministrationId $administrationId, array $definitions, TaxPostingDirection $direction, string $catalogue): void
+    {
+        $this->transactions->run(function () use ($administrationId, $definitions, $direction, $catalogue): void {
+            foreach ($definitions as $code => $definition) {
                 $existing = DB::table('tax_codes')
                     ->where('administration_id', $administrationId->toString())
                     ->where('code', $code)
@@ -46,7 +66,7 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
                     ->first();
 
                 if ($existing !== null) {
-                    $this->assertCompatible($existing, $code, $definition);
+                    $this->assertCompatible($existing, $code, $definition, $direction, $catalogue);
 
                     continue;
                 }
@@ -65,7 +85,7 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
                     'code' => $code,
                     'name' => $definition['name'],
                     'rate' => $definition['rate'],
-                    'direction' => TaxPostingDirection::Output->value,
+                    'direction' => $direction->value,
                     'status' => TaxCodeStatus::Active->value,
                     'treatment' => $definition['treatment']->value,
                     'vat_return_classification' => $definition['vat']->value,
@@ -78,16 +98,16 @@ final readonly class DutchTaxCodeCatalogueProvisioner implements TaxCodeCatalogu
     }
 
     /** @param array{name: string, rate: string, treatment: TaxTreatment, vat: VatReturnClassification, icp: IcpClassification} $definition */
-    private function assertCompatible(stdClass $existing, string $code, array $definition): void
+    private function assertCompatible(stdClass $existing, string $code, array $definition, TaxPostingDirection $direction, string $catalogue): void
     {
         $existingRate = new TaxRate((string) $existing->rate);
         if ($existingRate->value() !== (new TaxRate($definition['rate']))->value()
-            || $existing->direction !== TaxPostingDirection::Output->value
+            || $existing->direction !== $direction->value
             || $existing->treatment !== $definition['treatment']->value
             || $existing->vat_return_classification !== $definition['vat']->value
             || $existing->icp_classification !== $definition['icp']->value) {
             throw new TaxCodeCatalogueProvisioningConflict(
-                "Existing TaxCode {$code} conflicts with the Dutch basic Output catalogue.",
+                "Existing TaxCode {$code} conflicts with the {$catalogue} catalogue.",
             );
         }
     }

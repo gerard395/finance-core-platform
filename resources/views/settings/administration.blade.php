@@ -145,5 +145,50 @@
                 </div>
             </form>
         </section>
+
+        @php($purchaseConfiguration = $purchasePostingSettings->current->configuration)
+        @php($purchaseStatus = match ($purchasePostingSettings->current->status) {
+            \App\Application\Purchasing\PurchasePostingConfigurationReadStatus::Missing => ['Niet ingesteld', 'bg-slate-100 text-slate-700'],
+            \App\Application\Purchasing\PurchasePostingConfigurationReadStatus::Success => ['Geldig', 'bg-green-100 text-green-800'],
+            \App\Application\Purchasing\PurchasePostingConfigurationReadStatus::InvalidReference => ['Ongeldig – aandacht vereist', 'bg-red-100 text-red-800'],
+        })
+        @php($hasPurchaseMasterData = $purchasePostingSettings->purchaseJournals !== [] && $purchasePostingSettings->accountsPayableAccounts !== [] && $purchasePostingSettings->inputVatAccounts !== [])
+
+        <section aria-labelledby="purchase-posting-heading" class="mt-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div><h2 id="purchase-posting-heading" class="text-lg font-bold">Inkoopboekingen</h2><p class="mt-1 text-sm text-slate-600">Koppel expliciet het inkoopdagboek, de crediteurenrekening en de voorbelastingrekening.</p></div>
+                <span class="inline-flex w-fit rounded-full px-3 py-1 text-sm font-semibold {{ $purchaseStatus[1] }}" role="status">{{ $purchaseStatus[0] }}</span>
+            </div>
+
+            @if ($inputTaxCodes === [])
+                <div class="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">
+                    <p>De binnenlandse voorbelastingcatalogus ontbreekt nog.</p>
+                    <form method="POST" action="{{ route('settings.administration.purchase-tax-codes.provision') }}" class="mt-3">@csrf<button class="min-h-11 rounded-lg bg-blue-700 px-4 font-semibold text-white">Voorbelastingcodes beschikbaar maken</button></form>
+                </div>
+            @else
+                <p class="mt-5 text-sm text-green-800" role="status">{{ count($inputTaxCodes) }} binnenlandse voorbelastingcodes beschikbaar.</p>
+            @endif
+
+            @if (! $hasPurchaseMasterData)
+                <p class="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">Maak eerst via Grootboekbeheer een actief inkoopdagboek, een actieve crediteurenrekening (Liability) en een actieve voorbelastingrekening (Asset).</p>
+            @endif
+
+            @if ($purchaseConfiguration !== null)
+                <dl class="mt-5 grid gap-3 rounded-lg bg-slate-50 p-4 text-sm sm:grid-cols-2">
+                    <div><dt class="font-semibold">Huidig inkoopdagboek</dt><dd>{{ $purchasePostingSettings->currentPurchaseJournal === null ? 'Niet beschikbaar' : $purchasePostingSettings->currentPurchaseJournal->code()->value().' – '.$purchasePostingSettings->currentPurchaseJournal->name()->value() }}</dd></div>
+                    <div><dt class="font-semibold">Huidige crediteurenrekening</dt><dd>{{ $purchasePostingSettings->currentAccountsPayableAccount === null ? 'Niet beschikbaar' : $purchasePostingSettings->currentAccountsPayableAccount->code()->value().' – '.$purchasePostingSettings->currentAccountsPayableAccount->name()->value() }}</dd></div>
+                    <div><dt class="font-semibold">Huidige voorbelastingrekening</dt><dd>{{ $purchasePostingSettings->currentInputVatAccount === null ? 'Niet beschikbaar' : $purchasePostingSettings->currentInputVatAccount->code()->value().' – '.$purchasePostingSettings->currentInputVatAccount->name()->value() }}</dd></div>
+                </dl>
+            @endif
+
+            @error('purchase_posting')<p id="purchase-posting-error" class="mt-5 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+            <form method="POST" action="{{ route('settings.administration.purchase-posting.update') }}" class="mt-5 grid gap-5 sm:grid-cols-2">
+                @csrf @method('PUT')
+                <div><label for="purchase_journal_id" class="block text-sm font-semibold">Inkoopdagboek</label><select id="purchase_journal_id" name="purchase_journal_id" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Selecteer een inkoopdagboek</option>@foreach ($purchasePostingSettings->purchaseJournals as $journal)<option value="{{ $journal->id()->toString() }}" @selected(old('purchase_journal_id', $purchaseConfiguration?->purchaseJournalId->toString()) === $journal->id()->toString())>{{ $journal->code()->value() }} – {{ $journal->name()->value() }}</option>@endforeach</select></div>
+                <div><label for="accounts_payable_ledger_account_id" class="block text-sm font-semibold">Crediteurenrekening</label><select id="accounts_payable_ledger_account_id" name="accounts_payable_ledger_account_id" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Selecteer een crediteurenrekening</option>@foreach ($purchasePostingSettings->accountsPayableAccounts as $account)<option value="{{ $account->id()->toString() }}" @selected(old('accounts_payable_ledger_account_id', $purchaseConfiguration?->accountsPayableLedgerAccountId->toString()) === $account->id()->toString())>{{ $account->code()->value() }} – {{ $account->name()->value() }}</option>@endforeach</select></div>
+                <div><label for="input_vat_ledger_account_id" class="block text-sm font-semibold">Voorbelastingrekening</label><select id="input_vat_ledger_account_id" name="input_vat_ledger_account_id" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Selecteer een voorbelastingrekening</option>@foreach ($purchasePostingSettings->inputVatAccounts as $account)<option value="{{ $account->id()->toString() }}" @selected(old('input_vat_ledger_account_id', $purchaseConfiguration?->inputVatLedgerAccountId->toString()) === $account->id()->toString())>{{ $account->code()->value() }} – {{ $account->name()->value() }}</option>@endforeach</select></div>
+                <div class="flex justify-end sm:col-span-2"><button type="submit" @disabled(! $hasPurchaseMasterData) class="min-h-11 rounded-lg bg-blue-700 px-5 font-semibold text-white disabled:bg-slate-400">Inkoopboekingen opslaan</button></div>
+            </form>
+        </section>
     </div>
 </x-layouts.app>

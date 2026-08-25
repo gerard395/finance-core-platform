@@ -48,6 +48,24 @@ final class DutchTaxCodeCatalogueProvisionerTest extends TestCase
         self::assertSame(0, DB::table('tax_codes')->where('administration_id', self::ADMIN_B)->count());
     }
 
+    public function test_empty_administration_receives_exact_deterministic_domestic_input_catalogue_without_output_mutation(): void
+    {
+        $this->provisioner()->ensureDutchBasicOutputForAdministration($this->administration(self::ADMIN_A));
+        $outputBefore = DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->where('direction', 'output')->orderBy('id')->get()->toArray();
+
+        $this->provisioner()->ensureDutchBasicInputForAdministration($this->administration(self::ADMIN_A));
+        $first = DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->where('direction', 'input')->orderBy('code')->get(['id', 'code', 'name', 'rate', 'direction', 'treatment', 'vat_return_classification', 'icp_classification'])->map(static fn (object $row): array => (array) $row)->all();
+        $this->provisioner()->ensureDutchBasicInputForAdministration($this->administration(self::ADMIN_A));
+
+        self::assertSame(['INBTW0', 'INBTW21', 'INBTW9', 'INBUITEN', 'INVRIJ'], array_column($first, 'code'));
+        self::assertSame(['zero_rated', 'domestic_standard', 'domestic_reduced', 'outside_scope', 'exempt'], array_column($first, 'treatment'));
+        self::assertSame(['domestic_zero_rated', 'domestic_standard', 'domestic_reduced', 'outside_scope', 'exempt'], array_column($first, 'vat_return_classification'));
+        self::assertSame(['input'], array_values(array_unique(array_column($first, 'direction'))));
+        self::assertSame($first, DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->where('direction', 'input')->orderBy('code')->get(['id', 'code', 'name', 'rate', 'direction', 'treatment', 'vat_return_classification', 'icp_classification'])->map(static fn (object $row): array => (array) $row)->all());
+        self::assertEquals($outputBefore, DB::table('tax_codes')->where('administration_id', self::ADMIN_A)->where('direction', 'output')->orderBy('id')->get()->toArray());
+        self::assertSame(0, DB::table('tax_codes')->where('administration_id', self::ADMIN_B)->count());
+    }
+
     public function test_second_run_preserves_rows_timestamps_names_and_inactive_state(): void
     {
         CarbonImmutable::setTestNow('2026-08-24 10:00:00');

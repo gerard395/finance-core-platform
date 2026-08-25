@@ -518,6 +518,13 @@ P3-003 atomische domestic posting met TaxPostings en Payable; P3-004 Web plus re
 De designblockers voor start van P3-001 zijn opgelost. PurchaseCreditInvoice, payments,
 attachments/OCR, FX-reporting en VAT/ICP blijven vervolgscope.
 
+P3-001 levert typed Purchasing-authorization en canonieke rollen zonder automatische
+membershiptoekenning, tenant-safe PurchasePostingConfiguration/readiness en een
+productmatige create-missing-only domestic Input-TaxCode-catalogusactie in Beheer →
+Instellingen. W4D blijft de productroute voor Purchase Journal en vereiste
+LedgerAccounts. Internationale/reverse-charge en gedeeltelijk/niet-aftrekbare VAT zijn
+niet gefaket en blijven vervolgscope. Daarmee kan P3-002 op de foundation starten.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

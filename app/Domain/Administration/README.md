@@ -1,5 +1,14 @@
 # Administration Domain
 
+## Purchase accounting setup
+
+`ADMINISTRATION.SETTINGS_UPDATE` beheert ook de Administration-owned
+PurchasePostingConfiguration en de expliciete domestic Input-TaxCode-catalogusactie.
+Journal- en LedgerAccount-masterdata blijven via het bestaande Accounting-beheer lopen;
+er worden geen synthetische Purchase Journal of accounts geprovisiond. De configuration
+vereist active same-tenant Purchase/Liability/Asset references en wordt bij latere
+deactivatie typed `InvalidReference` zonder automatische vervanging.
+
 Administration is de authoritative current bron voor Sales-documentpresentation. De
 interne Administrationnaam blijft onderscheiden van Organisation-handelsnaam en
 juridische naam. Structured documentadres, zakelijke contactdata, rekeninghouder en

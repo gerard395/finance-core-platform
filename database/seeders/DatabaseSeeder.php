@@ -18,6 +18,7 @@ class DatabaseSeeder extends Seeder
         $this->call(AdministrationAuthorizationSeeder::class);
         $this->call(RelationsAuthorizationSeeder::class);
         $this->call(SalesAuthorizationSeeder::class);
+        $this->call(PurchasingAuthorizationSeeder::class);
         $this->call(DeliveryOperationsAuthorizationSeeder::class);
 
         // User::factory(10)->create();

@@ -71,6 +71,12 @@ Route::put('/settings/administration', [AdministrationSettingsController::class,
 Route::put('/settings/administration/sales-posting', [AdministrationSettingsController::class, 'updateSalesPosting'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.sales-posting.update');
+Route::put('/settings/administration/purchase-posting', [AdministrationSettingsController::class, 'updatePurchasePosting'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.purchase-posting.update');
+Route::post('/settings/administration/purchase-tax-codes', [AdministrationSettingsController::class, 'provisionPurchaseTaxCodes'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.purchase-tax-codes.provision');
 Route::put('/settings/administration/document-delivery', [AdministrationSettingsController::class, 'updateDocumentSettings'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.document-delivery.update');
