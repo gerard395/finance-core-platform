@@ -417,6 +417,25 @@ daarna immutable Sales-documentrendering en auditable delivery voor Quotations,
 SalesInvoices en SalesCreditInvoices. Purchasing Web en W4C blijven afzonderlijke,
 geparkeerde vervolgcapabilities.
 
+W4E-000 kiest voor v1 een precieze grens: Quotation `Sent` betekent uitsluitend dat
+het geconfigureerde transport het bericht met het immutable artifact heeft
+geaccepteerd, niet dat de ontvanger het aantoonbaar heeft ontvangen. Businessstatus,
+PDF-artifact en append-only deliveryhistory blijven afzonderlijke waarheden. De batch
+gebruikt installation-level mailtransport, Administration-scoped senderidentity,
+private artifactstorage, een transactional outbox en queued delivery. Recipient-
+purpose, issuer/payment/sender-readiness, Chromiumdeployment en een operationele
+queueworker zijn verplichte predecessors binnen de batch.
+
+- W4E-000 – Sales Document Delivery Design
+- W4E-001 – Recipient, Issuer & Sender Readiness
+- W4E-002 – Immutable Sales Render Models, PDF & Artifact Persistence
+- W4E-003 – Durable Delivery Requests, Outbox & Mail Transport
+- W4E-004 – Quotation, Invoice & Credit Delivery Web Flows
+- W4E-005 – Sales Document Delivery Review & Regression
+
+Dutch VAT & ICP Reporting blijft tijdens W4E geparkeerd. W4E introduceert geen
+Purchasing Web, generiek documentmanagement, e-invoicing of ontvangstbewijsclaim.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
