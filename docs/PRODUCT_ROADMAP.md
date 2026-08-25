@@ -430,11 +430,19 @@ W4E-003 levert de duurzame DeliveryRequest/Attempt/outbox- en installation-mailt
 basis. Production worker supervision, health/readiness en operationele failed-job/
 OutcomeUnknown-resolutie blijven deploymentblockers vóór live Web-delivery in W4E-004.
 
+W4E-003B kiest een portable single-host production Docker Compose-runtime met database-
+queue, bewaakte worker/scheduler, durable MySQL/artifactvolumes en applicationheartbeat.
+W4E-003C legt vervolgens de operationele resolutionpermission vast; daarna hervat
+W4E-003A readiness/recovery. W4E-004 blijft tot voltooiing van W4E-003A geblokkeerd.
+
 - W4E-000 – Sales Document Delivery Design
 - W4E-001A – Quotation Document Address Semantics
 - W4E-001 – Recipient, Issuer & Sender Readiness
 - W4E-002 – Immutable Sales Render Models, PDF & Artifact Persistence
 - W4E-003 – Durable Delivery Requests, Outbox & Mail Transport
+- W4E-003B – Production Runtime & Worker Deployment Design
+- W4E-003C – Delivery Operations Authorization
+- W4E-003A – Delivery Operations Readiness
 - W4E-004 – Quotation, Invoice & Credit Delivery Web Flows
 - W4E-005 – Sales Document Delivery Review & Regression
 
