@@ -72,7 +72,7 @@ final class EloquentJournalPersistenceTest extends TestCase
         self::assertCount(1, $this->repository->findForAdministration($this->admin(self::A)));
         self::assertCount(1, $this->repository->findForAdministration($this->admin(self::B)));
 
-        $this->expectException(QueryException::class);
+        $this->expectException(DomainException::class);
         $this->repository->save($this->admin(self::A), $this->journal(3, 'GENERAL', JournalType::Bank, JournalStatus::Active));
     }
 

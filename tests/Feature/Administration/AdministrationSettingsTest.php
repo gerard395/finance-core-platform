@@ -98,7 +98,10 @@ final class AdministrationSettingsTest extends TestCase
         $this->login(self::ADMIN_A);
 
         $this->get('/settings/administration')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
         $this->put('/settings/administration', ['name' => 'Denied', 'description' => null])->assertForbidden();
+        $this->put('/settings/administration/sales-posting', [])->assertForbidden();
         $this->get('/app')->assertOk()->assertDontSee('href="'.route('settings.administration.edit').'"', false);
     }
 
@@ -119,8 +122,14 @@ final class AdministrationSettingsTest extends TestCase
         $this->login(self::ADMIN_A);
 
         foreach (['/app', '/relations', '/sales/quotations'] as $path) {
-            $this->get($path)->assertOk()->assertSee('href="'.route('settings.administration.edit').'"', false);
+            $this->get($path)->assertOk()
+                ->assertSee('href="'.route('settings.administration.edit').'"', false)
+                ->assertSee('href="'.route('settings.journals.index').'"', false)
+                ->assertSee('href="'.route('settings.ledger-accounts.index').'"', false);
         }
+        $this->get('/settings/administration')->assertOk()->assertSee('href="'.route('settings.journals.index').'"', false);
+        $this->get('/settings/journals')->assertOk()->assertSee('href="'.route('settings.ledger-accounts.index').'"', false);
+        $this->get('/settings/ledger-accounts')->assertOk()->assertSee('href="'.route('settings.journals.index').'"', false);
     }
 
     public function test_permission_is_tenant_scoped_and_revocation_applies_on_next_request(): void
@@ -128,6 +137,10 @@ final class AdministrationSettingsTest extends TestCase
         $this->provisionScenario(true);
         $this->login(self::ADMIN_B);
         $this->get('/settings/administration')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
 
         $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_A]);
         $this->get('/settings/administration')->assertOk();
@@ -138,6 +151,7 @@ final class AdministrationSettingsTest extends TestCase
         $assignment->deactivate();
         $roles->save($assignment);
         $this->get('/settings/administration')->assertForbidden();
+        $this->put('/settings/administration/sales-posting', [])->assertForbidden();
     }
 
     public function test_inactive_membership_is_denied_before_settings_authorization(): void
@@ -153,6 +167,9 @@ final class AdministrationSettingsTest extends TestCase
         $memberships->save($membership);
 
         $this->get('/settings/administration')->assertRedirect('/administrations/select');
+        $this->get('/settings/journals')->assertRedirect('/administrations/select');
+        $this->get('/settings/ledger-accounts')->assertRedirect('/administrations/select');
+        $this->put('/settings/administration/sales-posting', [])->assertRedirect('/administrations/select');
     }
 
     public function test_validation_is_safe_and_does_not_persist_invalid_input(): void

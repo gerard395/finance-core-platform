@@ -34,7 +34,7 @@ final class EloquentSalesPostingConfiguration implements SalesPostingConfigurati
 
         return $this->referencesAreValid($configuration)
             ? SalesPostingConfigurationReadResult::success($configuration)
-            : SalesPostingConfigurationReadResult::invalidReference();
+            : SalesPostingConfigurationReadResult::invalidReference($configuration);
     }
 
     public function save(SalesPostingConfiguration $configuration): SalesPostingConfigurationWriteResult

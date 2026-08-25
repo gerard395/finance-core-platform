@@ -21,9 +21,9 @@ final readonly class SalesPostingConfigurationReadResult
         return new self(SalesPostingConfigurationReadStatus::Missing, null);
     }
 
-    public static function invalidReference(): self
+    public static function invalidReference(SalesPostingConfiguration $configuration): self
     {
-        return new self(SalesPostingConfigurationReadStatus::InvalidReference, null);
+        return new self(SalesPostingConfigurationReadStatus::InvalidReference, $configuration);
     }
 
     public function status(): SalesPostingConfigurationReadStatus

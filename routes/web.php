@@ -3,6 +3,7 @@
 use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
+use App\Http\Controllers\AccountingMasterDataController;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -62,6 +63,26 @@ Route::get('/settings/administration', [AdministrationSettingsController::class,
 Route::put('/settings/administration', [AdministrationSettingsController::class, 'update'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.update');
+Route::put('/settings/administration/sales-posting', [AdministrationSettingsController::class, 'updateSalesPosting'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.sales-posting.update');
+
+Route::middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])->group(function (): void {
+    Route::get('/settings/journals', [AccountingMasterDataController::class, 'journals'])->name('settings.journals.index');
+    Route::get('/settings/journals/create', [AccountingMasterDataController::class, 'createJournal'])->name('settings.journals.create');
+    Route::post('/settings/journals', [AccountingMasterDataController::class, 'storeJournal'])->name('settings.journals.store');
+    Route::get('/settings/journals/{journal}/edit', [AccountingMasterDataController::class, 'editJournal'])->name('settings.journals.edit');
+    Route::put('/settings/journals/{journal}', [AccountingMasterDataController::class, 'updateJournal'])->name('settings.journals.update');
+    Route::post('/settings/journals/{journal}/activate', [AccountingMasterDataController::class, 'activateJournal'])->name('settings.journals.activate');
+    Route::post('/settings/journals/{journal}/deactivate', [AccountingMasterDataController::class, 'deactivateJournal'])->name('settings.journals.deactivate');
+    Route::get('/settings/ledger-accounts', [AccountingMasterDataController::class, 'accounts'])->name('settings.ledger-accounts.index');
+    Route::get('/settings/ledger-accounts/create', [AccountingMasterDataController::class, 'createAccount'])->name('settings.ledger-accounts.create');
+    Route::post('/settings/ledger-accounts', [AccountingMasterDataController::class, 'storeAccount'])->name('settings.ledger-accounts.store');
+    Route::get('/settings/ledger-accounts/{account}/edit', [AccountingMasterDataController::class, 'editAccount'])->name('settings.ledger-accounts.edit');
+    Route::put('/settings/ledger-accounts/{account}', [AccountingMasterDataController::class, 'updateAccount'])->name('settings.ledger-accounts.update');
+    Route::post('/settings/ledger-accounts/{account}/activate', [AccountingMasterDataController::class, 'activateAccount'])->name('settings.ledger-accounts.activate');
+    Route::post('/settings/ledger-accounts/{account}/deactivate', [AccountingMasterDataController::class, 'deactivateAccount'])->name('settings.ledger-accounts.deactivate');
+});
 
 Route::get('/relations', RelationIndexController::class)
     ->middleware([

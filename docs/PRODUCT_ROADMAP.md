@@ -368,7 +368,7 @@ VIES, PDF/e-mail en officiële VAT-/ICP-rapportage blijven afzonderlijke capabil
 Niet-EUR officiële reporting vereist eerst een expliciete FX→EUR-policy en historische
 koersfacts.
 
-### Toekomstige batch – Dutch VAT & ICP Reporting
+### Aanbevolen volgende batch W4C – Dutch VAT & ICP Reporting
 
 Na W4B-004B6 is de volgende fiscale batch een afzonderlijke reportingcapability voor reportingperioden,
 btw-aangifterubrieken, ICP-aggregatie per klant-btw-ID en goods/services,
@@ -376,7 +376,7 @@ creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export v
 daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
 rapportage leest immutable fiscale facts en herclassificeert facturen niet achteraf.
 
-### Batch W4D – Accounting Configuration Readiness
+### Batch W4D – Accounting Configuration (complete)
 
 W4D-000 levert een expliciete, transactionele en idempotente development-entrypoint
 waarmee uitsluitend een aangewezen Demo Administration een Sales Journal, Debiteuren-,
@@ -385,14 +385,22 @@ is demo-masterdata en nadrukkelijk geen production default chart of accounts.
 
 - W4D-000 – Development Accounting Master Data Provisioning
 - W4D-001 – Sales Posting Configuration Settings UI
+- W4D-002 – Journal & Ledger Account Master Data Management
+- W4D-003 – Review, Regression & Merge Readiness
 
 W4D-001 laat een Administration user via Beheer → Instellingen expliciet het Sales
 Journal en de Accounts Receivable-, Revenue- en Output VAT-rekening selecteren uit
 geldige masterdata van dezelfde Administration.
 
-Latere afzonderlijke productcapabilities beheren Journalmasterdata en het
-LedgerAccount-rekeningschema. W4D-001 kiest geen accounts heuristisch en maakt geen
-financiële defaults; het onderhoudt alleen expliciete tenant-owned references.
+W4D-001 kiest geen accounts heuristisch en maakt geen financiële defaults; het
+onderhoudt alleen expliciete tenant-owned references. W4D-002 levert de productmatige
+lifecycle voor tenant-owned Journal- en LedgerAccount-masterdata: list, create, rename,
+activate en deactivate zonder delete. Code en type blijven immutable; tenant-uniciteit
+en historische RESTRICT-references blijven leidend.
+
+W4D is compleet. Deferred blijven chart-of-accounts-templates, opening balances,
+handmatige JournalEntry-UI, Purchase accounting configuration, optimistic settings-
+locking en uitgebreide mutation-auditlogging.
 
 ## Releases
 

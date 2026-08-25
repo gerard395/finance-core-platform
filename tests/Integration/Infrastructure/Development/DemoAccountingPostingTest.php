@@ -4,9 +4,18 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Infrastructure\Development;
 
+use App\Application\Accounting\LedgerAccountStore;
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Sales\PostSalesInvoice;
 use App\Application\Sales\PostSalesInvoiceStatus;
+use App\Application\Sales\UpdateSalesPostingConfiguration;
+use App\Application\Sales\UpdateSalesPostingConfigurationResult;
+use App\Domain\Accounting\Entities\LedgerAccount;
+use App\Domain\Accounting\Enums\LedgerAccountStatus;
+use App\Domain\Accounting\Enums\LedgerAccountType;
+use App\Domain\Accounting\ValueObjects\LedgerAccountCode;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountName;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Identity\Uuid;
@@ -62,6 +71,42 @@ final class DemoAccountingPostingTest extends TestCase
         self::assertSame('reverse_charge_eu_service', $taxPosting->treatment);
         self::assertSame('eu_services', $taxPosting->vat_return_classification);
         self::assertSame('service', $taxPosting->icp_classification);
+    }
+
+    public function test_configuration_change_affects_only_new_postings_and_never_rewrites_history(): void
+    {
+        $masterData = $this->app->make(DevelopmentAccountingMasterDataProvisioner::class)->provision($this->administrationId());
+        $this->invoice(1, '21', 'domestic_standard', 'domestic_standard', 'none');
+        $first = $this->postInvoice(1);
+        self::assertSame(PostSalesInvoiceStatus::Success, $first->status());
+        $historicalLines = DB::table('journal_entry_lines')->where('journal_entry_id', $first->journalEntryId()?->toString())->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all();
+
+        $newRevenue = new LedgerAccount(
+            new LedgerAccountId(new Uuid($this->id(90))),
+            new LedgerAccountCode('8010'),
+            new LedgerAccountName('Nieuwe omzet'),
+            LedgerAccountType::Revenue,
+            LedgerAccountStatus::Active,
+        );
+        $this->app->make(LedgerAccountStore::class)->save($this->administrationId(), $newRevenue);
+        self::assertSame(
+            UpdateSalesPostingConfigurationResult::Saved,
+            $this->app->make(UpdateSalesPostingConfiguration::class)->execute(
+                $this->administrationId(),
+                $masterData->salesJournal->id(),
+                $masterData->accountsReceivable->id(),
+                $newRevenue->id(),
+                $masterData->outputVat->id(),
+            ),
+        );
+
+        $this->invoice(3, '21', 'domestic_standard', 'domestic_standard', 'none');
+        $second = $this->postInvoice(3);
+        self::assertSame(PostSalesInvoiceStatus::Success, $second->status());
+        self::assertSame($historicalLines, DB::table('journal_entry_lines')->where('journal_entry_id', $first->journalEntryId()?->toString())->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all());
+        $newLines = DB::table('journal_entry_lines')->where('journal_entry_id', $second->journalEntryId()?->toString())->get();
+        self::assertNotNull($newLines->firstWhere('ledger_account_id', $newRevenue->id()->toString()));
+        self::assertNull($newLines->firstWhere('ledger_account_id', $masterData->revenue->id()->toString()));
     }
 
     private function invoice(int $sequence, string $rate, string $treatment, string $vat, string $icp): void

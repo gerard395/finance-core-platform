@@ -16,6 +16,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use DomainException;
+use Illuminate\Database\QueryException;
 
 final class EloquentLedgerAccountRepository implements LedgerAccountReadRepository, LedgerAccountStore
 {
@@ -44,15 +45,19 @@ final class EloquentLedgerAccountRepository implements LedgerAccountReadReposito
             throw new DomainException('A ledger account identity belongs to another Administration.');
         }
 
-        LedgerAccountRecord::query()->updateOrCreate(
-            ['id' => $ledgerAccount->id()->toString()],
-            [
-                'administration_id' => $administrationId->toString(),
-                'code' => $ledgerAccount->code()->toString(),
-                'name' => $ledgerAccount->name()->toString(),
-                'type' => $ledgerAccount->type()->value,
-                'status' => $ledgerAccount->status()->value,
-            ],
-        );
+        try {
+            LedgerAccountRecord::query()->updateOrCreate(
+                ['id' => $ledgerAccount->id()->toString()],
+                [
+                    'administration_id' => $administrationId->toString(),
+                    'code' => $ledgerAccount->code()->toString(),
+                    'name' => $ledgerAccount->name()->toString(),
+                    'type' => $ledgerAccount->type()->value,
+                    'status' => $ledgerAccount->status()->value,
+                ],
+            );
+        } catch (QueryException $exception) {
+            throw new DomainException('Ledger account master data could not be persisted.', previous: $exception);
+        }
     }
 }

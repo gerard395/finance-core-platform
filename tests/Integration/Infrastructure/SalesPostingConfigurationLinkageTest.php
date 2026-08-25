@@ -110,7 +110,9 @@ final class SalesPostingConfigurationLinkageTest extends TestCase
         self::assertSame(SalesPostingConfigurationWriteResult::Saved, $this->configurations->save($this->configuration(self::A, 1)));
         JournalRecord::query()->whereKey($this->journalId(1))->update(['status' => 'inactive']);
 
-        self::assertSame(SalesPostingConfigurationReadStatus::InvalidReference, $this->configurations->read($this->administrationId(self::A))->status());
+        $result = $this->configurations->read($this->administrationId(self::A));
+        self::assertSame(SalesPostingConfigurationReadStatus::InvalidReference, $result->status());
+        self::assertNotNull($result->configuration());
     }
 
     public function test_database_rejects_cross_tenant_configuration_and_restricts_masterdata_deletes(): void
