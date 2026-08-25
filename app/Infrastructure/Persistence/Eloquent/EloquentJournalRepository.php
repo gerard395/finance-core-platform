@@ -16,6 +16,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
 use DomainException;
+use Illuminate\Database\QueryException;
 
 final class EloquentJournalRepository implements JournalReadRepository, JournalStore
 {
@@ -38,10 +39,14 @@ final class EloquentJournalRepository implements JournalReadRepository, JournalS
             throw new DomainException('A Journal identity belongs to another Administration.');
         }
 
-        JournalRecord::query()->updateOrCreate(
-            ['id' => $journal->id()->toString()],
-            ['administration_id' => $administrationId->toString(), 'code' => $journal->code()->value(), 'name' => $journal->name()->value(), 'type' => $journal->type()->value, 'status' => $journal->status()->value],
-        );
+        try {
+            JournalRecord::query()->updateOrCreate(
+                ['id' => $journal->id()->toString()],
+                ['administration_id' => $administrationId->toString(), 'code' => $journal->code()->value(), 'name' => $journal->name()->value(), 'type' => $journal->type()->value, 'status' => $journal->status()->value],
+            );
+        } catch (QueryException $exception) {
+            throw new DomainException('Journal master data could not be persisted.', previous: $exception);
+        }
     }
 
     private function hydrate(JournalRecord $record): Journal

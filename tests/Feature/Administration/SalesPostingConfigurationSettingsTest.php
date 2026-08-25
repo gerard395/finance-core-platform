@@ -6,6 +6,8 @@ namespace Tests\Feature\Administration;
 
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Sales\PostSalesInvoice;
+use App\Application\Sales\PostSalesInvoiceStatus;
 use App\Domain\Accounting\Entities\LedgerAccount;
 use App\Domain\Accounting\Enums\LedgerAccountStatus;
 use App\Domain\Accounting\Enums\LedgerAccountType;
@@ -25,6 +27,7 @@ use App\Domain\Identity\ValueObjects\DisplayName;
 use App\Domain\Identity\ValueObjects\EmailAddress;
 use App\Domain\Identity\ValueObjects\MembershipRoleId;
 use App\Domain\Identity\ValueObjects\UserId;
+use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
@@ -134,6 +137,85 @@ final class SalesPostingConfigurationSettingsTest extends TestCase
         ])->assertRedirect('/settings/administration')->assertSessionHasErrors('sales_posting');
 
         self::assertSame($before, (array) DB::table('sales_posting_configurations')->where('administration_id', self::A)->first());
+    }
+
+    public function test_accounting_masterdata_web_lifecycle_is_safe_tenant_scoped_and_escaped(): void
+    {
+        $this->post('/settings/journals', ['code' => 'verk', 'name' => '<script>Sales</script>', 'type' => 'sales', 'administration_id' => self::B])->assertRedirect(route('settings.journals.index'));
+        $journalId = (string) DB::table('journals')->where('administration_id', self::A)->value('id');
+        $this->get('/settings/journals')->assertOk()->assertSee('VERK')->assertSee('&lt;script&gt;Sales&lt;/script&gt;', false)->assertDontSee('<script>Sales</script>', false);
+        $this->post('/settings/journals', ['code' => 'VERK', 'name' => 'Duplicate', 'type' => 'general'])->assertSessionHasErrors('master_data');
+        $this->put('/settings/journals/'.$journalId, ['name' => 'Verkoop gewijzigd', 'code' => 'HACK', 'type' => 'general'])->assertRedirect(route('settings.journals.index'));
+        $this->post('/settings/journals/'.$journalId.'/deactivate')->assertRedirect(route('settings.journals.index'));
+        $this->assertDatabaseHas('journals', ['id' => $journalId, 'administration_id' => self::A, 'code' => 'VERK', 'name' => 'Verkoop gewijzigd', 'type' => 'sales', 'status' => 'inactive']);
+        $this->post('/settings/journals/'.$journalId.'/activate')->assertRedirect(route('settings.journals.index'));
+        $this->get('/settings/journals/not-a-uuid/edit')->assertNotFound();
+
+        $this->post('/settings/ledger-accounts', ['code' => '1300', 'name' => '<img src=x onerror=alert(1)>', 'type' => 'asset', 'administration_id' => self::B])->assertRedirect(route('settings.ledger-accounts.index'));
+        $accountId = (string) DB::table('ledger_accounts')->where('administration_id', self::A)->value('id');
+        $this->get('/settings/ledger-accounts')->assertOk()->assertSee('&lt;img src=x onerror=alert(1)&gt;', false)->assertDontSee('<img src=x onerror=alert(1)>', false);
+        $this->post('/settings/ledger-accounts', ['code' => '1300', 'name' => 'Duplicate', 'type' => 'revenue'])->assertSessionHasErrors('master_data');
+        $this->put('/settings/ledger-accounts/'.$accountId, ['name' => 'Debiteuren gewijzigd', 'code' => '9999', 'type' => 'revenue'])->assertRedirect(route('settings.ledger-accounts.index'));
+        $this->post('/settings/ledger-accounts/'.$accountId.'/deactivate')->assertRedirect(route('settings.ledger-accounts.index'));
+        $this->assertDatabaseHas('ledger_accounts', ['id' => $accountId, 'administration_id' => self::A, 'code' => '1300', 'name' => 'Debiteuren gewijzigd', 'type' => 'asset', 'status' => 'inactive']);
+        $this->get('/settings/ledger-accounts/not-a-uuid/edit')->assertNotFound();
+        self::assertSame(0, DB::table('journals')->where('administration_id', self::B)->count());
+        self::assertSame(0, DB::table('ledger_accounts')->where('administration_id', self::B)->count());
+    }
+
+    public function test_empty_administration_can_be_configured_and_post_domestic_and_eu_service_through_product_flow(): void
+    {
+        $this->post('/settings/journals', ['code' => 'SALE', 'name' => 'Sales journal', 'type' => 'sales'])->assertRedirect(route('settings.journals.index'));
+        foreach ([['1300', 'Debiteuren', 'asset'], ['8000', 'Omzet', 'revenue'], ['1600', 'Af te dragen btw', 'liability']] as [$code, $name, $type]) {
+            $this->post('/settings/ledger-accounts', ['code' => $code, 'name' => $name, 'type' => $type])->assertRedirect(route('settings.ledger-accounts.index'));
+        }
+        $journal = (string) DB::table('journals')->where('administration_id', self::A)->where('code', 'SALE')->value('id');
+        $accounts = DB::table('ledger_accounts')->where('administration_id', self::A)->pluck('id', 'code');
+        $this->get('/settings/administration')->assertOk()->assertSee('SALE – Sales journal')->assertSee('1300 – Debiteuren')->assertSee('8000 – Omzet')->assertSee('1600 – Af te dragen btw');
+        $this->put('/settings/administration/sales-posting', [
+            'sales_journal_id' => $journal,
+            'accounts_receivable_ledger_account_id' => $accounts['1300'],
+            'revenue_ledger_account_id' => $accounts['8000'],
+            'output_vat_ledger_account_id' => $accounts['1600'],
+        ])->assertRedirect(route('settings.administration.edit'));
+
+        $this->postingFixtures();
+        $domestic = $this->app->make(PostSalesInvoice::class)->execute($this->administration(self::A), new SalesInvoiceId(new Uuid($this->invoiceId(1))));
+        $eu = $this->app->make(PostSalesInvoice::class)->execute($this->administration(self::A), new SalesInvoiceId(new Uuid($this->invoiceId(2))));
+        self::assertSame(PostSalesInvoiceStatus::Success, $domestic->status());
+        self::assertSame(PostSalesInvoiceStatus::Success, $eu->status());
+        self::assertSame(3, DB::table('journal_entry_lines')->where('journal_entry_id', $domestic->journalEntryId()?->toString())->count());
+        self::assertSame(2, DB::table('journal_entry_lines')->where('journal_entry_id', $eu->journalEntryId()?->toString())->count());
+        self::assertSame('0', DB::table('tax_postings')->where('source_document_id', $this->invoiceId(2))->value('tax_amount'));
+        $historicalLines = DB::table('journal_entry_lines')->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all();
+        $this->put('/settings/journals/'.$journal, ['name' => 'Renamed sales journal'])->assertRedirect(route('settings.journals.index'));
+        $this->put('/settings/ledger-accounts/'.$accounts['8000'], ['name' => 'Renamed revenue'])->assertRedirect(route('settings.ledger-accounts.index'));
+        self::assertSame($historicalLines, DB::table('journal_entry_lines')->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all());
+    }
+
+    private function postingFixtures(): void
+    {
+        $now = now();
+        DB::table('relations')->insert(['id' => $this->fixtureId(20), 'administration_id' => self::A, 'code' => 'REL1', 'display_name' => 'Customer', 'vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
+        DB::table('customers')->insert(['id' => $this->fixtureId(30), 'administration_id' => self::A, 'relation_id' => $this->fixtureId(20), 'customer_number' => 'C000001', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
+        DB::table('tax_codes')->insert([
+            ['id' => $this->fixtureId(71), 'administration_id' => self::A, 'code' => 'BTW21', 'name' => 'BTW 21%', 'rate' => '21', 'direction' => 'output', 'status' => 'active', 'treatment' => 'domestic_standard', 'vat_return_classification' => 'domestic_standard', 'icp_classification' => 'none', 'created_at' => $now, 'updated_at' => $now],
+            ['id' => $this->fixtureId(72), 'administration_id' => self::A, 'code' => 'EUDIENST', 'name' => 'EU service', 'rate' => '0', 'direction' => 'output', 'status' => 'active', 'treatment' => 'reverse_charge_eu_service', 'vat_return_classification' => 'eu_services', 'icp_classification' => 'service', 'created_at' => $now, 'updated_at' => $now],
+        ]);
+        foreach ([1 => ['21', 71, 'domestic_standard', 'domestic_standard', 'none'], 2 => ['0', 72, 'reverse_charge_eu_service', 'eu_services', 'service']] as $sequence => [$rate, $tax, $treatment, $vat, $icp]) {
+            DB::table('sales_invoices')->insert(['id' => $this->invoiceId($sequence), 'administration_id' => self::A, 'sales_invoice_number' => 'F'.sprintf('%06d', $sequence), 'customer_id' => $this->fixtureId(30), 'customer_relation_id_snapshot' => $this->fixtureId(20), 'customer_number_snapshot' => 'C000001', 'customer_name_snapshot' => 'Customer', 'invoice_address_id_snapshot' => $this->fixtureId(40), 'invoice_address_type_snapshot' => 'invoice', 'invoice_address_line_1_snapshot' => 'Street 1', 'invoice_address_line_2_snapshot' => null, 'invoice_postal_code_snapshot' => '1000AA', 'invoice_city_snapshot' => 'Amsterdam', 'invoice_country_code_snapshot' => 'NL', 'customer_vat_id_snapshot' => 'DE123456789', 'customer_fiscal_jurisdiction_snapshot' => 'DE', 'supplier_vat_id_snapshot' => 'NL123456789B01', 'supplier_fiscal_jurisdiction_snapshot' => 'NL', 'supply_date' => '2026-08-25', 'source_order_id' => null, 'currency' => 'EUR', 'invoice_date' => '2026-08-25', 'due_date' => '2026-09-24', 'status' => 'finalized', 'created_at' => $now, 'updated_at' => $now]);
+            DB::table('sales_invoice_lines')->insert(['id' => $this->fixtureId(60 + $sequence), 'administration_id' => self::A, 'sales_invoice_id' => $this->invoiceId($sequence), 'description' => 'Line', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'tax_code_id_snapshot' => $this->fixtureId($tax), 'tax_code_snapshot' => $sequence === 1 ? 'BTW21' : 'EUDIENST', 'tax_name_snapshot' => 'Tax', 'tax_rate_snapshot' => $rate, 'tax_direction_snapshot' => 'output', 'tax_treatment_snapshot' => $treatment, 'vat_return_classification_snapshot' => $vat, 'icp_classification_snapshot' => $icp, 'created_at' => $now, 'updated_at' => $now]);
+        }
+    }
+
+    private function invoiceId(int $sequence): string
+    {
+        return sprintf('75000000-0000-4000-8000-%012d', $sequence);
+    }
+
+    private function fixtureId(int $sequence): string
+    {
+        return sprintf('74000000-0000-4000-8000-%012d', $sequence);
     }
 
     private function identity(): void

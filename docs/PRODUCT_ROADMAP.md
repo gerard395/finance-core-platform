@@ -395,7 +395,9 @@ Latere afzonderlijke productcapabilities beheren Journalmasterdata en het
 LedgerAccount-rekeningschema. W4D-001 kiest geen accounts heuristisch en maakt geen
 financiële defaults; het onderhoudt alleen expliciete tenant-owned references.
 W4D-002 levert daarna de ontbrekende productmatige lifecycle voor tenant-owned Journal-
-en LedgerAccount-masterdata; development provisioning is daarvoor geen workaround.
+De minimale lifecycle omvat list/create/rename/activate/deactivate zonder delete,
+openingsbalans, template of boekings-UI. Code en type blijven immutable; tenant-
+uniciteit en historische RESTRICT-references blijven leidend.
 
 ## Releases
 

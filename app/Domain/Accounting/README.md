@@ -45,7 +45,7 @@ Een LedgerAccount bevat geen saldo. Een grootboeksaldo wordt later berekend uit 
 
 ## Uniciteit van rekeningcodes
 
-De Aggregate Root kan uitsluitend zijn eigen toestand bewaken en kent andere LedgerAccounts niet. Uniciteit van rekeningcodes wordt daarom later buiten het aggregate afgedwongen, op een grens waar de volledige verzameling kan worden geraadpleegd.
+De Aggregate Root kan uitsluitend zijn eigen toestand bewaken en kent andere LedgerAccounts niet. Uniciteit van Journal- en LedgerAccount-codes wordt daarom tenant-scoped in Application gecontroleerd en definitief door database-uniciteit op `(administration_id, code)` afgedwongen.
 
 ## Grenzen
 
@@ -56,3 +56,13 @@ De Aggregate Root kan uitsluitend zijn eigen toestand bewaken en kent andere Led
 - `PostingEngine` verwerkt financiële mutaties en mag LedgerAccount niet verantwoordelijk maken voor boekingsregels.
 - Accounting bevat geen opgeslagen grootboeksaldi, btw-logica, repositories, database- of Laravel-afhankelijkheden.
 - Banking muteert OpenItem niet. Application orkestreert een settlement pas na de succesvolle financiële posting en levert de werkelijke geposte JournalEntry als bron aan.
+## Productmatig masterdatabeheer
+
+Journal en LedgerAccount zijn Administration-owned masterdata. Identity, code en type
+zijn immutable; naam en status wijzigen uitsluitend expliciet. Active records kunnen
+voor nieuwe configuratie en posting worden gebruikt. Inactive records blijven bestaan
+voor historische references en worden nooit hard verwijderd.
+
+De product-UI maakt geen rekeningschematemplate, openingsbalans of automatische mapping.
+Deactivation van gebruikte configurationmasterdata maakt readiness expliciet ongeldig;
+er is geen silent replacement. Mutation-auditlogging blijft een cross-cutting vervolg.

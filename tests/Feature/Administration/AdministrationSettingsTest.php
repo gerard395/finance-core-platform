@@ -98,6 +98,8 @@ final class AdministrationSettingsTest extends TestCase
         $this->login(self::ADMIN_A);
 
         $this->get('/settings/administration')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
         $this->put('/settings/administration', ['name' => 'Denied', 'description' => null])->assertForbidden();
         $this->put('/settings/administration/sales-posting', [])->assertForbidden();
         $this->get('/app')->assertOk()->assertDontSee('href="'.route('settings.administration.edit').'"', false);
@@ -129,6 +131,10 @@ final class AdministrationSettingsTest extends TestCase
         $this->provisionScenario(true);
         $this->login(self::ADMIN_B);
         $this->get('/settings/administration')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
+        $this->get('/settings/journals')->assertForbidden();
+        $this->get('/settings/ledger-accounts')->assertForbidden();
 
         $this->withSession([EnsureActiveAdministration::SESSION_KEY => self::ADMIN_A]);
         $this->get('/settings/administration')->assertOk();
@@ -155,6 +161,8 @@ final class AdministrationSettingsTest extends TestCase
         $memberships->save($membership);
 
         $this->get('/settings/administration')->assertRedirect('/administrations/select');
+        $this->get('/settings/journals')->assertRedirect('/administrations/select');
+        $this->get('/settings/ledger-accounts')->assertRedirect('/administrations/select');
         $this->put('/settings/administration/sales-posting', [])->assertRedirect('/administrations/select');
     }
 

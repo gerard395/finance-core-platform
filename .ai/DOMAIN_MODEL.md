@@ -457,6 +457,13 @@ Authentication en de actieve websessie zijn Presentation/Infrastructure-verantwo
 
 Een administration-scoped Application-use-case mag alleen worden uitgevoerd wanneer de geauthenticeerde gebruiker op het moment van de request een actief en geldig `AdministrationMembership` voor die Administration heeft en via actieve rol- en permissiontoekenningen de vereiste businessautorisatie bezit. Een in de sessie, route, query of form opgenomen `AdministrationId` is uitsluitend invoer en nooit zelfstandig bewijs van toegang. De Presentation-laag selecteert context en formatteert uitkomsten, maar muteert Domain uitsluitend via Application-use-cases. Een toekomstig systeembeheerpad moet expliciet geautoriseerd en geaudit zijn en blijft onderworpen aan dezelfde Administration-afbakening; globale impliciete tenant-bypass bestaat niet.
 
+Accounting-masterdata is Administration-owned. `Journal` en `LedgerAccount` hebben
+immutable identity, code en type; naam en Active/Inactive-status zijn expliciet mutable.
+Lifecyclebeheer gebruikt geen hard delete. Gedeactiveerde masterdata blijft historische
+JournalEntries ondersteunen maar is niet beschikbaar voor nieuwe configuratie/posting.
+Een bestaande configuration wordt nooit automatisch vervangen en kan daardoor typed
+`InvalidReference` worden totdat een volledige geldige mapping wordt opgeslagen.
+
 Het Laravel-authaccount is een Infrastructure-authenticatierecord en blijft onderscheiden van de zakelijke Domain `User`. Ieder authaccount verwijst in v1 via exact één verplichte, unieke UUID-reference naar één `UserId`; e-mail is geen identiteitskoppeling. Passwordhashes, remember-tokens en resetgegevens blijven buiten Domain. `AdministrationMembership` blijft eigendom van Identity en mag de immutable `AdministrationId` kennen; Administration krijgt geen dependency op Identity. Rollen en permissions zijn systeemwijde definities, terwijl `MembershipRole` hun toekenning per AdministrationMembership afbakent. Directe User-permissions bestaan niet in v1.
 
 W1 concretiseert deze grens met een per request opnieuw gevalideerde actieve Administration-context. Persistence kent tenantownership en samengestelde same-tenant constraints waar het Domain zelf geen AdministrationId draagt. Het read-only dashboard introduceert geen nieuwe financiële waarheid: omzet komt uit TrialBalance/ProfitAndLoss, openstaande debiteuren en crediteuren uit het immutable `OpenItemType` plus OpenItemsReport, en de BTW-positie uit VatOverview. Customer/Supplier-overlap staat los van de financiële OpenItem-classificatie. Presentation formatteert uitsluitend typed Money en verricht geen financiële berekening.
