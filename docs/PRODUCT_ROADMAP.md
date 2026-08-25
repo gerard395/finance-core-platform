@@ -103,6 +103,20 @@ De eerste Banking-domeiniteratie is voltooid in B1-000 tot en met B1-004. Bankin
 
 OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluitend `PostingEngine` maakt JournalEntries. UI, bankimport, reconciliation, PSD2, Laravel, databases en infrastructuur vallen buiten de Banking Foundation.
 
+B2-000 lijnt de volgende productiteratie uit. Manual BankTransaction wordt de enige
+postingbron voor één CustomerReceipt of SupplierPayment met meerdere same-Relation
+OpenItem-allocations. Signed EUR Money onderscheidt ontvangst/uitgave; Draft → Finalized
+→ Posted bevriest de intent voordat één outer transaction via PostingEngine de Bank
+JournalEntry, Applied settlements, linkage en Posted-status bewaart. Partial en meerdere
+payments zijn toegestaan; allocation sum moet exact de absolute bankwaarde zijn.
+
+B2-001 voegt typed authorization en productmatig onderhoudbare operationele
+AdministrationBankAccounts plus per-rekening BankingPostingConfiguration toe. Die mapt
+expliciet naar active Bank Journal en active Asset Bank LedgerAccount. Relation-
+bankrekeningen en organisation-IBAN zijn geen Administration-cashaccount; historische
+AR/AP-control-accounttruth hoort op het OpenItem. Bankimport, CAMT/MT940, PSD2/API,
+reconciliation, FX, unallocated cash en overpayment/suspense blijven vervolgscope.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

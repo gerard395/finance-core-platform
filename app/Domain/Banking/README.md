@@ -36,6 +36,33 @@ De frameworkonafhankelijke domain service Matching telt bestaande Payment-alloca
 - PostingRequest en PostingEngine zijn Accounting-verantwoordelijkheden en vallen buiten Banking.
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
+## B2 manual payment alignment
+
+B2 behoudt BankTransaction als Aggregate Root en enige postingbron. Zij representeert
+een handmatige geldbeweging op een Administration-owned operationele bankrekening met
+signed EUR Money: positief is ontvangst, negatief is uitgave. Exact één Payment-child
+interpreteert die beweging als CustomerReceipt of SupplierPayment en bezit één of meer
+positieve allocations naar compatible OpenItems van dezelfde Relation. Payment heeft
+geen zelfstandig statusveld.
+
+De toekomstige lifecycle is Draft → Finalized → Posted en Draft → Cancelled. Finalize
+bevriest movement, Payment en allocations; uitsluitend een Application-orchestrator mag
+via PostingEngine atomair de Bank JournalEntry, Applied OpenItemSettlements, linkage en
+Posted-status bewaren. TransactionDate en expliciete PostingDate blijven afzonderlijk.
+
+Relation BankAccount blijft counterparty-masterdata. B2 introduceert een eigen
+AdministrationBankAccount-identity en per rekening een expliciete
+BankingPostingConfiguration naar active Bank Journal en active Asset Bank account.
+OpenItems dragen voor nieuwe facts hun historische AR/AP control-account-ID; geen
+actuele configuratie of rekeningheuristiek reconstrueert die waarheid.
+
+`OpenItemSettlement` is cashrealisatie; `OpenItemMatch` blijft uitsluitend een
+opposite-side documentbalance-match. Partial en meerdere payments en één payment over
+meerdere same-Relation OpenItems zijn toegestaan. Allocation sum moet exact de absolute
+bankwaarde zijn; unallocated, overpayment/suspense, FX, import en reconciliation blijven
+deferred.
+
 ## Capabilitystatus
 
-Banking Foundation first domain iteration completed.
+Banking Foundation first domain iteration completed; B2-000 manual payment contracts
+aligned, persistence starts in B2-001/B2-002.

@@ -396,6 +396,32 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 
 **Capabilitystatus:** Banking Foundation first domain iteration completed.
 
+### B2 manual Bank Payments
+
+B2 definieert BankTransaction als het Administration-owned factual bankmovement en de
+enige aggregate/use-casebron voor financiële posting. Signed EUR Money is positief voor
+CustomerReceipt en negatief voor SupplierPayment. Exact één Payment-child per manual
+BankTransaction bezit meerdere positieve allocations naar same-Administration,
+same-Relation, same-type compatible OpenItems; Payment heeft geen zelfstandige lifecycle.
+
+De lifecycle wordt Draft → Finalized → Posted en Draft → Cancelled. Finalized bevriest
+movement/interpretatie/allocations; één outer Application-transaction lockt targets op
+gesorteerde OpenItemId, maakt via PostingEngine de Bank JournalEntry, append-only Applied
+settlements en postinglinkage en markeert pas daarna Posted. OpenItem originalAmount
+blijft immutable. Settlement is cashrealisatie; Match blijft een opposite-side
+documentbalanceverbinding.
+
+Een operationele AdministrationBankAccount is niet de Relation BankAccount en niet het
+organisation-IBAN voor documentdisplay. Per AdministrationBankAccount mapt
+BankingPostingConfiguration expliciet naar active Bank Journal en active Asset Bank
+LedgerAccount. AR/AP is immutable `controlLedgerAccountId`-openingstruth van het
+OpenItem; Banking herleest geen actuele Sales/Purchase-config en gebruikt geen
+accountheuristiek.
+
+B2 V1 is EUR-only, vereist volledige allocation van het absolute bankbedrag en kent
+geen unallocated remainder, overpayment/suspense, import, reconciliation of FX.
+TransactionDate en expliciete PostingDate zijn verschillende feiten.
+
 ### Integrated Financial Flow – I1
 
 #### Flow
