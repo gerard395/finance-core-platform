@@ -133,3 +133,7 @@ De database bewaakt tenant-unieke quotationnummers en same-tenant Customer- en l
 Generic `CreateSalesInvoice` maakt uitsluitend directe facturen, heeft geen source Order-input en bewaart `sourceOrderId = null`. Persistence en `SalesInvoice::reconstitute()` behouden wel een nullable feitelijke source voor de toekomstige afzonderlijke Order-conversieflow.
 
 Customer, expliciet geselecteerde Invoice address en Output-taxdata zijn immutable snapshots. Draft header/line-mutaties, finalize en cancel gebruiken uitsluitend de Domain-lifecycle; exacte net/tax/gross-bedragen gebruiken de bestaande Fiscal-berekening zonder Infrastructure-aritmetiek of rounding. Posted/Paid zijn hier alleen feitelijke persistence/read-statussen: transactionele posting en settlement-owned Paid-commands blijven buiten deze grens.
+Sales-documentdelivery bewaart een immutable request met recipient/sender/mailcontent-
+snapshots en exact één artifact. Fysieke pogingen zijn append-only; een transactionele
+outbox en databaseclaim begrenzen concurrency. `AcceptedByTransport` is geen claim van
+aflevering. `OutcomeUnknown` wordt nooit blind automatisch opnieuw verzonden.

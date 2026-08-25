@@ -426,6 +426,10 @@ private artifactstorage, een transactional outbox en queued delivery. Recipient-
 purpose, issuer/payment/sender-readiness, Chromiumdeployment en een operationele
 queueworker zijn verplichte predecessors binnen de batch.
 
+W4E-003 levert de duurzame DeliveryRequest/Attempt/outbox- en installation-mailtransport-
+basis. Production worker supervision, health/readiness en operationele failed-job/
+OutcomeUnknown-resolutie blijven deploymentblockers vóór live Web-delivery in W4E-004.
+
 - W4E-000 – Sales Document Delivery Design
 - W4E-001A – Quotation Document Address Semantics
 - W4E-001 – Recipient, Issuer & Sender Readiness
