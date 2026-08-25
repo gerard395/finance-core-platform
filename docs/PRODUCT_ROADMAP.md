@@ -368,13 +368,16 @@ VIES, PDF/e-mail en officiële VAT-/ICP-rapportage blijven afzonderlijke capabil
 Niet-EUR officiële reporting vereist eerst een expliciete FX→EUR-policy en historische
 koersfacts.
 
-### Aanbevolen volgende batch W4C – Dutch VAT & ICP Reporting
+### Geparkeerde batch W4C – Dutch VAT & ICP Reporting
 
-Na W4B-004B6 is de volgende fiscale batch een afzonderlijke reportingcapability voor reportingperioden,
+Dutch VAT & ICP Reporting is na PROJECT-GAP-001 bewust geparkeerd. De immutable
+TaxPostings dragen de benodigde VAT-/ICP-classificaties en vormen een betrouwbare
+toekomstige basis, maar officiële reporting vereist nog reportingperioden,
 btw-aangifterubrieken, ICP-aggregatie per klant-btw-ID en goods/services,
-creditcorrecties, VAT/ICP-reconciliatie, audit-drill-down en validatie. Export volgt
-daarna; elektronische indiening is een latere afzonderlijke compliancegrens. Alle
-rapportage leest immutable fiscale facts en herclassificeert facturen niet achteraf.
+creditcorrecties, rounding, reconciliatie, audit-drill-down en validatie. Niet-EUR
+reporting vereist bovendien eerst historische FX→EUR-policy en koersfacts. Export en
+elektronische indiening blijven latere afzonderlijke compliancegrenzen; rapportage
+mag bestaande fiscale facts nooit achteraf herclassificeren.
 
 ### Batch W4D – Accounting Configuration (complete)
 
@@ -401,6 +404,18 @@ en historische RESTRICT-references blijven leidend.
 W4D is compleet. Deferred blijven chart-of-accounts-templates, opening balances,
 handmatige JournalEntry-UI, Purchase accounting configuration, optimistic settings-
 locking en uitgebreide mutation-auditlogging.
+
+### Aanbevolen volgende batch W4E – Sales Document Delivery (PDF & Email)
+
+PROJECT-GAP-001 bevestigt dat de commerciële en financiële Sales-kern operationeel is,
+maar dat **Offerte verzenden** momenteel uitsluitend de lifecycle-overgang naar
+`Sent` uitvoert. Er bestaan nog geen PDF-rendering, artifactopslag, e-maildelivery,
+deliveryhistorie of retries. Relation Contacts hebben bruikbare e-maildata maar geen
+primary/purposebeleid; Administration heeft evenmin complete tenant-owned issuer- en
+sender-readiness. W4E ontwerpt deze semantics en predecessors expliciet en levert
+daarna immutable Sales-documentrendering en auditable delivery voor Quotations,
+SalesInvoices en SalesCreditInvoices. Purchasing Web en W4C blijven afzonderlijke,
+geparkeerde vervolgcapabilities.
 
 ## Releases
 
