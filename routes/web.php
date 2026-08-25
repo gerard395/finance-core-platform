@@ -16,6 +16,7 @@ use App\Http\Controllers\Relations\RelationCreateController;
 use App\Http\Controllers\Relations\RelationEditController;
 use App\Http\Controllers\Relations\RelationIndexController;
 use App\Http\Controllers\Relations\RelationShowController;
+use App\Http\Controllers\Relations\SalesDocumentRecipientPreferenceController;
 use App\Http\Controllers\Sales\OrderController;
 use App\Http\Controllers\Sales\OrderLifecycleController;
 use App\Http\Controllers\Sales\OrderLineController;
@@ -66,6 +67,9 @@ Route::put('/settings/administration', [AdministrationSettingsController::class,
 Route::put('/settings/administration/sales-posting', [AdministrationSettingsController::class, 'updateSalesPosting'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.sales-posting.update');
+Route::put('/settings/administration/document-delivery', [AdministrationSettingsController::class, 'updateDocumentSettings'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.document-delivery.update');
 
 Route::middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])->group(function (): void {
     Route::get('/settings/journals', [AccountingMasterDataController::class, 'journals'])->name('settings.journals.index');
@@ -159,6 +163,12 @@ Route::post('/relations/{relation}/contacts/{contact}/activate', [ContactControl
 Route::delete('/relations/{relation}/contacts/{contact}', [ContactController::class, 'deactivate'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])
     ->name('relations.contacts.deactivate');
+Route::post('/relations/{relation}/document-recipients', [SalesDocumentRecipientPreferenceController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])
+    ->name('relations.document-recipients.store');
+Route::delete('/relations/{relation}/document-recipients/{purpose}', [SalesDocumentRecipientPreferenceController::class, 'destroy'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])
+    ->name('relations.document-recipients.destroy');
 
 Route::get('/relations/{relation}/addresses/create', [AddressController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.create');
 Route::post('/relations/{relation}/addresses', [AddressController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureRelationsPermission::using(RelationsPermission::Update)])->name('relations.addresses.store');

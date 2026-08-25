@@ -70,6 +70,12 @@ actief same-Relation adres met doel `Quotation` als immutable documentsnapshot v
 Andere adresdoelen en adresvolgorde zijn geen fallback. Bestaande legacy Quotations
 zonder deze snapshot blijven hydrateerbaar; Draft-editing ververst de snapshot niet.
 
+Relation bewaart per Sales-documentpurpose maximaal één preferred Contact-recipient via
+same-tenant persistence. Administration is eigenaar van current issuerpresentation,
+paymentdata en afzonderlijke mail-senderidentity. Artifactgeneratie snapshot deze
+current presentationdata; SalesInvoice/Credit historical fiscal snapshots worden nooit
+door current Administration-data vervangen.
+
 #### Workflows
 
 Een Quotation doorloopt een van de volgende paden:

@@ -28,6 +28,12 @@ Relation-gegevens zoals naam, adres en contactpersonen worden niet in Customer g
 
 Customer en Supplier-classificaties beheren geen eigen Contacts en dupliceren geen contactgegevens. Alleen ContactId is uniek; gelijke namen, e-mailadressen en telefoonnummers zijn bewust toegestaan zolang geen expliciete businessregel anders bepaalt.
 
+Sales-documentrecipientvoorkeuren zijn Relation-owned Application/persistence-masterdata
+en verwijzen per exact purpose (`Quotation`, `SalesInvoice`, `SalesCreditInvoice`) naar
+één Contact van dezelfde Relation en Administration. Contact blijft eigenaar van exact
+één nullable typed e-mailadres. Een inactive of email-loze preferred Contact maakt de
+voorkeur ongeldig maar wist of vervangt haar niet; er bestaat geen eerste-contactfallback.
+
 ## Supplier
 
 `Supplier` classificeert een bestaande Relation als leverancier. De classificatie bevat uitsluitend een eigen onveranderlijke identiteit, de onveranderlijke RelationId, een onveranderlijk SupplierNumber en een idempotent wijzigbare actieve status.

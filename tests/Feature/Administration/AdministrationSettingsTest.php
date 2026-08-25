@@ -105,6 +105,29 @@ final class AdministrationSettingsTest extends TestCase
         $this->get('/app')->assertOk()->assertDontSee('href="'.route('settings.administration.edit').'"', false);
     }
 
+    public function test_document_payment_and_sender_settings_are_tenant_scoped_validated_and_escaped(): void
+    {
+        $this->provisionScenario(true);
+        $this->login(self::ADMIN_A);
+        $this->get('/settings/administration')->assertOk()->assertSeeText('Documentgegevens')->assertSeeText('Betalingsgegevens')->assertSeeText('E-mailafzender')->assertSeeText('Verkoopboekingen');
+
+        $this->put(route('settings.administration.document-delivery.update'), [
+            'display_name' => 'Trade & Co', 'legal_name' => '<Legal B.V.>', 'registration_number' => '12345678',
+            'address_line_1' => 'Main street 1', 'address_line_2' => '', 'postal_code' => '1234 AB', 'city' => 'Amsterdam', 'country_code' => 'nl',
+            'business_email' => 'office@example.com', 'business_phone' => '+31201234567', 'website' => 'https://example.com',
+            'account_holder' => 'Legal B.V.', 'iban' => 'nl91 abna 0417 1643 00', 'bic' => 'abnanl2a',
+            'sender_name' => 'Finance Team', 'sender_email' => 'finance@example.com', 'reply_to_email' => 'reply@example.com',
+            'administration_id' => self::ADMIN_B,
+        ])->assertRedirect(route('settings.administration.edit'));
+
+        $this->assertDatabaseHas('administrations', ['id' => self::ADMIN_A, 'organisation_display_name' => 'Trade & Co', 'organisation_legal_name' => '<Legal B.V.>', 'organisation_chamber_of_commerce_number' => '12345678', 'document_address_line_1' => 'Main street 1', 'document_country_code' => 'NL', 'organisation_iban' => 'NL91ABNA0417164300', 'organisation_bic' => 'ABNANL2A', 'document_account_holder' => 'Legal B.V.', 'document_sender_email' => 'finance@example.com']);
+        $this->assertDatabaseMissing('administrations', ['id' => self::ADMIN_B, 'document_sender_email' => 'finance@example.com']);
+        $this->get('/settings/administration')->assertOk()->assertSee('&lt;Legal B.V.&gt;', false)->assertDontSee('<Legal B.V.>', false);
+
+        $this->from('/settings/administration')->put(route('settings.administration.document-delivery.update'), ['sender_email' => 'bad', 'reply_to_email' => 'bad', 'iban' => 'bad'])->assertSessionHasErrors(['sender_email', 'reply_to_email', 'iban']);
+        $this->assertDatabaseHas('administrations', ['id' => self::ADMIN_A, 'document_sender_email' => 'finance@example.com', 'organisation_iban' => 'NL91ABNA0417164300']);
+    }
+
     public function test_settings_navigation_is_request_scoped_on_dashboard_relations_and_sales_pages(): void
     {
         $this->provisionScenario(true);

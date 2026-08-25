@@ -8,16 +8,26 @@ use App\Application\Administration\AdministrationSettingsWriteResult;
 use App\Application\Administration\GetAdministrationSettings;
 use App\Application\Administration\UpdateAdministrationSettings;
 use App\Application\Sales\GetSalesPostingConfigurationSettings;
+use App\Application\Sales\SalesDocumentMasterData;
+use App\Application\Sales\SalesDocumentMasterDataStore;
+use App\Application\Sales\UpdateSalesDocumentMasterData;
 use App\Application\Sales\UpdateSalesPostingConfiguration;
 use App\Application\Sales\UpdateSalesPostingConfigurationResult;
 use App\Domain\Accounting\ValueObjects\JournalId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\Bic;
+use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\CountryCode;
+use App\Domain\Relations\ValueObjects\EmailAddress;
+use App\Domain\Relations\ValueObjects\Iban;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Shared\Fiscal\VatIdentificationNumber;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
 use App\Http\Requests\Administration\UpdateAdministrationSettingsRequest;
+use App\Http\Requests\Administration\UpdateSalesDocumentMasterDataRequest;
 use App\Http\Requests\Administration\UpdateSalesPostingConfigurationRequest;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -31,6 +41,8 @@ final readonly class AdministrationSettingsController
         private UpdateAdministrationSettings $updateSettings,
         private GetSalesPostingConfigurationSettings $getSalesPostingSettings,
         private UpdateSalesPostingConfiguration $updateSalesPostingSettings,
+        private SalesDocumentMasterDataStore $documentSettings,
+        private UpdateSalesDocumentMasterData $updateDocumentSettings,
     ) {}
 
     public function edit(Request $request): View
@@ -44,6 +56,7 @@ final readonly class AdministrationSettingsController
             'administrationContext' => $context,
             'settings' => $settings,
             'salesPostingSettings' => $this->getSalesPostingSettings->execute($context->administration->id()),
+            'documentSettings' => $this->documentSettings->readMasterData($context->administration->id()),
         ]);
     }
 
@@ -92,6 +105,37 @@ final readonly class AdministrationSettingsController
         abort_if($result === AdministrationSettingsWriteResult::NotFound, 404);
 
         return redirect()->route('settings.administration.edit')->with('status', 'Instellingen opgeslagen.');
+    }
+
+    public function updateDocumentSettings(UpdateSalesDocumentMasterDataRequest $request): RedirectResponse
+    {
+        $context = $this->context($request);
+        $data = $request->validated();
+        try {
+            $settings = new SalesDocumentMasterData(
+                $data['display_name'], $data['legal_name'], $data['registration_number'],
+                $this->optional($data['address_line_1'], AddressLine::class), $this->optional($data['address_line_2'], AddressLine::class),
+                $this->optional($data['postal_code'], PostalCode::class), $this->optional($data['city'], City::class),
+                $this->optional($data['country_code'], CountryCode::class), $this->optional($data['business_email'], EmailAddress::class),
+                $data['business_phone'], $data['website'], $this->optional($data['iban'], Iban::class),
+                $this->optional($data['bic'], Bic::class), $data['account_holder'], $data['sender_name'],
+                $this->optional($data['sender_email'], EmailAddress::class), $this->optional($data['reply_to_email'], EmailAddress::class),
+            );
+        } catch (InvalidArgumentException) {
+            return back()->withInput()->withErrors(['document_settings' => 'De documentinstellingen zijn ongeldig.']);
+        }
+        abort_unless($this->updateDocumentSettings->execute($context->administration->id(), $settings), 404);
+
+        return redirect()->route('settings.administration.edit')->with('status', 'Documentinstellingen opgeslagen.');
+    }
+
+    /** @template T of object
+     * @param  class-string<T>  $class
+     * @return T|null
+     */
+    private function optional(?string $value, string $class): ?object
+    {
+        return $value === null ? null : new $class($value);
     }
 
     private function context(Request $request): ActiveAdministrationContext

@@ -434,6 +434,11 @@ queueworker zijn verplichte predecessors binnen de batch.
 - W4E-004 – Quotation, Invoice & Credit Delivery Web Flows
 - W4E-005 – Sales Document Delivery Review & Regression
 
+W4E-001 is na de afzonderlijke address-predecessor W4E-001A gereed: recipientpurposes,
+Administration-owned issuer/payment/sender-masterdata en typed readiness readers zijn
+beschikbaar zonder first-contact-, address- of senderheuristiek. W4E-002 is de volgende
+story; PDF, mail, artifacts en outbox zijn nog niet geïmplementeerd.
+
 Dutch VAT & ICP Reporting blijft tijdens W4E geparkeerd. W4E introduceert geen
 Purchasing Web, generiek documentmanagement, e-invoicing of ontvangstbewijsclaim.
 

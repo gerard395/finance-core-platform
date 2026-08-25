@@ -9,6 +9,8 @@ use App\Application\Relations\AddressReadRepository;
 use App\Application\Relations\BankAccountReadRepository;
 use App\Application\Relations\ContactReadRepository;
 use App\Application\Relations\GetRelationDetail;
+use App\Application\Sales\SalesDocumentRecipientPurpose;
+use App\Application\Sales\SalesDocumentRecipientReader;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Identity\Uuid;
@@ -27,6 +29,7 @@ final class RelationShowController extends Controller
         private readonly AddressReadRepository $addresses,
         private readonly BankAccountReadRepository $bankAccounts,
         private readonly PermissionAuthorizer $permissionAuthorizer,
+        private readonly SalesDocumentRecipientReader $documentRecipients,
     ) {}
 
     public function __invoke(Request $request, string $relation): View
@@ -60,6 +63,8 @@ final class RelationShowController extends Controller
             'canUpdateRelations' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::Update->id()),
             'canClassifyCustomer' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::ClassifyCustomer->id()),
             'canClassifySupplier' => $this->permissionAuthorizer->allows($context->permissionIds, RelationsPermission::ClassifySupplier->id()),
+            'recipientPurposes' => SalesDocumentRecipientPurpose::cases(),
+            'documentRecipients' => array_combine(array_map(static fn (SalesDocumentRecipientPurpose $purpose): string => $purpose->value, SalesDocumentRecipientPurpose::cases()), array_map(fn (SalesDocumentRecipientPurpose $purpose) => $this->documentRecipients->read($context->administration->id(), $relationId, $purpose), SalesDocumentRecipientPurpose::cases())),
         ]);
     }
 }

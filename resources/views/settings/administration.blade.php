@@ -34,6 +34,37 @@
             </div>
         </form>
 
+        <form method="POST" action="{{ route('settings.administration.document-delivery.update') }}" class="mt-8 space-y-7 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            @csrf @method('PUT')
+            <section><h2 class="text-lg font-bold">Documentgegevens</h2><p class="mt-1 text-sm text-slate-600">Juridische afzendergegevens voor offertes, facturen en creditfacturen.</p>
+                <div class="mt-5 grid gap-5 sm:grid-cols-2">
+                    <label class="block text-sm font-semibold">Handelsnaam<input name="display_name" value="{{ old('display_name', $documentSettings?->displayName) }}" maxlength="255" class="mt-2 w-full rounded-lg border-slate-300">@error('display_name')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Juridische naam<input name="legal_name" value="{{ old('legal_name', $documentSettings?->legalName) }}" maxlength="255" class="mt-2 w-full rounded-lg border-slate-300">@error('legal_name')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">KVK-/registratienummer<input name="registration_number" value="{{ old('registration_number', $documentSettings?->registrationNumber) }}" maxlength="64" class="mt-2 w-full rounded-lg border-slate-300">@error('registration_number')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Zakelijk e-mailadres<input type="email" name="business_email" value="{{ old('business_email', $documentSettings?->businessEmail?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('business_email')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Adresregel 1<input name="address_line_1" value="{{ old('address_line_1', $documentSettings?->addressLine1?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('address_line_1')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Adresregel 2<input name="address_line_2" value="{{ old('address_line_2', $documentSettings?->addressLine2?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('address_line_2')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Postcode<input name="postal_code" value="{{ old('postal_code', $documentSettings?->postalCode?->value()) }}" maxlength="16" class="mt-2 w-full rounded-lg border-slate-300">@error('postal_code')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Plaats<input name="city" value="{{ old('city', $documentSettings?->city?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('city')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Landcode<input name="country_code" value="{{ old('country_code', $documentSettings?->countryCode?->value()) }}" maxlength="2" class="mt-2 w-full rounded-lg border-slate-300 uppercase">@error('country_code')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Zakelijk telefoonnummer<input name="business_phone" value="{{ old('business_phone', $documentSettings?->businessPhone) }}" maxlength="32" class="mt-2 w-full rounded-lg border-slate-300">@error('business_phone')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                    <label class="block text-sm font-semibold">Website<input type="url" name="website" value="{{ old('website', $documentSettings?->website) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('website')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                </div>
+            </section>
+            <section><h2 class="text-lg font-bold">Betalingsgegevens</h2><p class="mt-1 text-sm text-slate-600">Het factuurnummer wordt als menselijke betalingsreferentie gebruikt; dit is geen automatische bankmatching.</p><div class="mt-5 grid gap-5 sm:grid-cols-2">
+                <label class="block text-sm font-semibold">Rekeninghouder<input name="account_holder" value="{{ old('account_holder', $documentSettings?->accountHolder) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('account_holder')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                <label class="block text-sm font-semibold">IBAN<input name="iban" value="{{ old('iban', $documentSettings?->iban?->value()) }}" maxlength="34" class="mt-2 w-full rounded-lg border-slate-300 uppercase">@error('iban')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                <label class="block text-sm font-semibold">BIC (optioneel)<input name="bic" value="{{ old('bic', $documentSettings?->bic?->value()) }}" maxlength="11" class="mt-2 w-full rounded-lg border-slate-300 uppercase">@error('bic')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+            </div></section>
+            <section><h2 class="text-lg font-bold">E-mailafzender</h2><p class="mt-1 text-sm text-slate-600">Businessidentiteit voor e-mail; technische transportcredentials blijven installation-level.</p><div class="mt-5 grid gap-5 sm:grid-cols-2">
+                <label class="block text-sm font-semibold">Afzendernaam<input name="sender_name" value="{{ old('sender_name', $documentSettings?->senderName) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('sender_name')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                <label class="block text-sm font-semibold">Afzender-e-mail<input type="email" name="sender_email" value="{{ old('sender_email', $documentSettings?->senderEmail?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('sender_email')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+                <label class="block text-sm font-semibold">Reply-To (optioneel)<input type="email" name="reply_to_email" value="{{ old('reply_to_email', $documentSettings?->replyTo?->value()) }}" class="mt-2 w-full rounded-lg border-slate-300">@error('reply_to_email')<span class="text-red-700">{{ $message }}</span>@enderror</label>
+            </div></section>
+            @error('document_settings')<p class="text-red-700">{{ $message }}</p>@enderror
+            <div class="flex justify-end"><button class="min-h-11 rounded-lg bg-blue-700 px-5 font-semibold text-white">Documentinstellingen opslaan</button></div>
+        </form>
+
         @php($postingConfiguration = $salesPostingSettings->current->configuration())
         @php($postingStatus = match ($salesPostingSettings->current->status()) {
             \App\Application\Sales\SalesPostingConfigurationReadStatus::Missing => ['Niet ingesteld', 'bg-slate-100 text-slate-700'],

@@ -50,6 +50,25 @@
         @endif
     </section>
 
+    <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="documentontvangers-heading">
+        <h2 id="documentontvangers-heading" class="text-lg font-semibold">Documentontvangers</h2>
+        <p class="mt-1 text-sm text-slate-600">Kies per documentdoel expliciet één actieve contactpersoon met e-mailadres. Er is geen automatische fallback.</p>
+        @error('recipient_preference')<p class="mt-3 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+        <div class="mt-4 grid gap-4 lg:grid-cols-3">
+            @foreach($recipientPurposes as $purpose)
+                @php($label = match($purpose) { \App\Application\Sales\SalesDocumentRecipientPurpose::Quotation => 'Offerte-ontvanger', \App\Application\Sales\SalesDocumentRecipientPurpose::SalesInvoice => 'Factuur-ontvanger', \App\Application\Sales\SalesDocumentRecipientPurpose::SalesCreditInvoice => 'Creditfactuur-ontvanger' })
+                @php($recipient = $documentRecipients[$purpose->value])
+                <article class="rounded-lg border border-slate-200 p-4"><h3 class="font-semibold">{{ $label }}</h3>
+                    <p class="mt-2 text-sm">@if($recipient->status === \App\Application\Sales\SalesDocumentRecipientStatus::Success){{ $recipient->displayName->toString() }}<br>{{ $recipient->emailAddress->toString() }}@elseif($recipient->status === \App\Application\Sales\SalesDocumentRecipientStatus::Invalid)<span class="text-red-700">Voorkeur ongeldig: contact is inactief of heeft geen e-mail.</span>@else<span class="text-slate-600">Niet ingesteld.</span>@endif</p>
+                    @if($canUpdateRelations)
+                        <form method="POST" action="{{ route('relations.document-recipients.store', $relation->id()->toString()) }}" class="mt-3 space-y-2">@csrf<input type="hidden" name="purpose" value="{{ $purpose->value }}"><label class="block text-sm font-medium">Contactpersoon<select name="contact_id" required class="mt-1 w-full rounded-lg border-slate-300"><option value="">Selecteer</option>@foreach($contacts as $contact)@if($contact->status->value === 'active' && $contact->emailAddress)<option value="{{ $contact->id->toString() }}">{{ $contact->name->toString() }} – {{ $contact->emailAddress->toString() }}</option>@endif @endforeach</select></label><button class="min-h-11 rounded-lg bg-blue-700 px-3 font-semibold text-white">Opslaan</button></form>
+                        @if($recipient->status !== \App\Application\Sales\SalesDocumentRecipientStatus::Missing)<form method="POST" action="{{ route('relations.document-recipients.destroy', [$relation->id()->toString(), $purpose->value]) }}" class="mt-2">@csrf @method('DELETE')<button class="min-h-11 font-semibold text-red-700">Voorkeur wissen</button></form>@endif
+                    @endif
+                </article>
+            @endforeach
+        </div>
+    </section>
+
     <section class="mt-6 rounded-xl bg-white p-6 shadow-sm ring-1 ring-slate-200" aria-labelledby="adressen-heading">
         <div class="flex flex-wrap items-center justify-between gap-3"><h2 id="adressen-heading" class="text-lg font-semibold">Adressen</h2>@if($canUpdateRelations)<a href="{{ route('relations.addresses.create', $relation->id()->toString()) }}" class="inline-flex min-h-11 items-center rounded-lg bg-blue-700 px-4 font-semibold text-white focus:ring-2 focus:ring-blue-700 focus:ring-offset-2">Adres toevoegen</a>@endif</div>
         @if($addresses === [])<p class="mt-4 text-slate-600">Nog geen adressen.</p>@else

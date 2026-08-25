@@ -23,6 +23,13 @@ Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en
 
 ## Historische snapshots
 
+Sales-documentoutput gebruikt daarnaast expliciete readiness readers. Recipient is een
+purpose-scoped preferred Contact zonder fallback. Current issuer legal/trade name,
+structured address, contact- en paymentdata worden pas bij artifactgeneratie gesnapshot;
+sender From/Reply-To is afzonderlijke Administration-masterdata. Voor Invoice en Credit
+blijven immutable historical supplier/customer VAT-ID, jurisdiction, SupplyDate en tax
+snapshots altijd leidend boven current Administration-fiscal data.
+
 Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation bewaart voor nieuwe documenten daarnaast een expliciet geselecteerde Quotation-addresssnapshot; legacy Quotations zonder snapshot blijven leesbaar. Order heeft geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
 
 Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, voor Quotation exact een expliciet actief Quotation-adres, voor SalesInvoice exact een expliciet actief Invoice-adres, beide zonder typefallback, en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
