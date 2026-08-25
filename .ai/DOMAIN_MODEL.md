@@ -65,6 +65,15 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 | SalesInvoice | SalesInvoiceLine | Een verkoopfactuur en haar factureerbare regels beheren. |
 | SalesCreditInvoice | SalesCreditInvoiceLine | Een correctie op eerder gefactureerde verkoop beheren. |
 
+Sales-documentoutput voegt één immutable evidence-object toe: `DocumentArtifact`.
+Het artifact bevat metadata, tenantownership, concrete Sales-bronsoort/-identiteit,
+monotone artifactversion, semantic renderfingerprint en SHA-256 van de private PDF;
+binary data hoort niet in Domain of database. Aparte linktabellen dwingen harde
+same-tenant FK's naar Quotation, SalesInvoice en SalesCreditInvoice af. Het artifact
+muteert geen bronaggregate, is geen child dat de bron beheert en bewijst op zichzelf
+geen verzending. Exact dezelfde source+renderinput mag hetzelfde integere ArtifactId
+hergebruiken; gewijzigde zichtbare input creëert een nieuwe immutable artifactversie.
+
 Een nieuwe Quotation legt naast de customersnapshot exact één expliciet geselecteerd,
 actief same-Relation adres met doel `Quotation` als immutable documentsnapshot vast.
 Andere adresdoelen en adresvolgorde zijn geen fallback. Bestaande legacy Quotations

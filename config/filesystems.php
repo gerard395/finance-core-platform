@@ -38,6 +38,15 @@ return [
             'report' => false,
         ],
 
+        'sales_documents' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/sales-documents'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

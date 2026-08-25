@@ -436,8 +436,12 @@ queueworker zijn verplichte predecessors binnen de batch.
 
 W4E-001 is na de afzonderlijke address-predecessor W4E-001A gereed: recipientpurposes,
 Administration-owned issuer/payment/sender-masterdata en typed readiness readers zijn
-beschikbaar zonder first-contact-, address- of senderheuristiek. W4E-002 is de volgende
-story; PDF, mail, artifacts en outbox zijn nog niet geïmplementeerd.
+beschikbaar zonder first-contact-, address- of senderheuristiek. W4E-002 is eveneens
+gereed: typed immutable render models, gepinde Chromium/Puppeteer-rendering, private
+immutable artifacts, concrete same-tenant source-FK's, canonical fingerprints,
+SHA-256-integriteit en concurrency-safe reuse bestaan voor Quotation, SalesInvoice en
+SalesCreditInvoice. Er is nog geen Web-download, mail, deliveryrequest, outbox of
+queue-delivery; dat begint bij W4E-003 en W4E-004.
 
 Dutch VAT & ICP Reporting blijft tijdens W4E geparkeerd. W4E introduceert geen
 Purchasing Web, generiek documentmanagement, e-invoicing of ontvangstbewijsclaim.

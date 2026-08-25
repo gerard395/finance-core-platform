@@ -30,6 +30,16 @@ sender From/Reply-To is afzonderlijke Administration-masterdata. Voor Invoice en
 blijven immutable historical supplier/customer VAT-ID, jurisdiction, SupplyDate en tax
 snapshots altijd leidend boven current Administration-fiscal data.
 
+W4E-002 legt de gebruikte commerciële/fiscale en issuer/paymentpresentatie vast als
+een canoniek immutable Sales-render model en bewaart de daadwerkelijke PDF vervolgens
+private als `DocumentArtifact`. Een artifact hoort via een type-specifieke harde
+same-tenant FK bij exact één Quotation, SalesInvoice of SalesCreditInvoice. De Domain-
+metadata bevat geen bytes, filesystempad of public URL. Semantisch gelijke input wordt
+per source via een SHA-256 renderfingerprint hergebruikt; iedere gewijzigde zichtbare
+input krijgt een nieuwe monotone artifactversion. De afzonderlijke SHA-256 over de
+opgeslagen PDF bewaakt byte-integriteit. Artifactgeneratie muteert geen Sales-
+aggregate of status en is geen bewijs van delivery.
+
 Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation bewaart voor nieuwe documenten daarnaast een expliciet geselecteerde Quotation-addresssnapshot; legacy Quotations zonder snapshot blijven leesbaar. Order heeft geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
 
 Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, voor Quotation exact een expliciet actief Quotation-adres, voor SalesInvoice exact een expliciet actief Invoice-adres, beide zonder typefallback, en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
