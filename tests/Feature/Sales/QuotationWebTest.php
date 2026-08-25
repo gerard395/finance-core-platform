@@ -174,7 +174,8 @@ final class QuotationWebTest extends TestCase
         $this->login();
         $id = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 1);
         $this->app->make(AddQuotationLine::class)->execute($this->admin(self::ADMIN_A), $id, $this->line(1));
-        $this->post('/sales/quotations/'.$id->toString().'/send')->assertRedirect('/sales/quotations/'.$id->toString());
+        $this->post('/sales/quotations/'.$id->toString().'/send')->assertNotFound();
+        $this->app->make(SendQuotation::class)->execute($this->admin(self::ADMIN_A), $id);
         $this->assertDatabaseMissing('orders', ['source_quotation_id' => $id->toString()]);
         $this->get('/sales/quotations/'.$id->toString())->assertOk()->assertDontSee('Order maken');
         $this->get('/sales/quotations/'.$id->toString().'/edit')->assertStatus(409);
@@ -186,7 +187,8 @@ final class QuotationWebTest extends TestCase
 
         $rejected = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 2);
         $this->app->make(AddQuotationLine::class)->execute($this->admin(self::ADMIN_A), $rejected, $this->line(2));
-        $this->post('/sales/quotations/'.$rejected->toString().'/send')->assertRedirect();
+        $this->post('/sales/quotations/'.$rejected->toString().'/send')->assertNotFound();
+        $this->app->make(SendQuotation::class)->execute($this->admin(self::ADMIN_A), $rejected);
         $this->post('/sales/quotations/'.$rejected->toString().'/reject')->assertRedirect();
         $this->assertDatabaseHas('quotations', ['id' => $rejected->toString(), 'status' => 'rejected']);
 

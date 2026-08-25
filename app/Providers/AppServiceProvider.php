@@ -83,6 +83,7 @@ use App\Application\Sales\PostSalesCreditInvoiceWithTax;
 use App\Application\Sales\PostSalesInvoiceWithTax;
 use App\Application\Sales\QuotationAddressResolver;
 use App\Application\Sales\QuotationCreator;
+use App\Application\Sales\QuotationDeliveryLifecycleCandidates;
 use App\Application\Sales\QuotationDetailReadRepository;
 use App\Application\Sales\QuotationListReadRepository;
 use App\Application\Sales\QuotationOrderConversionIdentityGenerator;
@@ -272,6 +273,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DeliveryOutboxStore::class, EloquentSalesDocumentDelivery::class);
         $this->app->bind(SalesDocumentDeliverySourceReader::class, EloquentSalesDocumentDelivery::class);
         $this->app->bind(SalesDocumentDeliveryHistoryReader::class, EloquentSalesDocumentDelivery::class);
+        $this->app->bind(QuotationDeliveryLifecycleCandidates::class, EloquentSalesDocumentDelivery::class);
         $this->app->bind(DeliveryWorkerHeartbeatStore::class, DatabaseDeliveryOperations::class);
         $this->app->bind(SalesDocumentDeliveryInfrastructureReadiness::class, DatabaseDeliveryOperations::class);
         $this->app->bind(DeliveryOutcomeResolutionStore::class, DatabaseDeliveryOperations::class);

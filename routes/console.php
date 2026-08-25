@@ -4,6 +4,7 @@ use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioningConflict;
 use App\Application\Sales\DeliveryInfrastructureReadinessStatus;
 use App\Application\Sales\DeliveryOutboxStore;
+use App\Application\Sales\ReconcileQuotationDeliveryLifecycle;
 use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Identity\Uuid;
@@ -56,4 +57,11 @@ Artisan::command('delivery:recover', function (DeliveryOutboxStore $outbox): int
     return Command::SUCCESS;
 })->purpose('Recover expired delivery claims that never crossed the transport boundary');
 
+Artisan::command('delivery:reconcile-quotations', function (ReconcileQuotationDeliveryLifecycle $reconciler): int {
+    $this->info('Reconciled quotation delivery lifecycles: '.$reconciler->reconcilePending());
+
+    return Command::SUCCESS;
+})->purpose('Reconcile accepted or externally handled Quotation deliveries to Sent');
+
 Schedule::command('delivery:recover')->everyMinute()->withoutOverlapping();
+Schedule::command('delivery:reconcile-quotations')->everyMinute()->withoutOverlapping();

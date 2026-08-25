@@ -12,6 +12,8 @@ use App\Application\Sales\DeliveryOutboxStore;
 use App\Application\Sales\DeliveryRequestStore;
 use App\Application\Sales\DocumentMailTransport;
 use App\Application\Sales\DocumentMailTransportResult;
+use App\Application\Sales\QuotationDeliveryLifecycleCandidate;
+use App\Application\Sales\QuotationDeliveryLifecycleCandidates;
 use App\Application\Sales\SalesDocumentDeliveryHistory;
 use App\Application\Sales\SalesDocumentDeliveryHistoryReader;
 use App\Application\Sales\SalesDocumentDeliverySource;
@@ -29,6 +31,7 @@ use App\Domain\Sales\Enums\SalesDocumentType;
 use App\Domain\Sales\ValueObjects\ArtifactId;
 use App\Domain\Sales\ValueObjects\DeliveryOutboxMessageId;
 use App\Domain\Sales\ValueObjects\DeliveryRequestId;
+use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Identity\Uuid;
 use App\Jobs\ProcessSalesDocumentDeliveryJob;
 use DateTimeImmutable;
@@ -36,7 +39,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStore, DeliveryRequestStore, SalesDocumentDeliveryHistoryReader, SalesDocumentDeliverySourceReader
+final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStore, DeliveryRequestStore, QuotationDeliveryLifecycleCandidates, SalesDocumentDeliveryHistoryReader, SalesDocumentDeliverySourceReader
 {
     private const MAX_ATTEMPTS = 3;
 
@@ -153,8 +156,8 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
 
     public function recoverStalePreSend(): int
     {
-        $recovered = [];
-        DB::transaction(function () use (&$recovered): void {
+        $recovered = DB::transaction(function (): array {
+            $recovered = [];
             $outboxes = DB::table('sales_document_delivery_outbox')->where('status', DeliveryOutboxStatus::Processing->value)->where('lease_expires_at', '<=', now())->lockForUpdate()->get();
             foreach ($outboxes as $outbox) {
                 $attempt = DB::table('sales_document_delivery_attempts')->where('administration_id', $outbox->administration_id)->where('delivery_request_id', $outbox->delivery_request_id)->where('result', DeliveryAttemptResult::Attempting->value)->lockForUpdate()->first();
@@ -172,7 +175,9 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
                 DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Available->value, 'available_at' => now(), 'claimed_at' => null, 'lease_expires_at' => null, 'updated_at' => now()]);
                 $recovered[] = $outbox->id;
             }
-        });
+
+            return $recovered;
+        }, 5);
         foreach ($recovered as $id) {
             ProcessSalesDocumentDeliveryJob::dispatch($id)->afterCommit();
         }
@@ -212,7 +217,9 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
             return null;
         }
 
-        return new SalesDocumentDeliverySource($source, (string) $row->{$number}, new RelationId(new Uuid($row->{$relation})), (string) $row->customer_name_snapshot);
+        $hasDocumentAddress = $source->type !== SalesDocumentType::Quotation || $row->quotation_address_id_snapshot !== null;
+
+        return new SalesDocumentDeliverySource($source, (string) $row->{$number}, new RelationId(new Uuid($row->{$relation})), (string) $row->customer_name_snapshot, (string) $row->status, $hasDocumentAddress);
     }
 
     public function history(AdministrationId $administrationId, SalesDocumentSource $source): SalesDocumentDeliveryHistory
@@ -224,7 +231,31 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
         $ids = array_column($requests, 'id');
         $attempts = $ids === [] ? [] : DB::table('sales_document_delivery_attempts')->where('administration_id', $administrationId->toString())->whereIn('delivery_request_id', $ids)->orderBy('started_at')->get()->map(fn ($row) => (array) $row)->all();
 
-        return new SalesDocumentDeliveryHistory($requests, $attempts);
+        $attemptIds = array_column($attempts, 'id');
+        $resolutions = $attemptIds === [] ? [] : DB::table('sales_document_delivery_outcome_resolutions')->where('administration_id', $administrationId->toString())->whereIn('delivery_attempt_id', $attemptIds)->get()->mapWithKeys(fn ($row): array => [$row->delivery_attempt_id => (array) $row])->all();
+
+        return new SalesDocumentDeliveryHistory($requests, $attempts, $resolutions);
+    }
+
+    public function pending(): array
+    {
+        $accepted = DB::table('sales_document_delivery_requests as requests')
+            ->join('quotations', function ($join): void {
+                $join->on('quotations.id', '=', 'requests.quotation_id')->on('quotations.administration_id', '=', 'requests.administration_id');
+            })->where('requests.document_type', SalesDocumentType::Quotation->value)
+            ->where('requests.status', DeliveryRequestStatus::AcceptedByTransport->value)->where('quotations.status', 'draft')
+            ->select('requests.administration_id', 'requests.quotation_id')->distinct()->get();
+        $handled = DB::table('sales_document_delivery_outcome_resolutions as resolutions')
+            ->join('sales_document_delivery_requests as requests', 'requests.id', '=', 'resolutions.delivery_request_id')
+            ->join('quotations', function ($join): void {
+                $join->on('quotations.id', '=', 'requests.quotation_id')->on('quotations.administration_id', '=', 'requests.administration_id');
+            })->where('requests.document_type', SalesDocumentType::Quotation->value)
+            ->where('resolutions.resolution_type', 'handled_externally')->where('quotations.status', 'draft')
+            ->select('requests.administration_id', 'requests.quotation_id')->distinct()->get();
+
+        return $accepted->concat($handled)->unique(fn ($row): string => $row->administration_id.':'.$row->quotation_id)
+            ->map(fn ($row): QuotationDeliveryLifecycleCandidate => new QuotationDeliveryLifecycleCandidate(new AdministrationId(new Uuid($row->administration_id)), new QuotationId(new Uuid($row->quotation_id))))
+            ->values()->all();
     }
 
     private function unknownRows(string $administrationId, string $requestId, string $category): void

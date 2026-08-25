@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Sales;
 
 use App\Application\Identity\PermissionAuthorizer;
+use App\Application\Sales\AssessSalesDocumentDeliveryReadiness;
 use App\Application\Sales\CreateSalesCreditInvoiceFromInvoice;
 use App\Application\Sales\EligibleSalesCreditSourceQuery;
 use App\Application\Sales\EligibleSalesCreditSourceReadRepository;
@@ -13,7 +14,9 @@ use App\Application\Sales\SalesCreditInvoiceListQuery;
 use App\Application\Sales\SalesCreditInvoiceListReadRepository;
 use App\Application\Sales\SalesCreditInvoiceSortField;
 use App\Application\Sales\SalesCreditInvoiceWriteResult;
+use App\Application\Sales\SalesDocumentSource;
 use App\Application\Sales\SalesInvoiceSortDirection;
+use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Sales\Enums\SalesCreditInvoiceStatus;
@@ -25,16 +28,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Sales\StoreSalesCreditInvoiceRequest;
 use App\Presentation\Formatting\DutchMoneyFormatter;
 use App\Presentation\Sales\SalesCreditInvoiceStatusPresenter;
+use App\Presentation\Sales\SalesDocumentDeliveryPresenter;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use InvalidArgumentException;
 
 final class SalesCreditInvoiceController extends Controller
 {
-    public function __construct(private readonly SalesCreditInvoiceListReadRepository $list, private readonly SalesCreditInvoiceDetailReadRepository $details, private readonly EligibleSalesCreditSourceReadRepository $eligibleSources, private readonly CreateSalesCreditInvoiceFromInvoice $createCredit, private readonly PermissionAuthorizer $permissions, private readonly DutchMoneyFormatter $money) {}
+    public function __construct(private readonly SalesCreditInvoiceListReadRepository $list, private readonly SalesCreditInvoiceDetailReadRepository $details, private readonly EligibleSalesCreditSourceReadRepository $eligibleSources, private readonly CreateSalesCreditInvoiceFromInvoice $createCredit, private readonly PermissionAuthorizer $permissions, private readonly DutchMoneyFormatter $money, private readonly AssessSalesDocumentDeliveryReadiness $deliveryReadiness) {}
 
     public function index(Request $request): View
     {
@@ -94,8 +99,11 @@ final class SalesCreditInvoiceController extends Controller
         $context = $this->context($request);
         $detail = $this->details->find($context->administration->id(), $this->creditId($creditInvoice));
         abort_if($detail === null, 404);
+        $source = SalesDocumentSource::creditInvoice($detail->invoice->id());
+        $initialDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, false);
+        $resendDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, true);
 
-        return view('sales.credit-invoices.show', $this->viewData($context) + ['detail' => $detail]);
+        return view('sales.credit-invoices.show', $this->viewData($context) + ['detail' => $detail, 'deliveryPresenter' => SalesDocumentDeliveryPresenter::class, 'initialDelivery' => $initialDelivery, 'resendDelivery' => $resendDelivery, 'deliveryHistory' => $initialDelivery->history, 'deliveryRequestId' => Str::uuid()->toString(), 'canResolveDelivery' => $this->permissions->allows($context->permissionIds, DeliveryOperationsPermission::ResolveUnknownOutcome->id())]);
     }
 
     /** @return array<string, mixed> */

@@ -91,6 +91,19 @@ Finalized → Cancelled
 
 Statusovergangen verlopen uitsluitend via domeinmethoden. Herhaling van dezelfde overgang is idempotent. `Accepted`, `Rejected` en `Expired` zijn eindstatussen van Quotation; `OrderCreated` is geen QuotationStatus.
 
+De publieke Webactie zet een Quotation niet rechtstreeks op `Sent`. W4E-004 maakt
+eerst asynchronous delivery plus immutable artifact/request/attempttruth. Alleen
+`AcceptedByTransport` of een expliciete `HandledExternally`-resolution laat Application
+de bestaande `Quotation::send()`-overgang uitvoeren. Een idempotente scheduler-
+reconciliation herstelt een gemiste lifecyclewrite zonder tweede mail. Failure,
+unresolved OutcomeUnknown en AuthorizeResend houden Draft intact. Transportacceptatie
+betekent nooit inboxaflevering.
+
+Invoice- en Creditdelivery is statusgegate maar financieel side-effectvrij. Resend is
+een nieuwe DeliveryRequest met actuele recipient/sendersnapshot en nooit een mutation
+of technische retry van oude deliverytruth. PDF-downloads blijven private en
+tenant-scoped.
+
 ## Shared value objects en bedragen
 
 Sales gebruikt de gedeelde `Money` en `Currency` value objects uit Shared Finance en de capabilityneutrale `Quantity` en `LineDescription` value objects uit Shared Commerce. Line totals worden afgeleid met `Money::multiply(string $multiplier)`:

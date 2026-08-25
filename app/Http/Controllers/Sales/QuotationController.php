@@ -8,6 +8,7 @@ use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Relations\AddressReadRepository;
 use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\RelationReadRepository;
+use App\Application\Sales\AssessSalesDocumentDeliveryReadiness;
 use App\Application\Sales\CreateQuotation;
 use App\Application\Sales\OrderBySourceQuotationRepository;
 use App\Application\Sales\QuotationDetailReadRepository;
@@ -16,7 +17,9 @@ use App\Application\Sales\QuotationListReadRepository;
 use App\Application\Sales\QuotationSortDirection;
 use App\Application\Sales\QuotationSortField;
 use App\Application\Sales\QuotationWriteResult;
+use App\Application\Sales\SalesDocumentSource;
 use App\Application\Sales\UpdateQuotation;
+use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Relations\Enums\AddressType;
@@ -31,6 +34,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Sales\StoreQuotationRequest;
 use App\Http\Requests\Sales\UpdateQuotationRequest;
 use App\Presentation\Sales\QuotationStatusPresenter;
+use App\Presentation\Sales\SalesDocumentDeliveryPresenter;
 use DateTimeImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -51,6 +55,7 @@ final class QuotationController extends Controller
         private readonly CreateQuotation $createQuotation,
         private readonly UpdateQuotation $updateQuotation,
         private readonly PermissionAuthorizer $permissions,
+        private readonly AssessSalesDocumentDeliveryReadiness $deliveryReadiness,
     ) {}
 
     public function index(Request $request): View
@@ -97,12 +102,21 @@ final class QuotationController extends Controller
         $detail = $this->details->find($context->administration->id(), $this->quotationId($quotation));
         abort_if($detail === null, 404);
         $sourceOrder = $this->ordersBySourceQuotation->findBySourceQuotation($context->administration->id(), $detail->id());
+        $source = SalesDocumentSource::quotation($detail->id());
+        $initialDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, false);
+        $resendDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, true);
 
         return view('sales.quotations.show', $this->viewData($context) + [
             'quotation' => $detail,
             'sourceOrderId' => $sourceOrder?->id(),
             'defaultOrderDate' => (new DateTimeImmutable('today'))->format('Y-m-d'),
             'statusPresenter' => QuotationStatusPresenter::class,
+            'deliveryPresenter' => SalesDocumentDeliveryPresenter::class,
+            'initialDelivery' => $initialDelivery,
+            'resendDelivery' => $resendDelivery,
+            'deliveryHistory' => $initialDelivery->history,
+            'deliveryRequestId' => Str::uuid()->toString(),
+            'canResolveDelivery' => $this->permissions->allows($context->permissionIds, DeliveryOperationsPermission::ResolveUnknownOutcome->id()),
         ]);
     }
 

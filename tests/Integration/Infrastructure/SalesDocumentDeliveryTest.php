@@ -16,9 +16,15 @@ use App\Application\Sales\DocumentMailMessage;
 use App\Application\Sales\DocumentMailTransport;
 use App\Application\Sales\DocumentMailTransportResult;
 use App\Application\Sales\ProcessSalesDocumentDelivery;
+use App\Application\Sales\QueueSalesDocumentDelivery;
+use App\Application\Sales\ReconcileQuotationDeliveryLifecycle;
+use App\Application\Sales\RenderedSalesDocument;
 use App\Application\Sales\ResolveUnknownDeliveryOutcome;
 use App\Application\Sales\SalesDocumentDeliveryHistoryReader;
 use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
+use App\Application\Sales\SalesDocumentDeliveryReadinessStatus;
+use App\Application\Sales\SalesDocumentPdfRenderer;
+use App\Application\Sales\SalesDocumentRenderModel;
 use App\Application\Sales\SalesDocumentSource;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Identity\Definitions\DeliveryOperationsRole;
@@ -97,6 +103,12 @@ final class SalesDocumentDeliveryTest extends TestCase
         self::assertDatabaseHas('sales_document_delivery_attempts', ['attempt_number' => 1, 'result' => 'accepted_by_transport']);
         self::assertDatabaseHas('sales_document_delivery_requests', ['id' => self::REQUEST, 'status' => 'accepted_by_transport']);
         self::assertDatabaseHas('sales_document_delivery_outbox', ['delivery_request_id' => self::REQUEST, 'status' => 'processed']);
+        self::assertDatabaseHas('quotations', ['id' => self::QUOTATION, 'status' => 'sent']);
+
+        DB::table('quotations')->where('id', self::QUOTATION)->update(['status' => 'draft']);
+        self::assertSame(1, $this->app->make(ReconcileQuotationDeliveryLifecycle::class)->reconcilePending());
+        self::assertDatabaseHas('quotations', ['id' => self::QUOTATION, 'status' => 'sent']);
+        self::assertSame(1, $this->transport->sends);
 
         $this->process();
         self::assertSame(1, $this->transport->sends);
@@ -189,6 +201,23 @@ final class SalesDocumentDeliveryTest extends TestCase
         $this->artisan('delivery:health')->assertExitCode(0)->expectsOutputToContain('ready')->doesntExpectOutputToContain('customer@example.test')->doesntExpectOutputToContain('MAIL_PASSWORD');
     }
 
+    public function test_web_orchestration_requires_worker_readiness_and_double_submit_is_idempotent(): void
+    {
+        config(['queue.default' => 'database']);
+        $this->app->instance(SalesDocumentPdfRenderer::class, new FakeSalesDocumentPdfRenderer);
+        $queue = $this->app->make(QueueSalesDocumentDelivery::class);
+        $requestId = new DeliveryRequestId(new Uuid('d5000000-0000-4000-8000-000000000099'));
+        $source = SalesDocumentSource::quotation(new QuotationId(new Uuid(self::QUOTATION)));
+
+        self::assertSame(SalesDocumentDeliveryReadinessStatus::InfrastructureUnavailable, $queue->execute($this->admin(self::ADMIN), $requestId, $source, new UserId(new Uuid(self::USER)), false)->status);
+        self::assertDatabaseCount('sales_document_delivery_requests', 0);
+        $this->app->make(DeliveryWorkerHeartbeatStore::class)->beat('web-flow-worker');
+        self::assertTrue($queue->execute($this->admin(self::ADMIN), $requestId, $source, new UserId(new Uuid(self::USER)), false)->queued());
+        self::assertTrue($queue->execute($this->admin(self::ADMIN), $requestId, $source, new UserId(new Uuid(self::USER)), false)->replayed);
+        self::assertDatabaseCount('sales_document_delivery_requests', 1);
+        self::assertDatabaseCount('sales_document_delivery_outbox', 1);
+    }
+
     public function test_stale_pre_send_is_recovered_but_transport_started_becomes_unknown(): void
     {
         $store = $this->app->make(DeliveryRequestStore::class);
@@ -224,6 +253,8 @@ final class SalesDocumentDeliveryTest extends TestCase
         $useCase = $this->app->make(ResolveUnknownDeliveryOutcome::class);
         $result = $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000001')), $this->admin(self::ADMIN), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), $type, new UserId(new Uuid(self::USER)), 'Extern onderzocht');
         self::assertSame(DeliveryOutcomeResolutionStatus::Resolved, $result);
+        $this->app->make(ReconcileQuotationDeliveryLifecycle::class)->reconcilePending();
+        self::assertSame($type === DeliveryOutcomeResolutionType::HandledExternally ? 'sent' : 'draft', DB::table('quotations')->where('id', self::QUOTATION)->value('status'));
         self::assertSame(DeliveryOutcomeResolutionStatus::AlreadyResolved, $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000002')), $this->admin(self::ADMIN), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), DeliveryOutcomeResolutionType::AuthorizeResend, new UserId(new Uuid(self::USER))));
         self::assertDatabaseHas('sales_document_delivery_attempts', ['id' => $attemptId, 'result' => 'outcome_unknown']);
         self::assertDatabaseHas('sales_document_delivery_outcome_resolutions', ['delivery_attempt_id' => $attemptId, 'resolution_type' => $type->value, 'resolved_by' => self::USER]);
@@ -272,7 +303,7 @@ final class SalesDocumentDeliveryTest extends TestCase
         foreach ($children as $pid) {
             pcntl_waitpid($pid, $status);
             self::assertTrue(pcntl_wifexited($status));
-            self::assertSame(0, pcntl_wexitstatus($status));
+            self::assertSame(0, pcntl_wexitstatus($status), implode(' | ', array_map(static fn (string $file): string => (string) file_get_contents($file), $files)));
         }
         $claims = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
         sort($claims);
@@ -353,7 +384,7 @@ final class SalesDocumentDeliveryTest extends TestCase
     private function seedSource(): void
     {
         foreach ([self::ADMIN => 'A', self::ADMIN_B => 'B'] as $id => $code) {
-            DB::table('administrations')->insert(['id' => $id, 'code' => 'DEL-'.$code, 'name' => 'Delivery '.$code, 'base_currency' => 'EUR', 'status' => 'active', 'document_sender_name' => $id === self::ADMIN ? 'Demo Sender' : null, 'document_sender_email' => $id === self::ADMIN ? 'sender@example.test' : null, 'document_reply_to_email' => $id === self::ADMIN ? 'reply@example.test' : null, 'created_at' => now(), 'updated_at' => now()]);
+            DB::table('administrations')->insert(['id' => $id, 'code' => 'DEL-'.$code, 'name' => 'Delivery '.$code, 'base_currency' => 'EUR', 'status' => 'active', 'organisation_display_name' => $id === self::ADMIN ? 'Demo' : null, 'organisation_chamber_of_commerce_number' => $id === self::ADMIN ? '12345678' : null, 'document_address_line_1' => $id === self::ADMIN ? 'Issuer Street 1' : null, 'document_postal_code' => $id === self::ADMIN ? '1000AA' : null, 'document_city' => $id === self::ADMIN ? 'City' : null, 'document_country_code' => $id === self::ADMIN ? 'NL' : null, 'document_sender_name' => $id === self::ADMIN ? 'Demo Sender' : null, 'document_sender_email' => $id === self::ADMIN ? 'sender@example.test' : null, 'document_reply_to_email' => $id === self::ADMIN ? 'reply@example.test' : null, 'created_at' => now(), 'updated_at' => now()]);
         }
         DB::table('domain_users')->insert(['id' => self::USER, 'display_name' => 'Initiator', 'email' => 'initiator@example.test', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('relations')->insert(['id' => 'd6000000-0000-4000-8000-000000000001', 'administration_id' => self::ADMIN, 'code' => 'REL-1', 'display_name' => 'Customer', 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
@@ -361,6 +392,7 @@ final class SalesDocumentDeliveryTest extends TestCase
         DB::table('sales_document_recipient_preferences')->insert(['id' => 'd6200000-0000-4000-8000-000000000001', 'administration_id' => self::ADMIN, 'relation_id' => 'd6000000-0000-4000-8000-000000000001', 'purpose' => 'quotation', 'contact_id' => 'd6100000-0000-4000-8000-000000000001', 'created_at' => now(), 'updated_at' => now()]);
         DB::table('customers')->insert(['id' => 'd7000000-0000-4000-8000-000000000001', 'administration_id' => self::ADMIN, 'relation_id' => 'd6000000-0000-4000-8000-000000000001', 'customer_number' => 'C000001', 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
         DB::table('quotations')->insert(['id' => self::QUOTATION, 'administration_id' => self::ADMIN, 'quotation_number' => 'Q000001', 'customer_id' => 'd7000000-0000-4000-8000-000000000001', 'customer_relation_id_snapshot' => 'd6000000-0000-4000-8000-000000000001', 'customer_number_snapshot' => 'C000001', 'customer_name_snapshot' => 'Customer', 'quotation_address_id_snapshot' => 'd8000000-0000-4000-8000-000000000001', 'quotation_address_type_snapshot' => 'quotation', 'quotation_address_line_1_snapshot' => 'Street 1', 'quotation_postal_code_snapshot' => '1000AA', 'quotation_city_snapshot' => 'City', 'quotation_country_code_snapshot' => 'NL', 'currency' => 'EUR', 'status' => 'draft', 'quotation_date' => '2026-08-25', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('quotation_lines')->insert(['id' => 'd8100000-0000-4000-8000-000000000001', 'administration_id' => self::ADMIN, 'quotation_id' => self::QUOTATION, 'description' => 'Service', 'quantity' => '1', 'unit_price_amount' => '100', 'currency' => 'EUR', 'created_at' => now(), 'updated_at' => now()]);
         $bytes = '%PDF-delivery';
         $key = self::ADMIN.'/sales-document-artifacts/'.self::ARTIFACT.'.pdf';
         Storage::disk('sales_documents')->put($key, $bytes);
@@ -414,7 +446,7 @@ final class SalesDocumentDeliveryTest extends TestCase
         foreach ($children as $pid) {
             pcntl_waitpid($pid, $status);
             self::assertTrue(pcntl_wifexited($status));
-            self::assertSame(0, pcntl_wexitstatus($status));
+            self::assertSame(0, pcntl_wexitstatus($status), implode(' | ', array_map(static fn (string $file): string => (string) file_get_contents($file), $files)));
         }
         $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
         foreach ($files as $file) {
@@ -450,5 +482,13 @@ final class FakeDocumentMailTransport implements DocumentMailTransport
     public function identifier(): string
     {
         return 'fake';
+    }
+}
+
+final class FakeSalesDocumentPdfRenderer implements SalesDocumentPdfRenderer
+{
+    public function render(SalesDocumentRenderModel $model): RenderedSalesDocument
+    {
+        return new RenderedSalesDocument('%PDF-W4E-004-'.$model->number, 'fake-web-renderer');
     }
 }

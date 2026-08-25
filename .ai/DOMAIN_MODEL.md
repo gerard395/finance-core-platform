@@ -108,6 +108,14 @@ Een SalesInvoice doorloopt:
 Draft → Finalized → Posted → Paid
 ```
 
+Sales-documentdelivery is een afzonderlijke immutable workflow. De Weblaag maakt een
+caller-owned DeliveryRequest met exact artifact en recipient/sendersnapshots; attempts
+en OutcomeUnknown-resolutions zijn append-only. `AcceptedByTransport` of expliciet
+`HandledExternally` coördineert idempotent Quotation Draft→Sent. Failure,
+OutcomeUnknown en AuthorizeResend muteren de Quotation niet. Invoice-/Creditdelivery
+heeft nooit financiële side-effects. Private artifactdownload en history vereisen
+Sales View; sendrechten blijven per documenttype onafhankelijk.
+
 Een SalesCreditInvoice doorloopt:
 
 ```text

@@ -427,8 +427,8 @@ purpose, issuer/payment/sender-readiness, Chromiumdeployment en een operationele
 queueworker zijn verplichte predecessors binnen de batch.
 
 W4E-003 levert de duurzame DeliveryRequest/Attempt/outbox- en installation-mailtransport-
-basis. Production worker supervision, health/readiness en operationele failed-job/
-OutcomeUnknown-resolutie blijven deploymentblockers vóór live Web-delivery in W4E-004.
+basis. W4E-003A/B/C leveren production runtime, health/readiness, veilig herstel en
+operationele OutcomeUnknown-resolutie.
 
 W4E-003B kiest een portable single-host production Docker Compose-runtime met database-
 queue, bewaakte worker/scheduler en durable MySQL/artifactvolumes. W4E-003C legt de
@@ -440,6 +440,12 @@ operationspredecessor voor W4E-004 gereed; Web-delivery zelf blijft W4E-004-scop
 W4E-003C levert `DELIVERY.OUTCOME_RESOLVE` via de smalle canonieke
 `DELIVERY_OPERATOR`-rol, zonder automatische membershipassignment. Daarmee zijn de
 deployment- en authorizationpredecessors voor hervatting van W4E-003A expliciet.
+
+W4E-004 integreert dit in Quotation-, Invoice- en Creditdetails: queued initial/resend,
+private PDF-download, escaped deliveryhistory, readinessfeedback en minimale
+permission-scoped OutcomeUnknown-resolution. Quotation `Sent` volgt niet langer uit de
+legacy klik maar uitsluitend uit transportacceptatie of HandledExternally, met veilige
+schedulerreconciliation. Invoice-/Creditdelivery laat financiële waarheid ongemoeid.
 
 - W4E-000 – Sales Document Delivery Design
 - W4E-001A – Quotation Document Address Semantics

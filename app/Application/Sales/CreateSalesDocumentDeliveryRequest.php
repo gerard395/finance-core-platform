@@ -24,7 +24,7 @@ final readonly class CreateSalesDocumentDeliveryRequest
         private DeliveryRequestStore $requests,
     ) {}
 
-    public function execute(AdministrationId $administrationId, DeliveryRequestId $requestId, SalesDocumentSource $source, ArtifactId $artifactId, UserId $initiatedBy): CreateDeliveryRequestResult
+    public function execute(AdministrationId $administrationId, DeliveryRequestId $requestId, SalesDocumentSource $source, ArtifactId $artifactId, UserId $initiatedBy, ?DeliveryRecipientOverride $recipientOverride = null): CreateDeliveryRequestResult
     {
         $artifact = $this->artifacts->find($administrationId, $artifactId);
         $sourceView = $this->sources->read($administrationId, $source);
@@ -40,7 +40,7 @@ final readonly class CreateSalesDocumentDeliveryRequest
             SalesDocumentType::SalesCreditInvoice => SalesDocumentRecipientPurpose::SalesCreditInvoice,
         };
         $recipient = $this->recipients->read($administrationId, $sourceView->relationId, $purpose);
-        if ($recipient->status !== SalesDocumentRecipientStatus::Success || $recipient->emailAddress === null || $recipient->displayName === null) {
+        if ($recipientOverride === null && ($recipient->status !== SalesDocumentRecipientStatus::Success || $recipient->emailAddress === null || $recipient->displayName === null)) {
             return new CreateDeliveryRequestResult(CreateDeliveryRequestStatus::MissingRecipient);
         }
         $sender = $this->senders->readSender($administrationId);
@@ -48,13 +48,20 @@ final readonly class CreateSalesDocumentDeliveryRequest
             return new CreateDeliveryRequestResult(CreateDeliveryRequestStatus::MissingSender);
         }
         [$subject, $body, $version] = $this->content($source->type, $sourceView->documentNumber, $sourceView->customerName, $sender->fromName);
+        $recipientEmail = $recipientOverride?->email->value() ?? $recipient->emailAddress?->value();
+        $recipientName = $recipientOverride === null ? $recipient->displayName?->value() : ($recipientOverride->displayName?->value() ?? $recipientEmail);
+        if ($recipientEmail === null || $recipientName === null) {
+            return new CreateDeliveryRequestResult(CreateDeliveryRequestStatus::MissingRecipient);
+        }
+        $recipientSource = $recipientOverride === null ? 'preference' : 'manual_override';
+        $recipientContactId = $recipientOverride === null ? $recipient->contactId?->toString() : null;
         $semantic = [
             'source_type' => $source->type->value, 'source_id' => $source->id, 'artifact_id' => $artifactId->toString(),
-            'recipient' => [$recipient->emailAddress->value(), $recipient->displayName->value(), $recipient->contactId?->toString(), 'preference'],
+            'recipient' => [$recipientEmail, $recipientName, $recipientContactId, $recipientSource],
             'sender' => [$sender->fromName, $sender->fromEmail->value(), $sender->replyTo?->value()], 'subject' => $subject, 'body' => $body, 'template' => $version,
         ];
         $fingerprint = hash('sha256', json_encode($semantic, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE));
-        $request = new DeliveryRequest($requestId, $administrationId, $source->type, $source->id, $artifactId, $recipient->emailAddress->value(), $recipient->displayName->value(), $recipient->contactId?->toString(), 'preference', $sender->fromName, $sender->fromEmail->value(), $sender->replyTo?->value(), $subject, $body, $version, $fingerprint, $initiatedBy, DeliveryRequestStatus::Prepared, new DateTimeImmutable);
+        $request = new DeliveryRequest($requestId, $administrationId, $source->type, $source->id, $artifactId, $recipientEmail, $recipientName, $recipientContactId, $recipientSource, $sender->fromName, $sender->fromEmail->value(), $sender->replyTo?->value(), $subject, $body, $version, $fingerprint, $initiatedBy, DeliveryRequestStatus::Prepared, new DateTimeImmutable);
 
         return $this->requests->createWithInitialOutbox($request);
     }
