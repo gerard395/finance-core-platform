@@ -427,6 +427,7 @@ purpose, issuer/payment/sender-readiness, Chromiumdeployment en een operationele
 queueworker zijn verplichte predecessors binnen de batch.
 
 - W4E-000 – Sales Document Delivery Design
+- W4E-001A – Quotation Document Address Semantics
 - W4E-001 – Recipient, Issuer & Sender Readiness
 - W4E-002 – Immutable Sales Render Models, PDF & Artifact Persistence
 - W4E-003 – Durable Delivery Requests, Outbox & Mail Transport

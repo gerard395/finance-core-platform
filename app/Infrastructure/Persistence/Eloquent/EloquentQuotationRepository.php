@@ -10,9 +10,15 @@ use App\Application\Sales\QuotationReadRepository;
 use App\Application\Sales\QuotationUpdater;
 use App\Application\Sales\QuotationWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\City;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\CustomerNumber;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Sales\Entities\Quotation;
 use App\Domain\Sales\Entities\QuotationLine;
@@ -20,6 +26,7 @@ use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
@@ -107,13 +114,21 @@ final class EloquentQuotationRepository implements QuotationCreator, QuotationOr
     private function assertImmutableContext(QuotationRecord $record, Quotation $quotation): void
     {
         $snapshot = $quotation->customerSnapshot();
+        $address = $quotation->documentAddressSnapshot();
         if ($snapshot === null
             || $record->getAttribute('quotation_number') !== $quotation->number()->value()
             || $record->getAttribute('customer_id') !== $quotation->customerId()->toString()
             || $record->getAttribute('customer_relation_id_snapshot') !== $snapshot->relationId()->toString()
             || $record->getAttribute('customer_number_snapshot') !== $snapshot->customerNumber()->toString()
             || $record->getAttribute('customer_name_snapshot') !== $snapshot->displayName()->toString()
-            || $record->getAttribute('currency') !== $quotation->currency()->code()) {
+            || $record->getAttribute('currency') !== $quotation->currency()->code()
+            || $record->getAttribute('quotation_address_id_snapshot') !== $address?->addressId()->toString()
+            || $record->getAttribute('quotation_address_type_snapshot') !== $address?->type()->value
+            || $record->getAttribute('quotation_address_line_1_snapshot') !== $address?->addressLine()->value()
+            || $record->getAttribute('quotation_address_line_2_snapshot') !== $address?->addressLine2()?->value()
+            || $record->getAttribute('quotation_postal_code_snapshot') !== $address?->postalCode()->value()
+            || $record->getAttribute('quotation_city_snapshot') !== $address?->city()->value()
+            || $record->getAttribute('quotation_country_code_snapshot') !== $address?->countryCode()->value()) {
             throw new DomainException('Quotation immutable context cannot change.');
         }
     }
@@ -126,6 +141,8 @@ final class EloquentQuotationRepository implements QuotationCreator, QuotationOr
             throw new DomainException('Persistent Quotation requires a Customer snapshot.');
         }
 
+        $address = $quotation->documentAddressSnapshot();
+
         return [
             'id' => $quotation->id()->toString(),
             'administration_id' => $administrationId->toString(),
@@ -134,6 +151,13 @@ final class EloquentQuotationRepository implements QuotationCreator, QuotationOr
             'customer_relation_id_snapshot' => $snapshot->relationId()->toString(),
             'customer_number_snapshot' => $snapshot->customerNumber()->toString(),
             'customer_name_snapshot' => $snapshot->displayName()->toString(),
+            'quotation_address_id_snapshot' => $address?->addressId()->toString(),
+            'quotation_address_type_snapshot' => $address?->type()->value,
+            'quotation_address_line_1_snapshot' => $address?->addressLine()->value(),
+            'quotation_address_line_2_snapshot' => $address?->addressLine2()?->value(),
+            'quotation_postal_code_snapshot' => $address?->postalCode()->value(),
+            'quotation_city_snapshot' => $address?->city()->value(),
+            'quotation_country_code_snapshot' => $address?->countryCode()->value(),
             'currency' => $quotation->currency()->code(),
             'quotation_date' => $quotation->quotationDate()->format('Y-m-d'),
             'expiry_date' => $quotation->expiryDate()?->format('Y-m-d'),
@@ -182,6 +206,36 @@ final class EloquentQuotationRepository implements QuotationCreator, QuotationOr
             QuotationStatus::from($record->getAttribute('status')), new DateTimeImmutable($record->getAttribute('quotation_date')),
             $expiry === null ? null : new DateTimeImmutable($expiry), $lines,
             new SalesCustomerSnapshot(new CustomerId(new Uuid($record->getAttribute('customer_id'))), new RelationId(new Uuid($record->getAttribute('customer_relation_id_snapshot'))), new CustomerNumber($record->getAttribute('customer_number_snapshot')), new DisplayName($record->getAttribute('customer_name_snapshot'))),
+            $this->hydrateDocumentAddress($record),
+        );
+    }
+
+    private function hydrateDocumentAddress(QuotationRecord $record): ?SalesAddressSnapshot
+    {
+        $values = [
+            $record->getAttribute('quotation_address_id_snapshot'),
+            $record->getAttribute('quotation_address_type_snapshot'),
+            $record->getAttribute('quotation_address_line_1_snapshot'),
+            $record->getAttribute('quotation_postal_code_snapshot'),
+            $record->getAttribute('quotation_city_snapshot'),
+            $record->getAttribute('quotation_country_code_snapshot'),
+        ];
+        if (count(array_filter($values, static fn (mixed $value): bool => $value !== null)) === 0) {
+            return null;
+        }
+        if (in_array(null, $values, true)) {
+            throw new DomainException('Quotation document address snapshot is incomplete.');
+        }
+        $line2 = $record->getAttribute('quotation_address_line_2_snapshot');
+
+        return new SalesAddressSnapshot(
+            new AddressId(new Uuid($values[0])),
+            AddressType::from($values[1]),
+            new AddressLine($values[2]),
+            $line2 === null ? null : new AddressLine($line2),
+            new PostalCode($values[3]),
+            new City($values[4]),
+            new CountryCode($values[5]),
         );
     }
 }

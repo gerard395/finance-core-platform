@@ -10,4 +10,5 @@ enum AddressType: string
     case Postal = 'postal';
     case Invoice = 'invoice';
     case Delivery = 'delivery';
+    case Quotation = 'quotation';
 }

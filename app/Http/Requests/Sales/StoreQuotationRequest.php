@@ -12,6 +12,7 @@ final class StoreQuotationRequest extends FormRequest
     {
         return [
             'customer_id' => ['required', 'uuid'],
+            'quotation_address_id' => ['required', 'uuid'],
             'quotation_date' => ['required', 'date_format:Y-m-d'],
             'expiry_date' => ['nullable', 'date_format:Y-m-d'],
         ];

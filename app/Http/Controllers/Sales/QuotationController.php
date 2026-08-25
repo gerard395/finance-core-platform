@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Sales;
 
 use App\Application\Identity\PermissionAuthorizer;
+use App\Application\Relations\AddressReadRepository;
 use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\RelationReadRepository;
 use App\Application\Sales\CreateQuotation;
@@ -18,7 +19,10 @@ use App\Application\Sales\QuotationWriteResult;
 use App\Application\Sales\UpdateQuotation;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
+use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
+use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Identity\Uuid;
@@ -43,6 +47,7 @@ final class QuotationController extends Controller
         private readonly OrderBySourceQuotationRepository $ordersBySourceQuotation,
         private readonly CustomerReadRepository $customers,
         private readonly RelationReadRepository $relations,
+        private readonly AddressReadRepository $addresses,
         private readonly CreateQuotation $createQuotation,
         private readonly UpdateQuotation $updateQuotation,
         private readonly PermissionAuthorizer $permissions,
@@ -105,7 +110,12 @@ final class QuotationController extends Controller
     {
         $context = $this->context($request);
 
-        return view('sales.quotations.create', $this->viewData($context) + ['customers' => $this->customerOptions($context)]);
+        $customers = $this->customerOptions($context);
+
+        return view('sales.quotations.create', $this->viewData($context) + [
+            'customers' => $customers,
+            'quotationAddresses' => $this->quotationAddressOptions($context, $customers),
+        ]);
     }
 
     public function store(StoreQuotationRequest $request): RedirectResponse
@@ -117,6 +127,7 @@ final class QuotationController extends Controller
             $context->administration->id(),
             $id,
             new CustomerId(new Uuid($validated['customer_id'])),
+            new AddressId(new Uuid($validated['quotation_address_id'])),
             $context->administration->baseCurrency(),
             new DateTimeImmutable($validated['quotation_date']),
             isset($validated['expiry_date']) ? new DateTimeImmutable($validated['expiry_date']) : null,
@@ -125,11 +136,14 @@ final class QuotationController extends Controller
         if ($result !== QuotationWriteResult::Success) {
             $message = match ($result) {
                 QuotationWriteResult::CustomerNotFound, QuotationWriteResult::InactiveCustomer => 'De geselecteerde klant is niet beschikbaar.',
+                QuotationWriteResult::QuotationAddressNotFound, QuotationWriteResult::InactiveQuotationAddress, QuotationWriteResult::InvalidQuotationAddressPurpose => 'Voor deze relatie is geen actief offerteadres vastgelegd.',
                 QuotationWriteResult::SequenceMissing, QuotationWriteResult::SequenceInactive => 'Offertenummering is niet beschikbaar.',
                 default => 'De offerte kon niet worden aangemaakt.',
             };
 
-            return back()->withInput()->withErrors(['customer_id' => $message]);
+            $field = in_array($result, [QuotationWriteResult::QuotationAddressNotFound, QuotationWriteResult::InactiveQuotationAddress, QuotationWriteResult::InvalidQuotationAddressPurpose], true) ? 'quotation_address_id' : 'customer_id';
+
+            return back()->withInput()->withErrors([$field => $message]);
         }
 
         return $this->can($context, SalesPermission::View)
@@ -171,7 +185,7 @@ final class QuotationController extends Controller
         }
     }
 
-    /** @return list<array{id: string, number: string, name: string}> */
+    /** @return list<array{id: string, relation_id: string, number: string, name: string}> */
     private function customerOptions(ActiveAdministrationContext $context): array
     {
         $relations = [];
@@ -182,7 +196,30 @@ final class QuotationController extends Controller
         foreach ($this->customers->findForAdministration($context->administration->id()) as $customer) {
             $relation = $relations[$customer->relationId()->toString()] ?? null;
             if ($customer->isActive() && $relation !== null) {
-                $options[] = ['id' => $customer->id()->toString(), 'number' => $customer->customerNumber()->toString(), 'name' => $relation->displayName()->toString()];
+                $options[] = ['id' => $customer->id()->toString(), 'relation_id' => $relation->id()->toString(), 'number' => $customer->customerNumber()->toString(), 'name' => $relation->displayName()->toString()];
+            }
+        }
+
+        return $options;
+    }
+
+    /**
+     * @param  list<array{id: string, relation_id: string, number: string, name: string}>  $customers
+     * @return list<array{id: string, customer_id: string, label: string}>
+     */
+    private function quotationAddressOptions(ActiveAdministrationContext $context, array $customers): array
+    {
+        $options = [];
+        foreach ($customers as $customer) {
+            foreach ($this->addresses->listForRelation($context->administration->id(), new RelationId(new Uuid($customer['relation_id']))) as $address) {
+                if (! $address->active || $address->type !== AddressType::Quotation) {
+                    continue;
+                }
+                $options[] = [
+                    'id' => $address->id->toString(),
+                    'customer_id' => $customer['id'],
+                    'label' => sprintf('%s – %s, %s %s', $customer['name'], $address->addressLine->value(), $address->postalCode->value(), $address->city->value()),
+                ];
             }
         }
 

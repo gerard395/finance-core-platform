@@ -17,6 +17,7 @@ use App\Application\Sales\SendQuotation;
 use App\Application\Sales\UpdateQuotation;
 use App\Application\Sales\UpdateQuotationLine;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\Quotation;
 use App\Domain\Sales\Entities\QuotationLine;
@@ -30,6 +31,7 @@ use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -65,8 +67,33 @@ final class QuotationApplicationContractsTest extends TestCase
         self::assertSame('Q000001', $quotation?->number()->value());
         self::assertSame('Customer A', $quotation?->customerSnapshot()?->displayName()->value());
         self::assertSame('C-A', $quotation?->customerSnapshot()?->customerNumber()->value());
+        self::assertSame('Quotation street A', $quotation?->documentAddressSnapshot()?->addressLine()->value());
         self::assertSame(QuotationStatus::Draft, $quotation?->status());
         self::assertSame('20', $quotation?->total()->amount());
+    }
+
+    public function test_quotation_address_requires_same_relation_active_and_exact_purpose_without_allocating_number(): void
+    {
+        $address = RelationAddressRecord::query()->where('administration_id', self::A)->firstOrFail();
+        $address->update(['active' => false]);
+        self::assertSame(QuotationWriteResult::InactiveQuotationAddress, $this->create($this->qid(10), new CustomerId(new Uuid(self::CUSTOMER_A))));
+        $address->update(['active' => true]);
+        foreach (['invoice', 'postal', 'visiting', 'delivery'] as $index => $purpose) {
+            $address->update(['address_type' => $purpose]);
+            self::assertSame(QuotationWriteResult::InvalidQuotationAddressPurpose, $this->create($this->qid(11 + $index), new CustomerId(new Uuid(self::CUSTOMER_A))));
+        }
+        $address->update(['address_type' => 'quotation']);
+        self::assertSame(QuotationWriteResult::QuotationAddressNotFound, $this->app->make(CreateQuotation::class)->execute($this->admin(self::A), $this->qid(20), new CustomerId(new Uuid(self::CUSTOMER_A)), new AddressId(new Uuid('e5000000-0000-4000-8000-000000000099')), new Currency('EUR'), new DateTimeImmutable('2026-08-21'), null));
+        self::assertSame(1, DB::table('sales_number_sequences')->where('administration_id', self::A)->where('sequence_type', 'quotation')->value('next_value'));
+    }
+
+    public function test_address_snapshot_remains_immutable_after_source_address_changes(): void
+    {
+        $id = $this->qid(13);
+        self::assertSame(QuotationWriteResult::Success, $this->create($id, new CustomerId(new Uuid(self::CUSTOMER_A))));
+        RelationAddressRecord::query()->where('administration_id', self::A)->update(['address_line_1' => 'Changed street 99', 'active' => false]);
+
+        self::assertSame('Quotation street A', $this->read($id)?->documentAddressSnapshot()?->addressLine()->value());
     }
 
     public function test_inactive_and_cross_tenant_customer_are_typed_and_do_not_allocate(): void
@@ -139,7 +166,7 @@ final class QuotationApplicationContractsTest extends TestCase
     /** @param list<QuotationLine> $lines */
     private function create(QuotationId $id, CustomerId $customerId, array $lines = []): QuotationWriteResult
     {
-        return $this->app->make(CreateQuotation::class)->execute($this->admin(self::A), $id, $customerId, new Currency('EUR'), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'), $lines);
+        return $this->app->make(CreateQuotation::class)->execute($this->admin(self::A), $id, $customerId, new AddressId(new Uuid('e5000000-0000-4000-8000-'.($customerId->toString() === self::CUSTOMER_A ? '000000000001' : '000000000002'))), new Currency('EUR'), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'), $lines);
     }
 
     private function read(QuotationId $id): ?Quotation
@@ -168,5 +195,6 @@ final class QuotationApplicationContractsTest extends TestCase
         AdministrationRecord::query()->create(['id' => $administration, 'code' => 'APP-'.$suffix, 'name' => 'Application '.$suffix, 'base_currency' => 'EUR', 'status' => 'active']);
         RelationRecord::query()->create(['id' => $relation, 'administration_id' => $administration, 'code' => 'REL-'.$suffix, 'display_name' => 'Customer '.$suffix, 'active' => true]);
         CustomerRecord::query()->create(['id' => $customer, 'administration_id' => $administration, 'relation_id' => $relation, 'customer_number' => 'C-'.$suffix, 'active' => true]);
+        RelationAddressRecord::query()->create(['address_id' => 'e5000000-0000-4000-8000-'.($suffix === 'A' ? '000000000001' : '000000000002'), 'administration_id' => $administration, 'relation_id' => $relation, 'address_type' => 'quotation', 'address_line_1' => 'Quotation street '.$suffix, 'address_line_2' => null, 'postal_code' => '1234AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
     }
 }

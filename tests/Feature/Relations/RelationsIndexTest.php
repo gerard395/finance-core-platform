@@ -321,10 +321,12 @@ final class RelationsIndexTest extends TestCase
         $relationId = $this->relation(self::ADMIN_A, 42, 'ADDRESS-42', 'Mutable address relation', true);
         $contactId = $this->contact($relationId, 42, 'Preserved Contact', null, null);
 
-        foreach (['visiting', 'postal', 'invoice', 'delivery'] as $index => $type) {
+        $this->get(route('relations.addresses.create', $relationId->toString()))->assertOk()->assertSeeText('Offerteadres');
+        foreach (['visiting', 'postal', 'invoice', 'delivery', 'quotation'] as $index => $type) {
             $this->post(route('relations.addresses.store', $relationId->toString()), ['type' => $type, 'address_line_1' => 'Line '.($index + 1), 'address_line_2' => '', 'postal_code' => '100'.$index, 'city' => 'City', 'country_code' => 'nl', 'administration_id' => self::ADMIN_B, 'address_id' => $this->uuid('f', $index + 1)->toString()])->assertRedirect(route('relations.show', $relationId->toString()));
         }
-        $this->assertDatabaseCount('relation_addresses', 4);
+        $this->assertDatabaseCount('relation_addresses', 5);
+        $this->assertDatabaseHas('relation_addresses', ['address_type' => 'quotation']);
         $record = DB::table('relation_addresses')->where('address_type', 'visiting')->first();
         self::assertNotNull($record);
         self::assertSame(self::ADMIN_A, $record->administration_id);

@@ -5,11 +5,13 @@ declare(strict_types=1);
 namespace App\Domain\Sales\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Enums\AddressType;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
@@ -32,9 +34,13 @@ final class Quotation
         private DateTimeImmutable $quotationDate,
         private ?DateTimeImmutable $expiryDate,
         private readonly ?SalesCustomerSnapshot $customerSnapshot = null,
+        private readonly ?SalesAddressSnapshot $documentAddressSnapshot = null,
     ) {
         self::assertDates($quotationDate, $expiryDate);
         self::assertCustomerSnapshot($customerId, $customerSnapshot);
+        if ($documentAddressSnapshot !== null && $documentAddressSnapshot->type() !== AddressType::Quotation) {
+            throw new DomainException('Quotation document address must have Quotation purpose.');
+        }
     }
 
     /** @param list<QuotationLine> $lines */
@@ -49,8 +55,9 @@ final class Quotation
         ?DateTimeImmutable $expiryDate,
         array $lines,
         ?SalesCustomerSnapshot $customerSnapshot = null,
+        ?SalesAddressSnapshot $documentAddressSnapshot = null,
     ): self {
-        $quotation = new self($id, $number, $administrationId, $customerId, $currency, $status, $quotationDate, $expiryDate, $customerSnapshot);
+        $quotation = new self($id, $number, $administrationId, $customerId, $currency, $status, $quotationDate, $expiryDate, $customerSnapshot, $documentAddressSnapshot);
         $quotation->restoreLines($lines);
 
         if (in_array($status, [QuotationStatus::Sent, QuotationStatus::Accepted, QuotationStatus::Rejected], true) && $lines === []) {
@@ -83,6 +90,11 @@ final class Quotation
     public function customerSnapshot(): ?SalesCustomerSnapshot
     {
         return $this->customerSnapshot;
+    }
+
+    public function documentAddressSnapshot(): ?SalesAddressSnapshot
+    {
+        return $this->documentAddressSnapshot;
     }
 
     private static function assertCustomerSnapshot(CustomerId $customerId, ?SalesCustomerSnapshot $snapshot): void

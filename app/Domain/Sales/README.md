@@ -23,9 +23,9 @@ Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en
 
 ## Historische snapshots
 
-Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation en Order hebben in v1 geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
+Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation bewaart voor nieuwe documenten daarnaast een expliciet geselecteerde Quotation-addresssnapshot; legacy Quotations zonder snapshot blijven leesbaar. Order heeft geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
 
-Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
+Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, voor Quotation exact een expliciet actief Quotation-adres, voor SalesInvoice exact een expliciet actief Invoice-adres, beide zonder typefallback, en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
 SalesInvoice legt bij create document-level immutable customer- en supplier-fiscale
 snapshots vast met typed nullable VAT ID en jurisdiction. Een optionele typed
@@ -107,7 +107,7 @@ Succesvol gecommitteerde nummers worden niet gerecycled. Allocation en toekomsti
 
 ## Quotation persistence
 
-Quotations worden Administration-scoped duurzaam opgeslagen met hun immutable customer snapshot en aggregate-owned lines. Create alloceert nummer en insert in één transaction; updates laden tenant-scoped en zijn nooit upsert. Listreads filteren/sorteren/pagineren headers SQL-side en detail/aggregate hydration gebruikt uitsluitend `Quotation::reconstitute()`.
+Quotations worden Administration-scoped duurzaam opgeslagen met hun immutable customer- en, voor nieuwe documenten, Quotation-addresssnapshot en aggregate-owned lines. Create valideert en lockt het expliciete same-Relation actieve Offerteadres vóór nummerallocatie; adresvolgorde en Postal-/Invoice-fallback bestaan niet. Nummerallocatie en insert blijven één transaction; updates laden tenant-scoped en zijn nooit upsert. Listreads filteren/sorteren/pagineren headers SQL-side en detail/aggregate hydration gebruikt uitsluitend `Quotation::reconstitute()`. Legacy rows met een volledig null addresssnapshot blijven geldig.
 
 De database bewaakt tenant-unieke quotationnummers en same-tenant Customer- en line→Quotation-relaties. Algemene optimistic locking bestaat nog niet. Quotation Web UI, PDF/e-mail, automatische expiry en Order-conversie blijven vervolgscope.
 

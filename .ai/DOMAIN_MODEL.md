@@ -65,6 +65,11 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 | SalesInvoice | SalesInvoiceLine | Een verkoopfactuur en haar factureerbare regels beheren. |
 | SalesCreditInvoice | SalesCreditInvoiceLine | Een correctie op eerder gefactureerde verkoop beheren. |
 
+Een nieuwe Quotation legt naast de customersnapshot exact één expliciet geselecteerd,
+actief same-Relation adres met doel `Quotation` als immutable documentsnapshot vast.
+Andere adresdoelen en adresvolgorde zijn geen fallback. Bestaande legacy Quotations
+zonder deze snapshot blijven hydrateerbaar; Draft-editing ververst de snapshot niet.
+
 #### Workflows
 
 Een Quotation doorloopt een van de volgende paden:
