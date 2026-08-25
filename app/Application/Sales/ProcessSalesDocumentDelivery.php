@@ -28,6 +28,9 @@ final readonly class ProcessSalesDocumentDelivery
             return;
         }
         $message = new DocumentMailMessage($claimed->request->recipientEmail, $claimed->request->recipientName, $claimed->request->fromEmail, $claimed->request->fromName, $claimed->request->replyTo, $claimed->request->subject, $claimed->request->body, $read->bytes, $read->artifact->filename);
+        if (! $this->outbox->markTransportStarted($claimed)) {
+            return;
+        }
         try {
             $result = $this->transport->send($message);
             $this->outbox->complete($claimed, $result);

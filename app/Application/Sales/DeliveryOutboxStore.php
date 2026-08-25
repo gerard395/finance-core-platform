@@ -12,5 +12,9 @@ interface DeliveryOutboxStore
 
     public function complete(ClaimedDelivery $delivery, DocumentMailTransportResult $result): void;
 
+    public function markTransportStarted(ClaimedDelivery $delivery): bool;
+
+    public function recoverStalePreSend(): int;
+
     public function markOutcomeUnknown(DeliveryOutboxMessageId $outboxId, string $category): void;
 }

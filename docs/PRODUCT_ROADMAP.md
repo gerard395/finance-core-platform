@@ -431,9 +431,11 @@ basis. Production worker supervision, health/readiness en operationele failed-jo
 OutcomeUnknown-resolutie blijven deploymentblockers vóór live Web-delivery in W4E-004.
 
 W4E-003B kiest een portable single-host production Docker Compose-runtime met database-
-queue, bewaakte worker/scheduler, durable MySQL/artifactvolumes en applicationheartbeat.
-W4E-003C legt vervolgens de operationele resolutionpermission vast; daarna hervat
-W4E-003A readiness/recovery. W4E-004 blijft tot voltooiing van W4E-003A geblokkeerd.
+queue, bewaakte worker/scheduler en durable MySQL/artifactvolumes. W4E-003C legt de
+operationele resolutionpermission vast. W4E-003A levert vervolgens workerheartbeat,
+typed queue/mail/storage-readiness, durable transport-startmarkering, veilig pre-send
+leaseherstel, append-only OutcomeUnknown-resolution en CLI-health. Daarmee is de
+operationspredecessor voor W4E-004 gereed; Web-delivery zelf blijft W4E-004-scope.
 
 W4E-003C levert `DELIVERY.OUTCOME_RESOLVE` via de smalle canonieke
 `DELIVERY_OPERATOR`-rol, zonder automatische membershipassignment. Daarmee zijn de

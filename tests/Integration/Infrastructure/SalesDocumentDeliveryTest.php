@@ -6,24 +6,36 @@ namespace Tests\Integration\Infrastructure;
 
 use App\Application\Sales\CreateDeliveryRequestStatus;
 use App\Application\Sales\CreateSalesDocumentDeliveryRequest;
+use App\Application\Sales\DeliveryInfrastructureReadinessStatus;
 use App\Application\Sales\DeliveryOutboxStore;
+use App\Application\Sales\DeliveryOutcomeResolutionStatus;
+use App\Application\Sales\DeliveryOutcomeResolutionStore;
 use App\Application\Sales\DeliveryRequestStore;
+use App\Application\Sales\DeliveryWorkerHeartbeatStore;
 use App\Application\Sales\DocumentMailMessage;
 use App\Application\Sales\DocumentMailTransport;
 use App\Application\Sales\DocumentMailTransportResult;
 use App\Application\Sales\ProcessSalesDocumentDelivery;
+use App\Application\Sales\ResolveUnknownDeliveryOutcome;
 use App\Application\Sales\SalesDocumentDeliveryHistoryReader;
+use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
 use App\Application\Sales\SalesDocumentSource;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Identity\Definitions\DeliveryOperationsRole;
 use App\Domain\Identity\ValueObjects\UserId;
+use App\Domain\Sales\Entities\DeliveryOutcomeResolution;
 use App\Domain\Sales\Entities\DeliveryRequest;
+use App\Domain\Sales\Enums\DeliveryOutcomeResolutionType;
 use App\Domain\Sales\Enums\DeliveryRequestStatus;
 use App\Domain\Sales\Enums\SalesDocumentType;
 use App\Domain\Sales\ValueObjects\ArtifactId;
+use App\Domain\Sales\ValueObjects\DeliveryAttemptId;
 use App\Domain\Sales\ValueObjects\DeliveryOutboxMessageId;
+use App\Domain\Sales\ValueObjects\DeliveryOutcomeResolutionId;
 use App\Domain\Sales\ValueObjects\DeliveryRequestId;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Identity\Uuid;
+use App\Infrastructure\Identity\DeliveryOperationsAuthorizationProvisioner;
 use App\Jobs\ProcessSalesDocumentDeliveryJob;
 use DateTimeImmutable;
 use Illuminate\Database\QueryException;
@@ -31,6 +43,8 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Large;
 use Tests\TestCase;
 use Throwable;
@@ -152,6 +166,82 @@ final class SalesDocumentDeliveryTest extends TestCase
         self::assertSame('draft', DB::table('quotations')->where('id', self::QUOTATION)->value('status'));
     }
 
+    public function test_heartbeat_readiness_is_fresh_stale_and_environment_aware(): void
+    {
+        config(['queue.default' => 'database']);
+        $readiness = $this->app->make(SalesDocumentDeliveryInfrastructureReadiness::class);
+        self::assertSame(DeliveryInfrastructureReadinessStatus::WorkerUnavailable, $readiness->check()->status);
+        $this->app->make(DeliveryWorkerHeartbeatStore::class)->beat('test-worker', 'test-release');
+        self::assertSame(DeliveryInfrastructureReadinessStatus::Ready, $readiness->check()->status);
+        DB::table('delivery_worker_heartbeats')->update(['last_seen_at' => now()->subSeconds(90)]);
+        self::assertSame(DeliveryInfrastructureReadinessStatus::WorkerUnavailable, $readiness->check()->status);
+        DB::table('delivery_worker_heartbeats')->update(['last_seen_at' => now()]);
+        $this->app->detectEnvironment(fn (): string => 'production');
+        config(['mail.default' => 'log']);
+        self::assertSame(DeliveryInfrastructureReadinessStatus::MailTransportUnavailable, $readiness->check()->status);
+    }
+
+    public function test_health_command_has_safe_output_and_meaningful_exit_codes(): void
+    {
+        config(['queue.default' => 'database']);
+        $this->artisan('delivery:health')->assertExitCode(1)->expectsOutputToContain('worker_unavailable');
+        $this->app->make(DeliveryWorkerHeartbeatStore::class)->beat('test-worker');
+        $this->artisan('delivery:health')->assertExitCode(0)->expectsOutputToContain('ready')->doesntExpectOutputToContain('customer@example.test')->doesntExpectOutputToContain('MAIL_PASSWORD');
+    }
+
+    public function test_stale_pre_send_is_recovered_but_transport_started_becomes_unknown(): void
+    {
+        $store = $this->app->make(DeliveryRequestStore::class);
+        $outbox = $this->app->make(DeliveryOutboxStore::class);
+        $store->createWithInitialOutbox($this->request());
+        $outboxId = new DeliveryOutboxMessageId(new Uuid((string) DB::table('sales_document_delivery_outbox')->value('id')));
+        $claimed = $outbox->claim($outboxId);
+        self::assertNotNull($claimed);
+        DB::table('sales_document_delivery_outbox')->update(['lease_expires_at' => now()->subSecond()]);
+        self::assertSame(1, $outbox->recoverStalePreSend());
+        self::assertDatabaseHas('sales_document_delivery_outbox', ['status' => 'available']);
+        self::assertDatabaseHas('sales_document_delivery_attempts', ['result' => 'failed_transport', 'error_category' => 'pre_send_worker_crash']);
+
+        $claimedAgain = $outbox->claim($outboxId);
+        self::assertNotNull($claimedAgain);
+        self::assertTrue($outbox->markTransportStarted($claimedAgain));
+        DB::table('sales_document_delivery_outbox')->update(['lease_expires_at' => now()->subSecond()]);
+        self::assertSame(0, $outbox->recoverStalePreSend());
+        self::assertDatabaseHas('sales_document_delivery_attempts', ['id' => $claimedAgain->attempt->id->toString(), 'result' => 'outcome_unknown']);
+        self::assertDatabaseHas('sales_document_delivery_outbox', ['status' => 'blocked']);
+    }
+
+    #[DataProvider('resolutionTypes')]
+    public function test_unknown_resolution_is_authorized_tenant_scoped_append_only_and_does_not_send(DeliveryOutcomeResolutionType $type): void
+    {
+        $this->transport->throw = true;
+        $this->app->make(DeliveryRequestStore::class)->createWithInitialOutbox($this->request());
+        $this->process();
+        $attemptId = (string) DB::table('sales_document_delivery_attempts')->value('id');
+        $this->app->make(DeliveryOperationsAuthorizationProvisioner::class)->provision();
+        DB::table('administration_memberships')->insert(['id' => 'd9000000-0000-4000-8000-000000000001', 'user_id' => self::USER, 'administration_id' => self::ADMIN, 'active' => true, 'valid_from' => now()->subDay(), 'valid_until' => now()->addDay(), 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('administration_membership_roles')->insert(['id' => 'd9100000-0000-4000-8000-000000000001', 'membership_id' => 'd9000000-0000-4000-8000-000000000001', 'role_id' => DeliveryOperationsRole::Operator->id()->toString(), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $useCase = $this->app->make(ResolveUnknownDeliveryOutcome::class);
+        $result = $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000001')), $this->admin(self::ADMIN), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), $type, new UserId(new Uuid(self::USER)), 'Extern onderzocht');
+        self::assertSame(DeliveryOutcomeResolutionStatus::Resolved, $result);
+        self::assertSame(DeliveryOutcomeResolutionStatus::AlreadyResolved, $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000002')), $this->admin(self::ADMIN), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), DeliveryOutcomeResolutionType::AuthorizeResend, new UserId(new Uuid(self::USER))));
+        self::assertDatabaseHas('sales_document_delivery_attempts', ['id' => $attemptId, 'result' => 'outcome_unknown']);
+        self::assertDatabaseHas('sales_document_delivery_outcome_resolutions', ['delivery_attempt_id' => $attemptId, 'resolution_type' => $type->value, 'resolved_by' => self::USER]);
+        self::assertSame(1, $this->transport->sends);
+        DB::table('administration_membership_roles')->update(['active' => false]);
+        self::assertSame(DeliveryOutcomeResolutionStatus::Unauthorized, $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000003')), $this->admin(self::ADMIN), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), DeliveryOutcomeResolutionType::AuthorizeResend, new UserId(new Uuid(self::USER))));
+        self::assertSame(DeliveryOutcomeResolutionStatus::Unauthorized, $useCase->execute(new DeliveryOutcomeResolutionId(new Uuid('d9200000-0000-4000-8000-000000000004')), $this->admin(self::ADMIN_B), $this->requestId(), new DeliveryAttemptId(new Uuid($attemptId)), DeliveryOutcomeResolutionType::AuthorizeResend, new UserId(new Uuid(self::USER))));
+    }
+
+    /** @return array<string, array{DeliveryOutcomeResolutionType}> */
+    public static function resolutionTypes(): array
+    {
+        return [
+            'handled externally' => [DeliveryOutcomeResolutionType::HandledExternally],
+            'authorize resend' => [DeliveryOutcomeResolutionType::AuthorizeResend],
+        ];
+    }
+
     public function test_two_real_mysql_workers_cannot_claim_the_same_external_send(): void
     {
         if (! function_exists('pcntl_fork')) {
@@ -191,6 +281,50 @@ final class SalesDocumentDeliveryTest extends TestCase
         foreach ($files as $file) {
             unlink($file);
         }
+        $this->cleanupCommittedFixture();
+        DB::beginTransaction();
+    }
+
+    public function test_two_real_mysql_recovery_workers_recover_a_stale_pre_send_claim_once(): void
+    {
+        $this->app->make(DeliveryRequestStore::class)->createWithInitialOutbox($this->request());
+        $outboxId = new DeliveryOutboxMessageId(new Uuid((string) DB::table('sales_document_delivery_outbox')->value('id')));
+        self::assertNotNull($this->app->make(DeliveryOutboxStore::class)->claim($outboxId));
+        DB::table('sales_document_delivery_outbox')->update(['lease_expires_at' => now()->subSecond()]);
+        DB::commit();
+
+        $results = $this->runConcurrently(static fn (): string => (string) app(DeliveryOutboxStore::class)->recoverStalePreSend());
+        sort($results);
+        self::assertSame(['0', '1'], $results);
+        self::assertSame(1, DB::table('sales_document_delivery_attempts')->where('error_category', 'pre_send_worker_crash')->count());
+        $this->cleanupCommittedFixture();
+        DB::beginTransaction();
+    }
+
+    public function test_two_real_mysql_resolution_workers_create_one_authoritative_resolution(): void
+    {
+        $this->transport->throw = true;
+        $this->app->make(DeliveryRequestStore::class)->createWithInitialOutbox($this->request());
+        $this->process();
+        $attemptId = (string) DB::table('sales_document_delivery_attempts')->value('id');
+        DB::commit();
+
+        $results = $this->runConcurrently(function () use ($attemptId): string {
+            $resolution = new DeliveryOutcomeResolution(
+                new DeliveryOutcomeResolutionId(new Uuid(Str::uuid()->toString())),
+                $this->admin(self::ADMIN),
+                $this->requestId(),
+                new DeliveryAttemptId(new Uuid($attemptId)),
+                DeliveryOutcomeResolutionType::HandledExternally,
+                new UserId(new Uuid(self::USER)),
+                new DateTimeImmutable,
+            );
+
+            return app(DeliveryOutcomeResolutionStore::class)->appendForUnknownAttempt($resolution)->value;
+        });
+        sort($results);
+        self::assertSame(['already_resolved', 'resolved'], $results);
+        self::assertSame(1, DB::table('sales_document_delivery_outcome_resolutions')->where('delivery_attempt_id', $attemptId)->count());
         $this->cleanupCommittedFixture();
         DB::beginTransaction();
     }
@@ -237,6 +371,7 @@ final class SalesDocumentDeliveryTest extends TestCase
     private function cleanupCommittedFixture(): void
     {
         $admins = [self::ADMIN, self::ADMIN_B];
+        DB::table('sales_document_delivery_outcome_resolutions')->whereIn('administration_id', $admins)->delete();
         DB::table('sales_document_delivery_outbox')->whereIn('administration_id', $admins)->delete();
         DB::table('sales_document_delivery_attempts')->whereIn('administration_id', $admins)->delete();
         DB::table('sales_document_delivery_requests')->whereIn('administration_id', $admins)->delete();
@@ -250,6 +385,43 @@ final class SalesDocumentDeliveryTest extends TestCase
         DB::table('relations')->whereIn('administration_id', $admins)->delete();
         DB::table('domain_users')->where('id', self::USER)->delete();
         DB::table('administrations')->whereIn('id', $admins)->delete();
+    }
+
+    /** @return list<string> */
+    private function runConcurrently(callable $operation): array
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $files = [tempnam(sys_get_temp_dir(), 'delivery-concurrency-a-'), tempnam(sys_get_temp_dir(), 'delivery-concurrency-b-')];
+        $children = [];
+        foreach ($files as $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    file_put_contents($file, $operation());
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertTrue(pcntl_wifexited($status));
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+
+        return $results;
     }
 }
 

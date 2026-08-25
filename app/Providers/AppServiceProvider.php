@@ -58,7 +58,9 @@ use App\Application\Relations\SupplierStore;
 use App\Application\Sales\CreateSalesInvoicePostingRequest;
 use App\Application\Sales\DeliveryIdentityGenerator;
 use App\Application\Sales\DeliveryOutboxStore;
+use App\Application\Sales\DeliveryOutcomeResolutionStore;
 use App\Application\Sales\DeliveryRequestStore;
+use App\Application\Sales\DeliveryWorkerHeartbeatStore;
 use App\Application\Sales\DocumentArtifactFailureReporter;
 use App\Application\Sales\DocumentArtifactRepository;
 use App\Application\Sales\DocumentArtifactStorage;
@@ -101,6 +103,7 @@ use App\Application\Sales\SalesCreditSourceReader;
 use App\Application\Sales\SalesCustomerContextReader;
 use App\Application\Sales\SalesDocumentArtifactIdentityGenerator;
 use App\Application\Sales\SalesDocumentDeliveryHistoryReader;
+use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
 use App\Application\Sales\SalesDocumentDeliverySourceReader;
 use App\Application\Sales\SalesDocumentIssuerReader;
 use App\Application\Sales\SalesDocumentMasterDataStore;
@@ -176,6 +179,7 @@ use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use App\Infrastructure\Relations\DatabaseRelationNumberSequence;
 use App\Infrastructure\Relations\LaravelRelationClassificationIdentityGenerator;
 use App\Infrastructure\Sales\BrowsershotSalesDocumentPdfRenderer;
+use App\Infrastructure\Sales\DatabaseDeliveryOperations;
 use App\Infrastructure\Sales\DatabaseSalesNumberSequence;
 use App\Infrastructure\Sales\EloquentQuotationAddressResolver;
 use App\Infrastructure\Sales\EloquentSalesCreditInvoicePostingRepository;
@@ -198,6 +202,8 @@ use App\Infrastructure\Sales\LaravelSalesDocumentArtifactIdentityGenerator;
 use App\Infrastructure\Sales\LaravelSalesInvoicePostingIdentityGenerator;
 use App\Infrastructure\Sales\SystemSalesCreditInvoicePostingClock;
 use App\Infrastructure\Sales\SystemSalesInvoicePostingClock;
+use Illuminate\Queue\Events\Looping;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -266,6 +272,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DeliveryOutboxStore::class, EloquentSalesDocumentDelivery::class);
         $this->app->bind(SalesDocumentDeliverySourceReader::class, EloquentSalesDocumentDelivery::class);
         $this->app->bind(SalesDocumentDeliveryHistoryReader::class, EloquentSalesDocumentDelivery::class);
+        $this->app->bind(DeliveryWorkerHeartbeatStore::class, DatabaseDeliveryOperations::class);
+        $this->app->bind(SalesDocumentDeliveryInfrastructureReadiness::class, DatabaseDeliveryOperations::class);
+        $this->app->bind(DeliveryOutcomeResolutionStore::class, DatabaseDeliveryOperations::class);
         $this->app->bind(QuotationReadRepository::class, EloquentQuotationRepository::class);
         $this->app->bind(QuotationOrderConversionSource::class, EloquentQuotationRepository::class);
         $this->app->bind(QuotationCreator::class, EloquentQuotationRepository::class);
@@ -351,6 +360,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(Looping::class, function (): void {
+            app(DeliveryWorkerHeartbeatStore::class)->beat('sales-document-delivery:'.getmypid(), env('APP_RELEASE'));
+        });
     }
 }

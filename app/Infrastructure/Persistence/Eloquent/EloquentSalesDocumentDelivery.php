@@ -90,8 +90,6 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
                 if ($outbox->lease_expires_at === null || new DateTimeImmutable($outbox->lease_expires_at) > new DateTimeImmutable) {
                     return null;
                 }
-                $this->unknownRows($outbox->administration_id, $outbox->delivery_request_id, 'expired_processing_lease');
-                DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Blocked->value, 'updated_at' => now()]);
 
                 return null;
             }
@@ -107,7 +105,7 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
                 'started_at' => $now, 'created_at' => $now, 'updated_at' => $now,
             ]);
             DB::table('sales_document_delivery_requests')->where('id', $requestRow->id)->update(['status' => DeliveryRequestStatus::Attempting->value, 'updated_at' => $now]);
-            DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Processing->value, 'processing_attempts' => DB::raw('processing_attempts + 1'), 'claimed_at' => $now, 'lease_expires_at' => now()->addMinutes(5), 'updated_at' => $now]);
+            DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Processing->value, 'processing_attempts' => DB::raw('processing_attempts + 1'), 'claimed_at' => $now, 'lease_expires_at' => now()->addSeconds((int) config('delivery_operations.processing_lease_seconds')), 'updated_at' => $now]);
             $request = $this->hydrateRequest($requestRow);
             $attempt = new DeliveryAttempt($attemptId, $request->administrationId, $request->id, $number, $request->artifactId, DeliveryAttemptResult::Attempting, new DateTimeImmutable($now->toISOString()));
 
@@ -139,11 +137,62 @@ final readonly class EloquentSalesDocumentDelivery implements DeliveryOutboxStor
         });
     }
 
+    public function markTransportStarted(ClaimedDelivery $delivery): bool
+    {
+        return DB::transaction(function () use ($delivery): bool {
+            $outbox = DB::table('sales_document_delivery_outbox')->where('id', $delivery->outboxId->toString())->lockForUpdate()->first();
+            $attempt = DB::table('sales_document_delivery_attempts')->where('id', $delivery->attempt->id->toString())->lockForUpdate()->first();
+            if ($outbox?->status !== DeliveryOutboxStatus::Processing->value || $attempt?->result !== DeliveryAttemptResult::Attempting->value || $attempt->transport_started_at !== null) {
+                return false;
+            }
+            DB::table('sales_document_delivery_attempts')->where('id', $attempt->id)->update(['transport_started_at' => now(), 'updated_at' => now()]);
+
+            return true;
+        });
+    }
+
+    public function recoverStalePreSend(): int
+    {
+        $recovered = [];
+        DB::transaction(function () use (&$recovered): void {
+            $outboxes = DB::table('sales_document_delivery_outbox')->where('status', DeliveryOutboxStatus::Processing->value)->where('lease_expires_at', '<=', now())->lockForUpdate()->get();
+            foreach ($outboxes as $outbox) {
+                $attempt = DB::table('sales_document_delivery_attempts')->where('administration_id', $outbox->administration_id)->where('delivery_request_id', $outbox->delivery_request_id)->where('result', DeliveryAttemptResult::Attempting->value)->lockForUpdate()->first();
+                if ($attempt === null) {
+                    continue;
+                }
+                if ($attempt->transport_started_at !== null) {
+                    $this->unknownRows($outbox->administration_id, $outbox->delivery_request_id, 'expired_lease_after_transport_start');
+                    DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Blocked->value, 'lease_expires_at' => null, 'updated_at' => now()]);
+
+                    continue;
+                }
+                DB::table('sales_document_delivery_attempts')->where('id', $attempt->id)->update(['result' => DeliveryAttemptResult::FailedTransport->value, 'completed_at' => now(), 'error_category' => 'pre_send_worker_crash', 'retryable' => true, 'updated_at' => now()]);
+                DB::table('sales_document_delivery_requests')->where('id', $outbox->delivery_request_id)->update(['status' => DeliveryRequestStatus::Failed->value, 'updated_at' => now()]);
+                DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Available->value, 'available_at' => now(), 'claimed_at' => null, 'lease_expires_at' => null, 'updated_at' => now()]);
+                $recovered[] = $outbox->id;
+            }
+        });
+        foreach ($recovered as $id) {
+            ProcessSalesDocumentDeliveryJob::dispatch($id)->afterCommit();
+        }
+
+        return count($recovered);
+    }
+
     public function markOutcomeUnknown(DeliveryOutboxMessageId $outboxId, string $category): void
     {
         DB::transaction(function () use ($outboxId, $category): void {
             $outbox = DB::table('sales_document_delivery_outbox')->where('id', $outboxId->toString())->lockForUpdate()->first();
             if ($outbox === null || $outbox->status !== DeliveryOutboxStatus::Processing->value) {
+                return;
+            }
+            $attempt = DB::table('sales_document_delivery_attempts')->where('administration_id', $outbox->administration_id)->where('delivery_request_id', $outbox->delivery_request_id)->where('result', DeliveryAttemptResult::Attempting->value)->lockForUpdate()->first();
+            if ($attempt !== null && $attempt->transport_started_at === null) {
+                DB::table('sales_document_delivery_attempts')->where('id', $attempt->id)->update(['result' => DeliveryAttemptResult::FailedTransport->value, 'completed_at' => now(), 'error_category' => 'pre_send_worker_failure', 'retryable' => true, 'updated_at' => now()]);
+                DB::table('sales_document_delivery_requests')->where('id', $outbox->delivery_request_id)->update(['status' => DeliveryRequestStatus::Failed->value, 'updated_at' => now()]);
+                DB::table('sales_document_delivery_outbox')->where('id', $outbox->id)->update(['status' => DeliveryOutboxStatus::Available->value, 'available_at' => now(), 'claimed_at' => null, 'lease_expires_at' => null, 'updated_at' => now()]);
+
                 return;
             }
             $this->unknownRows($outbox->administration_id, $outbox->delivery_request_id, $category);
