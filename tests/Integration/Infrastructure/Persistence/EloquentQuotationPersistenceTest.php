@@ -11,9 +11,15 @@ use App\Application\Sales\QuotationSortDirection;
 use App\Application\Sales\QuotationSortField;
 use App\Application\Sales\QuotationWriteResult;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\Enums\AddressType;
+use App\Domain\Relations\ValueObjects\AddressId;
+use App\Domain\Relations\ValueObjects\AddressLine;
+use App\Domain\Relations\ValueObjects\City;
+use App\Domain\Relations\ValueObjects\CountryCode;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\CustomerNumber;
 use App\Domain\Relations\ValueObjects\DisplayName;
+use App\Domain\Relations\ValueObjects\PostalCode;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Sales\Entities\Quotation;
 use App\Domain\Sales\Entities\QuotationLine;
@@ -21,6 +27,7 @@ use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationLineId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Commerce\ValueObjects\LineDescription;
 use App\Domain\Shared\Commerce\ValueObjects\Quantity;
@@ -67,6 +74,8 @@ final class EloquentQuotationPersistenceTest extends TestCase
             self::assertSame($status, $read->status());
             self::assertSame('Customer A', $read->customerSnapshot()?->displayName()->value());
             self::assertSame('C-A', $read->customerSnapshot()?->customerNumber()->value());
+            self::assertSame('Quotation street 1', $read->documentAddressSnapshot()?->addressLine()->value());
+            self::assertSame(AddressType::Quotation, $read->documentAddressSnapshot()?->type());
             self::assertSame('2026-08-21', $read->quotationDate()->format('Y-m-d'));
             self::assertSame('2026-09-21', $read->expiryDate()?->format('Y-m-d'));
             self::assertSame('EUR', $read->currency()->code());
@@ -74,6 +83,18 @@ final class EloquentQuotationPersistenceTest extends TestCase
             self::assertSame('10', $read->lines()[0]->unitPrice()->amount());
             self::assertSame($quotation->total()->amount(), $read->total()->amount());
         }
+    }
+
+    public function test_legacy_quotation_without_document_address_remains_hydratable(): void
+    {
+        $quotation = Quotation::reconstitute($this->qid(99), new QuotationNumber('Q000099'), $this->admin(self::A), $this->customer(self::A), new Currency('EUR'), QuotationStatus::Draft, new DateTimeImmutable('2026-08-21'), null, [$this->line(99)], $this->snapshot(self::A));
+        self::assertSame(QuotationWriteResult::Success, $this->repository->create($this->admin(self::A), $quotation));
+
+        $read = $this->repository->findForAdministration($this->admin(self::A), $quotation->id());
+        self::assertNull($read?->documentAddressSnapshot());
+        $read?->send();
+        self::assertSame(QuotationWriteResult::Success, $this->repository->update($this->admin(self::A), $read));
+        self::assertSame(QuotationStatus::Sent, $this->repository->findForAdministration($this->admin(self::A), $quotation->id())?->status());
     }
 
     public function test_tenant_isolation_duplicate_constraints_and_same_tenant_line_fk_are_database_safe(): void
@@ -129,7 +150,7 @@ final class EloquentQuotationPersistenceTest extends TestCase
 
     private function quotation(int $id, QuotationStatus $status, ?string $number = null): Quotation
     {
-        return Quotation::reconstitute($this->qid($id), new QuotationNumber($number ?? sprintf('Q%06d', $id)), $this->admin(self::A), $this->customer(self::A), new Currency('EUR'), $status, new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'), [$this->line($id)], $this->snapshot(self::A));
+        return Quotation::reconstitute($this->qid($id), new QuotationNumber($number ?? sprintf('Q%06d', $id)), $this->admin(self::A), $this->customer(self::A), new Currency('EUR'), $status, new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'), [$this->line($id)], $this->snapshot(self::A), $this->addressSnapshot());
     }
 
     private function line(int $id, string $quantity = '1.2345', string $amount = '10'): QuotationLine
@@ -160,6 +181,11 @@ final class EloquentQuotationPersistenceTest extends TestCase
     private function snapshot(string $tenant): SalesCustomerSnapshot
     {
         return new SalesCustomerSnapshot($this->customer($tenant), $this->relation($tenant), new CustomerNumber('C-'.strtoupper($tenant[0])), new DisplayName('Customer '.strtoupper($tenant[0])));
+    }
+
+    private function addressSnapshot(): SalesAddressSnapshot
+    {
+        return new SalesAddressSnapshot(new AddressId(new Uuid('a4000000-0000-4000-8000-000000000001')), AddressType::Quotation, new AddressLine('Quotation street 1'), null, new PostalCode('1234AB'), new City('Amsterdam'), new CountryCode('NL'));
     }
 
     private function tenant(string $id, string $suffix): void

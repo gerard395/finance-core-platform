@@ -9,7 +9,6 @@ use App\Application\Sales\AcceptQuotation;
 use App\Application\Sales\ExpireQuotation;
 use App\Application\Sales\QuotationWriteResult;
 use App\Application\Sales\RejectQuotation;
-use App\Application\Sales\SendQuotation;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Shared\Identity\Uuid;
@@ -21,12 +20,7 @@ use InvalidArgumentException;
 
 final class QuotationLifecycleController extends Controller
 {
-    public function __construct(private readonly SendQuotation $send, private readonly AcceptQuotation $accept, private readonly RejectQuotation $reject, private readonly ExpireQuotation $expire, private readonly PermissionAuthorizer $permissions) {}
-
-    public function send(Request $request, string $quotation): RedirectResponse
-    {
-        return $this->execute($request, $quotation, fn ($admin, $id) => $this->send->execute($admin, $id), 'Offerte verzonden.');
-    }
+    public function __construct(private readonly AcceptQuotation $accept, private readonly RejectQuotation $reject, private readonly ExpireQuotation $expire, private readonly PermissionAuthorizer $permissions) {}
 
     public function accept(Request $request, string $quotation): RedirectResponse
     {

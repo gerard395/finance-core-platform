@@ -2,10 +2,15 @@
 
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioner;
 use App\Application\Development\DevelopmentAccountingMasterDataProvisioningConflict;
+use App\Application\Sales\DeliveryInfrastructureReadinessStatus;
+use App\Application\Sales\DeliveryOutboxStore;
+use App\Application\Sales\ReconcileQuotationDeliveryLifecycle;
+use App\Application\Sales\SalesDocumentDeliveryInfrastructureReadiness;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Shared\Identity\Uuid;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schedule;
 use Symfony\Component\Console\Command\Command;
 
 Artisan::command('inspire', function () {
@@ -31,3 +36,32 @@ Artisan::command('development:provision-demo-accounting {administration}', funct
 
     return Command::SUCCESS;
 })->purpose('Provision explicit demo-only accounting master data for one Administration');
+
+Artisan::command('delivery:health', function (SalesDocumentDeliveryInfrastructureReadiness $readiness): int {
+    $result = $readiness->check();
+    $rows = [
+        ['Environment', app()->environment()], ['Overall', $result->status->value], ['Queue backend', $result->queueBackend],
+        ['Queue name', $result->queueName], ['Worker heartbeat age', $result->heartbeatAgeSeconds === null ? 'missing' : $result->heartbeatAgeSeconds.'s'],
+    ];
+    foreach ($result->counters as $name => $count) {
+        $rows[] = [$name, (string) $count];
+    }
+    $this->table(['Check', 'Value'], $rows);
+
+    return $result->status === DeliveryInfrastructureReadinessStatus::Ready ? Command::SUCCESS : Command::FAILURE;
+})->purpose('Report privacy-safe Sales document delivery infrastructure readiness');
+
+Artisan::command('delivery:recover', function (DeliveryOutboxStore $outbox): int {
+    $this->info('Recovered pre-send delivery claims: '.$outbox->recoverStalePreSend());
+
+    return Command::SUCCESS;
+})->purpose('Recover expired delivery claims that never crossed the transport boundary');
+
+Artisan::command('delivery:reconcile-quotations', function (ReconcileQuotationDeliveryLifecycle $reconciler): int {
+    $this->info('Reconciled quotation delivery lifecycles: '.$reconciler->reconcilePending());
+
+    return Command::SUCCESS;
+})->purpose('Reconcile accepted or externally handled Quotation deliveries to Sent');
+
+Schedule::command('delivery:recover')->everyMinute()->withoutOverlapping();
+Schedule::command('delivery:reconcile-quotations')->everyMinute()->withoutOverlapping();

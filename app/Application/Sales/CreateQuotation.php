@@ -6,6 +6,7 @@ namespace App\Application\Sales;
 
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\Quotation;
 use App\Domain\Sales\Entities\QuotationLine;
@@ -19,6 +20,7 @@ final readonly class CreateQuotation
 {
     public function __construct(
         private SalesCustomerContextReader $customers,
+        private QuotationAddressResolver $addresses,
         private SalesNumberAllocator $numbers,
         private QuotationCreator $quotations,
         private TransactionManager $transactions,
@@ -29,13 +31,14 @@ final readonly class CreateQuotation
         AdministrationId $administrationId,
         QuotationId $quotationId,
         CustomerId $customerId,
+        AddressId $addressId,
         Currency $currency,
         DateTimeImmutable $quotationDate,
         ?DateTimeImmutable $expiryDate,
         array $lines = [],
     ): QuotationWriteResult {
         try {
-            return $this->transactions->run(function () use ($administrationId, $quotationId, $customerId, $currency, $quotationDate, $expiryDate, $lines): QuotationWriteResult {
+            return $this->transactions->run(function () use ($administrationId, $quotationId, $customerId, $addressId, $currency, $quotationDate, $expiryDate, $lines): QuotationWriteResult {
                 $context = $this->customers->read($administrationId, $customerId, null);
                 if ($context->status() === SalesCustomerContextStatus::NotFound) {
                     return QuotationWriteResult::CustomerNotFound;
@@ -46,6 +49,20 @@ final readonly class CreateQuotation
                 $snapshot = $context->customer();
                 if ($snapshot === null) {
                     return QuotationWriteResult::CustomerNotFound;
+                }
+                $address = $this->addresses->resolve($administrationId, $snapshot->relationId(), $addressId);
+                if ($address->status() === QuotationAddressResolutionStatus::NotFound) {
+                    return QuotationWriteResult::QuotationAddressNotFound;
+                }
+                if ($address->status() === QuotationAddressResolutionStatus::Inactive) {
+                    return QuotationWriteResult::InactiveQuotationAddress;
+                }
+                if ($address->status() === QuotationAddressResolutionStatus::InvalidPurpose) {
+                    return QuotationWriteResult::InvalidQuotationAddressPurpose;
+                }
+                $addressSnapshot = $address->address();
+                if ($addressSnapshot === null) {
+                    return QuotationWriteResult::QuotationAddressNotFound;
                 }
                 $allocation = $this->numbers->next($administrationId, SalesNumberType::Quotation);
                 if ($allocation->status() === SalesNumberAllocationStatus::SequenceMissing) {
@@ -58,7 +75,7 @@ final readonly class CreateQuotation
                 if (! $number instanceof QuotationNumber) {
                     return QuotationWriteResult::SequenceMissing;
                 }
-                $quotation = new Quotation($quotationId, $number, $administrationId, $customerId, $currency, QuotationStatus::Draft, $quotationDate, $expiryDate, $snapshot);
+                $quotation = new Quotation($quotationId, $number, $administrationId, $customerId, $currency, QuotationStatus::Draft, $quotationDate, $expiryDate, $snapshot, $addressSnapshot);
                 foreach ($lines as $line) {
                     $quotation->addLine($line);
                 }

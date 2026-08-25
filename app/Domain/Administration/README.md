@@ -1,5 +1,13 @@
 # Administration Domain
 
+Administration is de authoritative current bron voor Sales-documentpresentation. De
+interne Administrationnaam blijft onderscheiden van Organisation-handelsnaam en
+juridische naam. Structured documentadres, zakelijke contactdata, rekeninghouder en
+mail-senderidentity zijn nullable masterdata; bestaande VAT-ID/jurisdictie en
+Organisation-KvK/IBAN/BIC worden hergebruikt. Senderidentity is niet de juridische
+issuer en bevat geen transportcredentials. Settings blijven transactioneel
+last-write-wins; generieke mutation audit en optimistic locking zijn deferred.
+
 ## Aggregate Root
 
 `Administration` is de frameworkonafhankelijke Aggregate Root voor een zelfstandige administratieve eenheid binnen Finance Core Platform. Een Administration is nadrukkelijk geen juridische organisatie.

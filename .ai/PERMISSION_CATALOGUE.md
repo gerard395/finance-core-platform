@@ -96,6 +96,12 @@ Dit document benoemt de businessautorisaties van Finance Core Platform. Het besc
 | Change Document Metadata | Toegestane classificatie en metadata van een document wijzigen. |
 | Archive Document | Een document duurzaam archiveren. |
 
+## Delivery Operations
+
+| Permission Name | Korte beschrijving |
+| --- | --- |
+| Resolve Ambiguous Delivery Outcomes | Een `OutcomeUnknown` documentdelivery onder uitsluitend de actieve Administration expliciet en auditbaar operationeel afhandelen (`DELIVERY.OUTCOME_RESOLVE`). Geeft geen recht op documentmutatie/verzending, posting, recipient- of sendersettings, SMTP-configuratie, users, memberships, rollen of algemene Administration-settings. De canonieke rol `DELIVERY_OPERATOR` bevat uitsluitend deze permission en wordt nooit automatisch aan een membership toegekend. |
+
 ## Reporting
 
 | Permission Name | Korte beschrijving |

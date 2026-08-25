@@ -69,6 +69,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentRelationRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRolePermissionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationContactRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -321,10 +322,12 @@ final class RelationsIndexTest extends TestCase
         $relationId = $this->relation(self::ADMIN_A, 42, 'ADDRESS-42', 'Mutable address relation', true);
         $contactId = $this->contact($relationId, 42, 'Preserved Contact', null, null);
 
-        foreach (['visiting', 'postal', 'invoice', 'delivery'] as $index => $type) {
+        $this->get(route('relations.addresses.create', $relationId->toString()))->assertOk()->assertSeeText('Offerteadres');
+        foreach (['visiting', 'postal', 'invoice', 'delivery', 'quotation'] as $index => $type) {
             $this->post(route('relations.addresses.store', $relationId->toString()), ['type' => $type, 'address_line_1' => 'Line '.($index + 1), 'address_line_2' => '', 'postal_code' => '100'.$index, 'city' => 'City', 'country_code' => 'nl', 'administration_id' => self::ADMIN_B, 'address_id' => $this->uuid('f', $index + 1)->toString()])->assertRedirect(route('relations.show', $relationId->toString()));
         }
-        $this->assertDatabaseCount('relation_addresses', 4);
+        $this->assertDatabaseCount('relation_addresses', 5);
+        $this->assertDatabaseHas('relation_addresses', ['address_type' => 'quotation']);
         $record = DB::table('relation_addresses')->where('address_type', 'visiting')->first();
         self::assertNotNull($record);
         self::assertSame(self::ADMIN_A, $record->administration_id);
@@ -340,6 +343,34 @@ final class RelationsIndexTest extends TestCase
         $this->post(route('relations.addresses.activate', [$relationId->toString(), $record->address_id]))->assertRedirect();
         $this->assertDatabaseHas('relation_addresses', ['address_id' => $record->address_id, 'address_type' => 'visiting', 'active' => true]);
         $this->assertDatabaseHas('relation_contacts', ['contact_id' => $contactId->toString()]);
+    }
+
+    public function test_document_recipient_preferences_use_relations_update_and_reject_untrusted_contacts(): void
+    {
+        $this->provisionScenario();
+        $this->assignRole(RelationsRole::Editor, self::MEMBERSHIP_A, 91);
+        $this->loginWithAdministration(self::ADMIN_A);
+        $relationA = $this->relation(self::ADMIN_A, 91, 'RECIPIENT-A', 'Recipient <A>', true);
+        $relationB = $this->relation(self::ADMIN_B, 92, 'RECIPIENT-B', 'Recipient B', true);
+        $contactA = $this->contact($relationA, 91, '<Contact A>', 'recipient-a@example.com', null);
+        $contactB = new ContactId($this->uuid('3', 92));
+        RelationContactRecord::query()->create(['contact_id' => $contactB->toString(), 'administration_id' => self::ADMIN_B, 'relation_id' => $relationB->toString(), 'contact_name' => 'Contact B', 'email' => 'recipient-b@example.com', 'phone' => null, 'status' => 'active']);
+
+        $this->get(route('relations.show', $relationA->toString()))->assertOk()->assertSeeText('Offerte-ontvanger')->assertSeeText('Factuur-ontvanger')->assertSeeText('Creditfactuur-ontvanger')->assertSee('&lt;Contact A&gt;', false)->assertDontSee('<Contact A>', false);
+        foreach (['quotation', 'sales_invoice', 'sales_credit_invoice'] as $purpose) {
+            $this->post(route('relations.document-recipients.store', $relationA->toString()), ['purpose' => $purpose, 'contact_id' => $contactA->toString(), 'administration_id' => self::ADMIN_B])->assertRedirect();
+        }
+        $this->assertDatabaseCount('sales_document_recipient_preferences', 3);
+        $this->get(route('relations.show', $relationA->toString()))->assertOk()->assertSeeText('recipient-a@example.com');
+        RelationContactRecord::query()->whereKey($contactA->toString())->update(['status' => 'inactive']);
+        $this->get(route('relations.show', $relationA->toString()))->assertOk()->assertSeeText('Voorkeur ongeldig: contact is inactief of heeft geen e-mail.');
+        RelationContactRecord::query()->whereKey($contactA->toString())->update(['status' => 'active']);
+        $this->delete(route('relations.document-recipients.destroy', [$relationA->toString(), 'quotation']))->assertRedirect();
+        $this->assertDatabaseCount('sales_document_recipient_preferences', 2);
+
+        $this->post(route('relations.document-recipients.store', $relationA->toString()), ['purpose' => 'quotation', 'contact_id' => $contactB->toString()])->assertSessionHasErrors('recipient_preference');
+        $this->post(route('relations.document-recipients.store', $relationA->toString()), ['purpose' => 'quotation', 'contact_id' => 'not-a-uuid'])->assertSessionHasErrors('contact_id');
+        $this->assertDatabaseCount('sales_document_recipient_preferences', 2);
     }
 
     public function test_address_routes_validate_permissions_and_hide_untrusted_ownership_ids(): void

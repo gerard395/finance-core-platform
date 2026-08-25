@@ -12,6 +12,9 @@ enum QuotationWriteResult
     case DuplicateNumber;
     case CustomerNotFound;
     case InactiveCustomer;
+    case QuotationAddressNotFound;
+    case InactiveQuotationAddress;
+    case InvalidQuotationAddressPurpose;
     case SequenceMissing;
     case SequenceInactive;
     case InvalidState;

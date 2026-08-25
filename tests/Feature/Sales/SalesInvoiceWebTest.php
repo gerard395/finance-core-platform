@@ -15,6 +15,7 @@ use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
+use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Identity\Definitions\SalesRole;
 use App\Domain\Identity\Entities\AdministrationMembership;
@@ -37,6 +38,7 @@ use App\Domain\Sales\ValueObjects\SalesInvoiceId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
+use App\Http\Middleware\EnsureDeliveryOperationsPermission;
 use App\Http\Middleware\EnsureSalesPermission;
 use App\Infrastructure\Identity\SalesAuthorizationProvisioner;
 use App\Infrastructure\Persistence\Eloquent\EloquentAdministrationMembershipRepository;
@@ -532,6 +534,30 @@ final class SalesInvoiceWebTest extends TestCase
         }
         self::assertStringNotContainsString('refund', strtolower($presentation));
         self::assertStringNotContainsString('partial', strtolower($presentation));
+    }
+
+    public function test_delivery_routes_use_exact_independent_permissions_and_no_legacy_send_bypass(): void
+    {
+        $expectations = [
+            'sales.quotations.delivery.store' => ['POST', EnsureSalesPermission::using(SalesPermission::ManageQuotations)],
+            'sales.quotations.delivery.resend' => ['POST', EnsureSalesPermission::using(SalesPermission::ManageQuotations)],
+            'sales.invoices.delivery.store' => ['POST', EnsureSalesPermission::using(SalesPermission::IssueInvoices)],
+            'sales.invoices.delivery.resend' => ['POST', EnsureSalesPermission::using(SalesPermission::IssueInvoices)],
+            'sales.credit-invoices.delivery.store' => ['POST', EnsureSalesPermission::using(SalesPermission::IssueCreditInvoices)],
+            'sales.credit-invoices.delivery.resend' => ['POST', EnsureSalesPermission::using(SalesPermission::IssueCreditInvoices)],
+            'sales.quotations.document.download' => ['GET', EnsureSalesPermission::using(SalesPermission::View)],
+            'sales.invoices.document.download' => ['GET', EnsureSalesPermission::using(SalesPermission::View)],
+            'sales.credit-invoices.document.download' => ['GET', EnsureSalesPermission::using(SalesPermission::View)],
+            'sales.delivery.outcomes.resolve' => ['POST', EnsureDeliveryOperationsPermission::using(DeliveryOperationsPermission::ResolveUnknownOutcome)],
+        ];
+        foreach ($expectations as $name => [$method, $permission]) {
+            $route = Route::getRoutes()->getByName($name);
+            self::assertNotNull($route);
+            self::assertSame($method === 'GET' ? ['GET', 'HEAD'] : ['POST'], $route->methods());
+            self::assertContains($permission, $route->gatherMiddleware());
+        }
+        self::assertFalse(Route::has('sales.quotations.send'));
+        $this->post('/sales/quotations/81000000-0000-4000-8000-000000000099/send')->assertNotFound();
     }
 
     public function test_credit_post_typed_failures_are_safe_and_leak_no_financial_details(): void

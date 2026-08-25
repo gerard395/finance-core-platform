@@ -417,6 +417,77 @@ daarna immutable Sales-documentrendering en auditable delivery voor Quotations,
 SalesInvoices en SalesCreditInvoices. Purchasing Web en W4C blijven afzonderlijke,
 geparkeerde vervolgcapabilities.
 
+W4E-000 kiest voor v1 een precieze grens: Quotation `Sent` betekent uitsluitend dat
+het geconfigureerde transport het bericht met het immutable artifact heeft
+geaccepteerd, niet dat de ontvanger het aantoonbaar heeft ontvangen. Businessstatus,
+PDF-artifact en append-only deliveryhistory blijven afzonderlijke waarheden. De batch
+gebruikt installation-level mailtransport, Administration-scoped senderidentity,
+private artifactstorage, een transactional outbox en queued delivery. Recipient-
+purpose, issuer/payment/sender-readiness, Chromiumdeployment en een operationele
+queueworker zijn verplichte predecessors binnen de batch.
+
+W4E-003 levert de duurzame DeliveryRequest/Attempt/outbox- en installation-mailtransport-
+basis. W4E-003A/B/C leveren production runtime, health/readiness, veilig herstel en
+operationele OutcomeUnknown-resolutie.
+
+W4E-003B kiest een portable single-host production Docker Compose-runtime met database-
+queue, bewaakte worker/scheduler en durable MySQL/artifactvolumes. W4E-003C legt de
+operationele resolutionpermission vast. W4E-003A levert vervolgens workerheartbeat,
+typed queue/mail/storage-readiness, durable transport-startmarkering, veilig pre-send
+leaseherstel, append-only OutcomeUnknown-resolution en CLI-health. Daarmee is de
+operationspredecessor voor W4E-004 gereed; Web-delivery zelf blijft W4E-004-scope.
+
+W4E-003C levert `DELIVERY.OUTCOME_RESOLVE` via de smalle canonieke
+`DELIVERY_OPERATOR`-rol, zonder automatische membershipassignment. Daarmee zijn de
+deployment- en authorizationpredecessors voor hervatting van W4E-003A expliciet.
+
+W4E-004 integreert dit in Quotation-, Invoice- en Creditdetails: queued initial/resend,
+private PDF-download, escaped deliveryhistory, readinessfeedback en minimale
+permission-scoped OutcomeUnknown-resolution. Quotation `Sent` volgt niet langer uit de
+legacy klik maar uitsluitend uit transportacceptatie of HandledExternally, met veilige
+schedulerreconciliation. Invoice-/Creditdelivery laat financiële waarheid ongemoeid.
+
+W4E-005 heeft de capability end-to-end gereviewd en de volledige regressie-, security-,
+tenant-, concurrency- en operationsmatrix gevalideerd. De review heeft document-
+readiness gelijkgetrokken met de bestaande typed render-modelvalidatie, zodat Web nooit
+`Ready` toont wanneer artifactpreparation inhoudelijk zou blokkeren. W4E is compleet en
+merge-ready. Deferred blijven bounce/delivery-webhooks, inboxbevestiging, open/click-
+tracking, tenant SMTP-credentials, template-editing, arbitrary attachments, bulk of
+scheduled delivery, membership-rolebeheer, generieke mutation-audit en optimistic
+settings locking.
+
+- W4E-000 – Sales Document Delivery Design
+- W4E-001A – Quotation Document Address Semantics
+- W4E-001 – Recipient, Issuer & Sender Readiness
+- W4E-002 – Immutable Sales Render Models, PDF & Artifact Persistence
+- W4E-003 – Durable Delivery Requests, Outbox & Mail Transport
+- W4E-003B – Production Runtime & Worker Deployment Design
+- W4E-003C – Delivery Operations Authorization
+- W4E-003A – Delivery Operations Readiness
+- W4E-004 – Quotation, Invoice & Credit Delivery Web Flows
+- W4E-005 – Sales Document Delivery Review & Regression
+
+W4E-001 is na de afzonderlijke address-predecessor W4E-001A gereed: recipientpurposes,
+Administration-owned issuer/payment/sender-masterdata en typed readiness readers zijn
+beschikbaar zonder first-contact-, address- of senderheuristiek. W4E-002 is eveneens
+gereed: typed immutable render models, gepinde Chromium/Puppeteer-rendering, private
+immutable artifacts, concrete same-tenant source-FK's, canonical fingerprints,
+SHA-256-integriteit en concurrency-safe reuse bestaan voor Quotation, SalesInvoice en
+SalesCreditInvoice. Er is nog geen Web-download, mail, deliveryrequest, outbox of
+queue-delivery; dat begint bij W4E-003 en W4E-004.
+
+Dutch VAT & ICP Reporting blijft tijdens W4E geparkeerd. W4E introduceert geen
+Purchasing Web, generiek documentmanagement, e-invoicing of ontvangstbewijsclaim.
+
+### Aanbevolen volgende hoofdproductbatch – Purchasing Persistence & Web
+
+Na de operationele Sales-kern en W4E documentdelivery is Purchasing de grootste
+productflow zonder persistence- en Webbediening. De volgende batch hoort daarom de
+bestaande PurchaseInvoice- en PurchaseCreditInvoice-domeincontracten tenant-safe naar
+persistence en Application/Web te brengen en de vereiste Accounting-configuratie
+expliciet te ontwerpen. VAT/ICP-reporting blijft geparkeerd totdat deze primaire
+inkoopflow en haar financiële afhankelijkheden productmatig beschikbaar zijn.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

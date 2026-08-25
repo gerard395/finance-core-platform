@@ -12,7 +12,7 @@ Fiscale jurisdictie is expliciete masterdata en wordt nooit uit een RelationAddr
 
 Nieuwe Relations ontstaan via de constructor en nieuwe children worden uitsluitend via de bestaande `addContact()`, `addAddress()` en `addBankAccount()`-lifecycle toegevoegd. `Relation::reconstitute()` is uitsluitend de side-effectvrije hydrationgrens voor reeds bestaande feitelijke state. Zij ontvangt Relation-state en alle drie complete childcollecties ineens, behoudt identities en statussen exact en weigert dubbele childidentiteiten zonder `add*()`- of statusgedrag te replayen.
 
-Contact, Address en BankAccount dragen zelf geen RelationId. Hun ownership ontstaat binnen precies één Relation-aggregate en wordt door de persistencecontext met RelationId en AdministrationId en door samengestelde databaseconstraints afgedwongen. Collection `remove*()` betekent alleen verwijderen uit de in-memory aggregatecollectie en impliceert geen database-delete. De v1-duurzame lifecycle gebruikt voor alle drie children `deactivate()` en `activate()` met behoud van dezelfde identity. Een wijziging van de Relation-root bewaart de drie volledig gehydrateerde childcollecties ongewijzigd; iedere childwrite muteert uitsluitend het geadresseerde childrecord.
+Contact, Address en BankAccount dragen zelf geen RelationId. Hun ownership ontstaat binnen precies één Relation-aggregate en wordt door de persistencecontext met RelationId en AdministrationId en door samengestelde databaseconstraints afgedwongen. Collection `remove*()` betekent alleen verwijderen uit de in-memory aggregatecollectie en impliceert geen database-delete. De v1-duurzame lifecycle gebruikt voor alle drie children `deactivate()` en `activate()` met behoud van dezelfde identity. Een wijziging van de Relation-root bewaart de drie volledig gehydrateerde childcollecties ongewijzigd; iedere childwrite muteert uitsluitend het geadresseerde childrecord. AddressType bevat naast Visiting, Postal, Invoice en Delivery ook het expliciete doel Quotation; dit doel is de enige adresbron voor nieuwe offertes en impliceert geen fallback tussen adresdoelen.
 
 ## Customer
 
@@ -27,6 +27,12 @@ Relation-gegevens zoals naam, adres en contactpersonen worden niet in Customer g
 `Contact` is een child-entity van Relation en geen Aggregate Root. Relation bewaakt het ownership en is de enige grens waarbinnen Contacts worden toegevoegd, opgezocht en verwijderd. Een ContactId komt binnen één Relation maximaal één keer voor; een bestaande Contact wordt nooit stilzwijgend vervangen en het verwijderen van een onbekende ContactId is idempotent.
 
 Customer en Supplier-classificaties beheren geen eigen Contacts en dupliceren geen contactgegevens. Alleen ContactId is uniek; gelijke namen, e-mailadressen en telefoonnummers zijn bewust toegestaan zolang geen expliciete businessregel anders bepaalt.
+
+Sales-documentrecipientvoorkeuren zijn Relation-owned Application/persistence-masterdata
+en verwijzen per exact purpose (`Quotation`, `SalesInvoice`, `SalesCreditInvoice`) naar
+één Contact van dezelfde Relation en Administration. Contact blijft eigenaar van exact
+één nullable typed e-mailadres. Een inactive of email-loze preferred Contact maakt de
+voorkeur ongeldig maar wist of vervangt haar niet; er bestaat geen eerste-contactfallback.
 
 ## Supplier
 

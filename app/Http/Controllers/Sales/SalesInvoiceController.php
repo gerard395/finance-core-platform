@@ -9,7 +9,9 @@ use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Relations\AddressReadRepository;
 use App\Application\Relations\CustomerReadRepository;
 use App\Application\Relations\RelationReadRepository;
+use App\Application\Sales\AssessSalesDocumentDeliveryReadiness;
 use App\Application\Sales\CreateSalesInvoice;
+use App\Application\Sales\SalesDocumentSource;
 use App\Application\Sales\SalesInvoiceDetailReadRepository;
 use App\Application\Sales\SalesInvoiceListQuery;
 use App\Application\Sales\SalesInvoiceListReadRepository;
@@ -18,6 +20,7 @@ use App\Application\Sales\SalesInvoiceSortField;
 use App\Application\Sales\SalesInvoiceWriteResult;
 use App\Application\Sales\UpdateSalesInvoice;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Domain\Relations\Enums\AddressType;
@@ -32,6 +35,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Sales\StoreSalesInvoiceRequest;
 use App\Http\Requests\Sales\UpdateSalesInvoiceRequest;
 use App\Presentation\Formatting\DutchMoneyFormatter;
+use App\Presentation\Sales\SalesDocumentDeliveryPresenter;
 use App\Presentation\Sales\SalesInvoiceStatusPresenter;
 use App\Presentation\Sales\SalesTaxCodePresenter;
 use DateTimeImmutable;
@@ -55,6 +59,7 @@ final class SalesInvoiceController extends Controller
         private readonly UpdateSalesInvoice $updateInvoice,
         private readonly PermissionAuthorizer $permissions,
         private readonly DutchMoneyFormatter $money,
+        private readonly AssessSalesDocumentDeliveryReadiness $deliveryReadiness,
     ) {}
 
     public function index(Request $request): View
@@ -99,11 +104,20 @@ final class SalesInvoiceController extends Controller
         $context = $this->context($request);
         $detail = $this->details->find($context->administration->id(), $this->invoiceId($invoice));
         abort_if($detail === null, 404);
+        $source = SalesDocumentSource::invoice($detail->id());
+        $initialDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, false);
+        $resendDelivery = $this->deliveryReadiness->execute($context->administration->id(), $source, true);
 
         return view('sales.invoices.show', $this->viewData($context) + [
             'invoice' => $detail,
             'taxCodes' => $this->taxCodes->findActiveForAdministrationAndDirection($context->administration->id(), TaxPostingDirection::Output),
             'taxCodePresenter' => SalesTaxCodePresenter::class,
+            'deliveryPresenter' => SalesDocumentDeliveryPresenter::class,
+            'initialDelivery' => $initialDelivery,
+            'resendDelivery' => $resendDelivery,
+            'deliveryHistory' => $initialDelivery->history,
+            'deliveryRequestId' => Str::uuid()->toString(),
+            'canResolveDelivery' => $this->permissions->allows($context->permissionIds, DeliveryOperationsPermission::ResolveUnknownOutcome->id()),
         ]);
     }
 

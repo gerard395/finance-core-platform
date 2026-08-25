@@ -23,9 +23,26 @@ Iedere line-unit-price gebruikt verplicht de documentcurrency bij add, update en
 
 ## Historische snapshots
 
-Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation en Order hebben in v1 geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
+Sales-documentoutput gebruikt daarnaast expliciete readiness readers. Recipient is een
+purpose-scoped preferred Contact zonder fallback. Current issuer legal/trade name,
+structured address, contact- en paymentdata worden pas bij artifactgeneratie gesnapshot;
+sender From/Reply-To is afzonderlijke Administration-masterdata. Voor Invoice en Credit
+blijven immutable historical supplier/customer VAT-ID, jurisdiction, SupplyDate en tax
+snapshots altijd leidend boven current Administration-fiscal data.
 
-Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, een expliciet actieve Invoice-address zonder typefallback en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
+W4E-002 legt de gebruikte commerciële/fiscale en issuer/paymentpresentatie vast als
+een canoniek immutable Sales-render model en bewaart de daadwerkelijke PDF vervolgens
+private als `DocumentArtifact`. Een artifact hoort via een type-specifieke harde
+same-tenant FK bij exact één Quotation, SalesInvoice of SalesCreditInvoice. De Domain-
+metadata bevat geen bytes, filesystempad of public URL. Semantisch gelijke input wordt
+per source via een SHA-256 renderfingerprint hergebruikt; iedere gewijzigde zichtbare
+input krijgt een nieuwe monotone artifactversion. De afzonderlijke SHA-256 over de
+opgeslagen PDF bewaakt byte-integriteit. Artifactgeneratie muteert geen Sales-
+aggregate of status en is geen bewijs van delivery.
+
+Alle vier headers kunnen een immutable customersnapshot met CustomerId, RelationId, CustomerNumber en DisplayName bewaren. Quotation bewaart voor nieuwe documenten daarnaast een expliciet geselecteerde Quotation-addresssnapshot; legacy Quotations zonder snapshot blijven leesbaar. Order heeft geen address- of taxsnapshot. SalesInvoice bewaart een expliciet geselecteerde Invoice-addresssnapshot en een taxsnapshot per regel. SalesCreditInvoice neemt customer/addresscontext van zijn verplichte source SalesInvoice over en gebruikt voor taxreversal uitsluitend historische TaxPosting-snapshots.
+
+Snapshotselectie gebeurt bij create; er bestaat geen live Relation-, Address- of TaxCode-reference en geen Draft-reselectiemutatie. Application accepteert alleen een actieve same-tenant Customer, voor Quotation exact een expliciet actief Quotation-adres, voor SalesInvoice exact een expliciet actief Invoice-adres, beide zonder typefallback, en een via de tenantcatalogus resolved actieve Output-TaxCode. Latere rename, deactivation of ratewijziging verandert historische snapshots niet.
 
 SalesInvoice legt bij create document-level immutable customer- en supplier-fiscale
 snapshots vast met typed nullable VAT ID en jurisdiction. Een optionele typed
@@ -74,6 +91,19 @@ Finalized → Cancelled
 
 Statusovergangen verlopen uitsluitend via domeinmethoden. Herhaling van dezelfde overgang is idempotent. `Accepted`, `Rejected` en `Expired` zijn eindstatussen van Quotation; `OrderCreated` is geen QuotationStatus.
 
+De publieke Webactie zet een Quotation niet rechtstreeks op `Sent`. W4E-004 maakt
+eerst asynchronous delivery plus immutable artifact/request/attempttruth. Alleen
+`AcceptedByTransport` of een expliciete `HandledExternally`-resolution laat Application
+de bestaande `Quotation::send()`-overgang uitvoeren. Een idempotente scheduler-
+reconciliation herstelt een gemiste lifecyclewrite zonder tweede mail. Failure,
+unresolved OutcomeUnknown en AuthorizeResend houden Draft intact. Transportacceptatie
+betekent nooit inboxaflevering.
+
+Invoice- en Creditdelivery is statusgegate maar financieel side-effectvrij. Resend is
+een nieuwe DeliveryRequest met actuele recipient/sendersnapshot en nooit een mutation
+of technische retry van oude deliverytruth. PDF-downloads blijven private en
+tenant-scoped.
+
 ## Shared value objects en bedragen
 
 Sales gebruikt de gedeelde `Money` en `Currency` value objects uit Shared Finance en de capabilityneutrale `Quantity` en `LineDescription` value objects uit Shared Commerce. Line totals worden afgeleid met `Money::multiply(string $multiplier)`:
@@ -107,7 +137,7 @@ Succesvol gecommitteerde nummers worden niet gerecycled. Allocation en toekomsti
 
 ## Quotation persistence
 
-Quotations worden Administration-scoped duurzaam opgeslagen met hun immutable customer snapshot en aggregate-owned lines. Create alloceert nummer en insert in één transaction; updates laden tenant-scoped en zijn nooit upsert. Listreads filteren/sorteren/pagineren headers SQL-side en detail/aggregate hydration gebruikt uitsluitend `Quotation::reconstitute()`.
+Quotations worden Administration-scoped duurzaam opgeslagen met hun immutable customer- en, voor nieuwe documenten, Quotation-addresssnapshot en aggregate-owned lines. Create valideert en lockt het expliciete same-Relation actieve Offerteadres vóór nummerallocatie; adresvolgorde en Postal-/Invoice-fallback bestaan niet. Nummerallocatie en insert blijven één transaction; updates laden tenant-scoped en zijn nooit upsert. Listreads filteren/sorteren/pagineren headers SQL-side en detail/aggregate hydration gebruikt uitsluitend `Quotation::reconstitute()`. Legacy rows met een volledig null addresssnapshot blijven geldig.
 
 De database bewaakt tenant-unieke quotationnummers en same-tenant Customer- en line→Quotation-relaties. Algemene optimistic locking bestaat nog niet. Quotation Web UI, PDF/e-mail, automatische expiry en Order-conversie blijven vervolgscope.
 
@@ -116,3 +146,7 @@ De database bewaakt tenant-unieke quotationnummers en same-tenant Customer- en l
 Generic `CreateSalesInvoice` maakt uitsluitend directe facturen, heeft geen source Order-input en bewaart `sourceOrderId = null`. Persistence en `SalesInvoice::reconstitute()` behouden wel een nullable feitelijke source voor de toekomstige afzonderlijke Order-conversieflow.
 
 Customer, expliciet geselecteerde Invoice address en Output-taxdata zijn immutable snapshots. Draft header/line-mutaties, finalize en cancel gebruiken uitsluitend de Domain-lifecycle; exacte net/tax/gross-bedragen gebruiken de bestaande Fiscal-berekening zonder Infrastructure-aritmetiek of rounding. Posted/Paid zijn hier alleen feitelijke persistence/read-statussen: transactionele posting en settlement-owned Paid-commands blijven buiten deze grens.
+Sales-documentdelivery bewaart een immutable request met recipient/sender/mailcontent-
+snapshots en exact één artifact. Fysieke pogingen zijn append-only; een transactionele
+outbox en databaseclaim begrenzen concurrency. `AcceptedByTransport` is geen claim van
+aflevering. `OutcomeUnknown` wordt nooit blind automatisch opnieuw verzonden.

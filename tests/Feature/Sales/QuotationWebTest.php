@@ -31,6 +31,7 @@ use App\Domain\Identity\ValueObjects\RoleId;
 use App\Domain\Identity\ValueObjects\RoleName;
 use App\Domain\Identity\ValueObjects\RolePermissionId;
 use App\Domain\Identity\ValueObjects\UserId;
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\QuotationLine;
 use App\Domain\Sales\ValueObjects\QuotationId;
@@ -51,6 +52,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentRoleRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OrderRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\QuotationRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -100,6 +102,7 @@ final class QuotationWebTest extends TestCase
         $this->get('/sales/quotations/create')->assertOk()->assertSee('C-A')->assertDontSee('C-B')->assertDontSee('C-INACTIVE');
         $response = $this->post('/sales/quotations', [
             'customer_id' => self::CUSTOMER_A,
+            'quotation_address_id' => $this->addressId(self::CUSTOMER_A),
             'quotation_date' => '2026-08-21',
             'expiry_date' => '2026-09-21',
             'administration_id' => self::ADMIN_B,
@@ -114,11 +117,18 @@ final class QuotationWebTest extends TestCase
         self::assertSame('EUR', $quotation->getAttribute('currency'));
         self::assertSame('draft', $quotation->getAttribute('status'));
         self::assertSame('Customer <script>alert(1)</script>', $quotation->getAttribute('customer_name_snapshot'));
-        $this->get('/sales/quotations/'.$quotation->getAttribute('id'))->assertOk()->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertDontSee('<script>alert(1)</script>', false);
+        self::assertSame('quotation', $quotation->getAttribute('quotation_address_type_snapshot'));
+        self::assertSame('Quotation street A', $quotation->getAttribute('quotation_address_line_1_snapshot'));
+        $this->get('/sales/quotations/'.$quotation->getAttribute('id'))->assertOk()->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Quotation street A')->assertDontSee('<script>alert(1)</script>', false);
 
-        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_B, 'quotation_date' => '2026-08-21'])->assertSessionHasErrors('customer_id');
+        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_B, 'quotation_address_id' => $this->addressId(self::CUSTOMER_B), 'quotation_date' => '2026-08-21'])->assertSessionHasErrors('customer_id');
+        RelationAddressRecord::query()->whereKey($this->addressId(self::CUSTOMER_A))->update(['active' => false, 'address_line_1' => 'Changed street 99']);
+        $this->get('/sales/quotations/create')->assertOk()->assertSee('Er is nog geen actief offerteadres vastgelegd.');
+        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_address_id' => $this->addressId(self::CUSTOMER_A), 'quotation_date' => '2026-08-21'])->assertSessionHasErrors('quotation_address_id');
+        $this->get('/sales/quotations/'.$quotation->getAttribute('id'))->assertOk()->assertSee('Quotation street A')->assertDontSee('Changed street 99');
+        RelationAddressRecord::query()->whereKey($this->addressId(self::CUSTOMER_A))->update(['active' => true]);
         CustomerRecord::query()->whereKey(self::CUSTOMER_A)->update(['active' => false]);
-        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_date' => '2026-08-21'])->assertSessionHasErrors('customer_id');
+        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_address_id' => $this->addressId(self::CUSTOMER_A), 'quotation_date' => '2026-08-21'])->assertSessionHasErrors('customer_id');
     }
 
     public function test_index_detail_filtering_and_tenant_isolation_use_persisted_snapshots(): void
@@ -164,7 +174,8 @@ final class QuotationWebTest extends TestCase
         $this->login();
         $id = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 1);
         $this->app->make(AddQuotationLine::class)->execute($this->admin(self::ADMIN_A), $id, $this->line(1));
-        $this->post('/sales/quotations/'.$id->toString().'/send')->assertRedirect('/sales/quotations/'.$id->toString());
+        $this->post('/sales/quotations/'.$id->toString().'/send')->assertNotFound();
+        $this->app->make(SendQuotation::class)->execute($this->admin(self::ADMIN_A), $id);
         $this->assertDatabaseMissing('orders', ['source_quotation_id' => $id->toString()]);
         $this->get('/sales/quotations/'.$id->toString())->assertOk()->assertDontSee('Order maken');
         $this->get('/sales/quotations/'.$id->toString().'/edit')->assertStatus(409);
@@ -176,7 +187,8 @@ final class QuotationWebTest extends TestCase
 
         $rejected = $this->quotation(self::ADMIN_A, self::CUSTOMER_A, 2);
         $this->app->make(AddQuotationLine::class)->execute($this->admin(self::ADMIN_A), $rejected, $this->line(2));
-        $this->post('/sales/quotations/'.$rejected->toString().'/send')->assertRedirect();
+        $this->post('/sales/quotations/'.$rejected->toString().'/send')->assertNotFound();
+        $this->app->make(SendQuotation::class)->execute($this->admin(self::ADMIN_A), $rejected);
         $this->post('/sales/quotations/'.$rejected->toString().'/reject')->assertRedirect();
         $this->assertDatabaseHas('quotations', ['id' => $rejected->toString(), 'status' => 'rejected']);
 
@@ -195,7 +207,7 @@ final class QuotationWebTest extends TestCase
 
         $this->get('/sales/quotations')->assertForbidden();
         $this->get('/sales/quotations/create')->assertOk()->assertDontSee('href="'.route('sales.quotations.index').'"', false);
-        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_date' => '2026-08-21'])->assertRedirect('/app');
+        $this->post('/sales/quotations', ['customer_id' => self::CUSTOMER_A, 'quotation_address_id' => $this->addressId(self::CUSTOMER_A), 'quotation_date' => '2026-08-21'])->assertRedirect('/app');
     }
 
     public function test_accepted_quotation_exposes_order_action_and_conversion_preserves_source_data(): void
@@ -313,6 +325,7 @@ final class QuotationWebTest extends TestCase
         $relation = str_replace('000000000004', '000000000014', $customer);
         RelationRecord::query()->create(['id' => $relation, 'administration_id' => $admin, 'code' => 'R-'.$code, 'display_name' => $name, 'active' => true]);
         CustomerRecord::query()->create(['id' => $customer, 'administration_id' => $admin, 'relation_id' => $relation, 'customer_number' => 'C-'.$code, 'active' => $active]);
+        RelationAddressRecord::query()->create(['address_id' => $this->addressId($customer), 'administration_id' => $admin, 'relation_id' => $relation, 'address_type' => 'quotation', 'address_line_1' => 'Quotation street '.$code, 'address_line_2' => null, 'postal_code' => '1234AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
     }
 
     private function login(): void
@@ -329,9 +342,18 @@ final class QuotationWebTest extends TestCase
     private function quotation(string $admin, string $customer, int $sequence): QuotationId
     {
         $id = new QuotationId(new Uuid(sprintf('d1000000-0000-4000-8000-%012d', $sequence)));
-        self::assertSame('Success', $this->app->make(CreateQuotation::class)->execute($this->admin($admin), $id, new CustomerId(new Uuid($customer)), new Currency('EUR'), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'))->name);
+        self::assertSame('Success', $this->app->make(CreateQuotation::class)->execute($this->admin($admin), $id, new CustomerId(new Uuid($customer)), new AddressId(new Uuid($this->addressId($customer))), new Currency('EUR'), new DateTimeImmutable('2026-08-21'), new DateTimeImmutable('2026-09-21'))->name);
 
         return $id;
+    }
+
+    private function addressId(string $customer): string
+    {
+        $hash = md5('quotation-address-'.$customer);
+        $hash[12] = '4';
+        $hash[16] = '8';
+
+        return sprintf('%s-%s-%s-%s-%s', substr($hash, 0, 8), substr($hash, 8, 4), substr($hash, 12, 4), substr($hash, 16, 4), substr($hash, 20, 12));
     }
 
     private function line(int $sequence): QuotationLine

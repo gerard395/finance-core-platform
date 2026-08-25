@@ -9,6 +9,7 @@ use App\Domain\Sales\Entities\QuotationLine;
 use App\Domain\Sales\Enums\QuotationStatus;
 use App\Domain\Sales\ValueObjects\QuotationId;
 use App\Domain\Sales\ValueObjects\QuotationNumber;
+use App\Domain\Sales\ValueObjects\SalesAddressSnapshot;
 use App\Domain\Sales\ValueObjects\SalesCustomerSnapshot;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
@@ -17,7 +18,7 @@ use DateTimeImmutable;
 final readonly class QuotationDetail
 {
     /** @param list<QuotationLine> $lines */
-    public function __construct(private QuotationId $id, private QuotationNumber $number, private SalesCustomerSnapshot $customer, private Currency $currency, private QuotationStatus $status, private DateTimeImmutable $quotationDate, private ?DateTimeImmutable $expiryDate, private array $lines, private Money $total) {}
+    public function __construct(private QuotationId $id, private QuotationNumber $number, private SalesCustomerSnapshot $customer, private ?SalesAddressSnapshot $documentAddress, private Currency $currency, private QuotationStatus $status, private DateTimeImmutable $quotationDate, private ?DateTimeImmutable $expiryDate, private array $lines, private Money $total) {}
 
     public static function fromQuotation(Quotation $quotation): self
     {
@@ -26,7 +27,7 @@ final readonly class QuotationDetail
             throw new \DomainException('Persistent Quotation requires a Customer snapshot.');
         }
 
-        return new self($quotation->id(), $quotation->number(), $snapshot, $quotation->currency(), $quotation->status(), $quotation->quotationDate(), $quotation->expiryDate(), $quotation->lines(), $quotation->total());
+        return new self($quotation->id(), $quotation->number(), $snapshot, $quotation->documentAddressSnapshot(), $quotation->currency(), $quotation->status(), $quotation->quotationDate(), $quotation->expiryDate(), $quotation->lines(), $quotation->total());
     }
 
     public function id(): QuotationId
@@ -42,6 +43,11 @@ final readonly class QuotationDetail
     public function customer(): SalesCustomerSnapshot
     {
         return $this->customer;
+    }
+
+    public function documentAddress(): ?SalesAddressSnapshot
+    {
+        return $this->documentAddress;
     }
 
     public function currency(): Currency

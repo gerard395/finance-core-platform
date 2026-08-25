@@ -27,6 +27,7 @@ use App\Application\Sales\UpdateOrder;
 use App\Application\Sales\UpdateOrderLine;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Relations\ValueObjects\AddressId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Sales\Entities\Order;
 use App\Domain\Sales\Entities\OrderLine;
@@ -43,6 +44,7 @@ use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\CustomerRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\RelationAddressRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -283,7 +285,8 @@ final class OrderApplicationContractsTest extends TestCase
 
     private function createQuotation(string $administration, string $customer, QuotationId $id): void
     {
-        $this->app->make(CreateQuotation::class)->execute($this->admin($administration), $id, new CustomerId(new Uuid($customer)), new Currency('EUR'), new DateTimeImmutable('2026-08-20'), null);
+        $addressId = RelationAddressRecord::query()->where('administration_id', $administration)->where('address_type', 'quotation')->value('address_id');
+        $this->app->make(CreateQuotation::class)->execute($this->admin($administration), $id, new CustomerId(new Uuid($customer)), new AddressId(new Uuid($addressId)), new Currency('EUR'), new DateTimeImmutable('2026-08-20'), null);
     }
 
     private function quotationLine(int $sequence = 1): QuotationLine
@@ -302,7 +305,7 @@ final class OrderApplicationContractsTest extends TestCase
     private function removeCommittedConversionFixtures(): void
     {
         $administrations = [self::A, self::B];
-        foreach (['order_lines', 'orders', 'quotation_lines', 'quotations', 'sales_number_sequences', 'customers', 'relations'] as $table) {
+        foreach (['order_lines', 'orders', 'quotation_lines', 'quotations', 'sales_number_sequences', 'relation_addresses', 'customers', 'relations'] as $table) {
             DB::table($table)->whereIn('administration_id', $administrations)->delete();
         }
         DB::table('administrations')->whereIn('id', $administrations)->delete();
@@ -324,6 +327,7 @@ final class OrderApplicationContractsTest extends TestCase
         AdministrationRecord::query()->create(['id' => $administration, 'code' => 'APP-'.$suffix, 'name' => 'Application '.$suffix, 'base_currency' => 'EUR', 'status' => 'active']);
         RelationRecord::query()->create(['id' => $relation, 'administration_id' => $administration, 'code' => 'REL-'.$suffix, 'display_name' => 'Customer '.$suffix, 'active' => true]);
         CustomerRecord::query()->create(['id' => $customer, 'administration_id' => $administration, 'relation_id' => $relation, 'customer_number' => 'C-'.$suffix, 'active' => true]);
+        RelationAddressRecord::query()->create(['address_id' => str_replace('e3000000', 'e5000000', $customer), 'administration_id' => $administration, 'relation_id' => $relation, 'address_type' => 'quotation', 'address_line_1' => 'Quotation street '.$suffix, 'address_line_2' => null, 'postal_code' => '1234AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
     }
 }
 

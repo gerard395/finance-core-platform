@@ -15,6 +15,7 @@ final class AddressTypePresenter
             AddressType::Postal => 'Postadres',
             AddressType::Invoice => 'Factuuradres',
             AddressType::Delivery => 'Afleveradres',
+            AddressType::Quotation => 'Offerteadres',
         };
     }
 }

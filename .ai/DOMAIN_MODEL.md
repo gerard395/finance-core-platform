@@ -65,6 +65,26 @@ Dit document definieert de eerste ubiquitous language van Finance Core Platform.
 | SalesInvoice | SalesInvoiceLine | Een verkoopfactuur en haar factureerbare regels beheren. |
 | SalesCreditInvoice | SalesCreditInvoiceLine | Een correctie op eerder gefactureerde verkoop beheren. |
 
+Sales-documentoutput voegt één immutable evidence-object toe: `DocumentArtifact`.
+Het artifact bevat metadata, tenantownership, concrete Sales-bronsoort/-identiteit,
+monotone artifactversion, semantic renderfingerprint en SHA-256 van de private PDF;
+binary data hoort niet in Domain of database. Aparte linktabellen dwingen harde
+same-tenant FK's naar Quotation, SalesInvoice en SalesCreditInvoice af. Het artifact
+muteert geen bronaggregate, is geen child dat de bron beheert en bewijst op zichzelf
+geen verzending. Exact dezelfde source+renderinput mag hetzelfde integere ArtifactId
+hergebruiken; gewijzigde zichtbare input creëert een nieuwe immutable artifactversie.
+
+Een nieuwe Quotation legt naast de customersnapshot exact één expliciet geselecteerd,
+actief same-Relation adres met doel `Quotation` als immutable documentsnapshot vast.
+Andere adresdoelen en adresvolgorde zijn geen fallback. Bestaande legacy Quotations
+zonder deze snapshot blijven hydrateerbaar; Draft-editing ververst de snapshot niet.
+
+Relation bewaart per Sales-documentpurpose maximaal één preferred Contact-recipient via
+same-tenant persistence. Administration is eigenaar van current issuerpresentation,
+paymentdata en afzonderlijke mail-senderidentity. Artifactgeneratie snapshot deze
+current presentationdata; SalesInvoice/Credit historical fiscal snapshots worden nooit
+door current Administration-data vervangen.
+
 #### Workflows
 
 Een Quotation doorloopt een van de volgende paden:
@@ -87,6 +107,14 @@ Een SalesInvoice doorloopt:
 ```text
 Draft → Finalized → Posted → Paid
 ```
+
+Sales-documentdelivery is een afzonderlijke immutable workflow. De Weblaag maakt een
+caller-owned DeliveryRequest met exact artifact en recipient/sendersnapshots; attempts
+en OutcomeUnknown-resolutions zijn append-only. `AcceptedByTransport` of expliciet
+`HandledExternally` coördineert idempotent Quotation Draft→Sent. Failure,
+OutcomeUnknown en AuthorizeResend muteren de Quotation niet. Invoice-/Creditdelivery
+heeft nooit financiële side-effects. Private artifactdownload en history vereisen
+Sales View; sendrechten blijven per documenttype onafhankelijk.
 
 Een SalesCreditInvoice doorloopt:
 
