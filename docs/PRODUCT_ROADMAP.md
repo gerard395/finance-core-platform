@@ -63,7 +63,7 @@ Purchasing beheert ontvangen inkoopfacturen en inkoopcreditfacturen. De capabili
 
 Purchasing modelleert eigen aggregategrenzen en statusgedrag en erft niet van Sales. Neutrale financiële en regelconcepten worden hergebruikt zonder ze binnen Purchasing te dupliceren: `Money` en `Currency` uit Shared Finance en `Quantity` en `LineDescription` uit Shared Commerce. Purchasing heeft geen afhankelijkheid op Sales.
 
-Een PurchaseInvoice doorloopt `Draft → Finalized → Posted → Paid`; een PurchaseCreditInvoice doorloopt `Draft → Finalized → Posted`. Beide kunnen vanuit Draft of Finalized worden geannuleerd. Minimaal één eigen regel is vereist vóór finalisatie en regelmutaties zijn daarna geblokkeerd.
+Een PurchaseInvoice doorloopt `Draft → Finalized → Posted`; paymentstate wordt uit het Payable OpenItem afgeleid. Een PurchaseCreditInvoice doorloopt `Draft → Finalized → Posted`. Beide kunnen vanuit Draft of Finalized worden geannuleerd. Minimaal één eigen regel is vereist vóór finalisatie en regelmutaties zijn daarna geblokkeerd.
 
 De eerste Purchasing-domeiniteratie is voltooid in P1-000 tot en met P1-005. Financiële integratiecontracten blijven eigendom van Accounting: `PostingRequest` en `PostingEngine` staan buiten Purchasing. Purchasing maakt nooit zelf JournalEntries of OpenItems.
 
@@ -547,6 +547,22 @@ bestaande Application-contracten; Posted detail toont het duurzame Payable/Credi
 OpenItem. PurchaseCreditInvoice, supplier payments, attachments/OCR, international en
 reverse-charge Purchase VAT, partial/non-deductible VAT, multi-step approval en VAT/ICP-
 reporting blijven expliciet vervolgscope.
+
+PROJECT-GAP-003 bevestigt P3 als complete domestic PurchaseInvoice → Payable-flow en
+kiest exact **B2 – Bank Payments & Open Item Settlement** als volgende productbatch.
+De grootste actuele accountinggap is cash settlement: Sales en Purchasing creëren
+Receivable/Payable OpenItems, maar de gebruiker kan nog geen duurzame klantontvangst of
+leveranciersbetaling boeken. B2 bouwt daarom eerst handmatige BankTransactions met
+Payment-allocations, transactionele PostingEngine-boeking en append-only OpenItem-
+settlements; CAMT.053/MT940/PSD2, automatische reconciliation en overpayment/suspense
+blijven follow-up.
+
+De volgorde daarna is Purchase Credits met uitsluitend volledige source-line reversals,
+gevolgd door een International Purchase VAT predecessor voor multi-leg Input/Output-
+truth, regime-/datumbeleid, deductibility en eventuele FX→EUR. VAT/ICP reporting blijft
+geparkeerd totdat alle materiële Sales- en Purchase-fiscale source streams—including
+credits, international/reverse-charge en import/correcties—duurzaam en rapporteerbaar
+zijn.
 
 ## Releases
 
