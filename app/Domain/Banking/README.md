@@ -70,4 +70,7 @@ deferred.
 ## Capabilitystatus
 
 Banking Foundation first domain iteration completed; B2-000 manual payment contracts
-aligned, persistence starts in B2-001/B2-002.
+aligned. B2-001 provides the independent permissions and canonical roles without
+automatic assignments, plus product-managed EUR AdministrationBankAccounts and typed
+per-account posting configuration. BankTransaction/Payment persistence starts in
+B2-002.

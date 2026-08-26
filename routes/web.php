@@ -9,6 +9,7 @@ use App\Http\Controllers\AccountingMasterDataController;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\BankingSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceLifecycleController;
@@ -95,6 +96,21 @@ Route::post('/settings/administration/purchase-tax-codes', [AdministrationSettin
 Route::put('/settings/administration/document-delivery', [AdministrationSettingsController::class, 'updateDocumentSettings'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
     ->name('settings.administration.document-delivery.update');
+Route::post('/settings/administration/bank-accounts', [BankingSettingsController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.bank-accounts.store');
+Route::put('/settings/administration/bank-accounts/{bankAccount}', [BankingSettingsController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.bank-accounts.update');
+Route::post('/settings/administration/bank-accounts/{bankAccount}/activate', [BankingSettingsController::class, 'activate'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.bank-accounts.activate');
+Route::post('/settings/administration/bank-accounts/{bankAccount}/deactivate', [BankingSettingsController::class, 'deactivate'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.bank-accounts.deactivate');
+Route::put('/settings/administration/bank-accounts/{bankAccount}/configuration', [BankingSettingsController::class, 'configure'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])
+    ->name('settings.administration.bank-accounts.configuration.update');
 
 Route::middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])->group(function (): void {
     Route::get('/settings/journals', [AccountingMasterDataController::class, 'journals'])->name('settings.journals.index');

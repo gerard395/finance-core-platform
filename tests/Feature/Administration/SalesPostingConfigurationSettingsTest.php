@@ -246,6 +246,42 @@ final class SalesPostingConfigurationSettingsTest extends TestCase
         self::assertSame($historicalLines, DB::table('journal_entry_lines')->orderBy('id')->get()->map(static fn (object $row): array => (array) $row)->all());
     }
 
+    public function test_operational_banking_settings_flow_is_authorized_tenant_safe_filtered_and_escaped(): void
+    {
+        $this->get('/settings/administration')->assertOk()
+            ->assertSee('Operationele bankrekeningen')
+            ->assertSee('Nog geen operationele bankrekeningen ingesteld')
+            ->assertSee('actief Bank-dagboek');
+
+        $this->post('/settings/journals', ['code' => 'BNK', 'name' => 'Bank', 'type' => 'bank'])->assertRedirect(route('settings.journals.index'));
+        $this->post('/settings/journals', ['code' => 'GEN', 'name' => 'General', 'type' => 'general'])->assertRedirect(route('settings.journals.index'));
+        $this->post('/settings/ledger-accounts', ['code' => '1100', 'name' => '<script>Bank</script>', 'type' => 'asset'])->assertRedirect(route('settings.ledger-accounts.index'));
+        $this->post('/settings/ledger-accounts', ['code' => '2100', 'name' => 'Liability', 'type' => 'liability'])->assertRedirect(route('settings.ledger-accounts.index'));
+        $this->post('/settings/administration/bank-accounts', ['administration_id' => self::B, 'iban' => 'nl91abna0417164300', 'bic' => '', 'account_holder' => 'Demo Holder', 'label' => '<script>Main</script>'])
+            ->assertRedirect(route('settings.administration.edit'));
+
+        $bankId = (string) DB::table('administration_bank_accounts')->where('administration_id', self::A)->value('id');
+        $journalId = (string) DB::table('journals')->where('administration_id', self::A)->where('code', 'BNK')->value('id');
+        $ledgerId = (string) DB::table('ledger_accounts')->where('administration_id', self::A)->where('code', '1100')->value('id');
+        self::assertSame(0, DB::table('administration_bank_accounts')->where('administration_id', self::B)->count());
+        $this->get('/settings/administration')->assertOk()
+            ->assertSee('&lt;script&gt;Main&lt;/script&gt;', false)->assertDontSee('<script>Main</script>', false)
+            ->assertSee('BNK – Bank')->assertDontSee('GEN – General')
+            ->assertSee('&lt;script&gt;Bank&lt;/script&gt;', false);
+
+        $this->put("/settings/administration/bank-accounts/{$bankId}", ['account_holder' => 'Renamed', 'label' => 'Updated', 'iban' => 'NL00HACK'])->assertRedirect(route('settings.administration.edit'));
+        $this->assertDatabaseHas('administration_bank_accounts', ['id' => $bankId, 'iban' => 'NL91ABNA0417164300', 'account_holder' => 'Renamed', 'label' => 'Updated']);
+        $this->put("/settings/administration/bank-accounts/{$bankId}/configuration", ['administration_id' => self::B, 'bank_journal_id' => $journalId, 'bank_ledger_account_id' => $ledgerId])->assertRedirect(route('settings.administration.edit'));
+        $this->assertDatabaseHas('banking_posting_configurations', ['administration_id' => self::A, 'administration_bank_account_id' => $bankId]);
+        $this->post("/settings/administration/bank-accounts/{$bankId}/deactivate")->assertRedirect(route('settings.administration.edit'));
+        $this->assertDatabaseHas('administration_bank_accounts', ['id' => $bankId, 'status' => 'inactive']);
+        $this->post("/settings/administration/bank-accounts/{$bankId}/activate")->assertRedirect(route('settings.administration.edit'));
+        $this->put('/settings/administration/bank-accounts/not-a-uuid', ['account_holder' => 'Safe', 'label' => 'Safe'])->assertNotFound();
+
+        DB::table('administration_membership_roles')->where('membership_id', self::MEMBERSHIP)->update(['active' => false]);
+        $this->post('/settings/administration/bank-accounts', ['iban' => 'NL02ABNA0123456789', 'account_holder' => 'Denied', 'label' => 'Denied'])->assertForbidden();
+    }
+
     private function postingFixtures(): void
     {
         $now = now();

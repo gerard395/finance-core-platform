@@ -190,5 +190,47 @@
                 <div class="flex justify-end sm:col-span-2"><button type="submit" @disabled(! $hasPurchaseMasterData) class="min-h-11 rounded-lg bg-blue-700 px-5 font-semibold text-white disabled:bg-slate-400">Inkoopboekingen opslaan</button></div>
             </form>
         </section>
+
+        <section aria-labelledby="banking-settings-heading" class="mt-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+            <h2 id="banking-settings-heading" class="text-lg font-bold">Operationele bankrekeningen</h2>
+            <p class="mt-1 text-sm text-slate-600">Beheer Administration-owned bankrekeningen en koppel iedere rekening expliciet aan een Bank-dagboek en Asset-grootboekrekening.</p>
+            @error('bank_account')<p class="mt-4 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+            @error('banking_configuration')<p class="mt-4 text-sm text-red-700" role="alert">{{ $message }}</p>@enderror
+
+            <form method="POST" action="{{ route('settings.administration.bank-accounts.store') }}" class="mt-5 grid gap-4 sm:grid-cols-2">
+                @csrf
+                <div><label for="operational_iban" class="text-sm font-semibold">IBAN</label><input id="operational_iban" name="iban" value="{{ old('iban') }}" required maxlength="34" class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                <div><label for="operational_bic" class="text-sm font-semibold">BIC (optioneel)</label><input id="operational_bic" name="bic" value="{{ old('bic') }}" maxlength="11" class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                <div><label for="operational_holder" class="text-sm font-semibold">Rekeninghouder</label><input id="operational_holder" name="account_holder" value="{{ old('account_holder') }}" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                <div><label for="operational_label" class="text-sm font-semibold">Label</label><input id="operational_label" name="label" value="{{ old('label') }}" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                <div class="sm:col-span-2 flex justify-end"><button class="min-h-11 rounded-lg bg-blue-700 px-5 font-semibold text-white">Bankrekening toevoegen</button></div>
+            </form>
+
+            @if ($bankingSettings->bankAccounts === [])
+                <p class="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm" role="status">Nog geen operationele bankrekeningen ingesteld. Het document-IBAN en Relation-bankrekeningen worden niet automatisch overgenomen.</p>
+            @endif
+            @if ($bankingSettings->bankJournals === [] || $bankingSettings->bankLedgerAccounts === [])
+                <p class="mt-5 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900" role="status">Maak via Grootboekbeheer eerst een actief Bank-dagboek en een actieve Asset-grootboekrekening. Er wordt niets automatisch gekozen.</p>
+            @endif
+
+            @foreach ($bankingSettings->bankAccounts as $bankAccount)
+                @php($bankConfig = $bankingSettings->configurations[$bankAccount->id()->toString()])
+                <article class="mt-6 rounded-lg border border-slate-200 p-4">
+                    <div class="flex flex-wrap justify-between gap-3"><div><h3 class="font-bold">{{ $bankAccount->label()->value() }}</h3><p class="text-sm text-slate-600">{{ $bankAccount->iban()->value() }} · EUR · {{ $bankAccount->isActive() ? 'Actief' : 'Inactief' }}</p></div>
+                        <form method="POST" action="{{ route($bankAccount->isActive() ? 'settings.administration.bank-accounts.deactivate' : 'settings.administration.bank-accounts.activate', ['bankAccount' => $bankAccount->id()->toString()]) }}">@csrf<button class="min-h-11 rounded-lg border border-slate-300 px-4 font-semibold">{{ $bankAccount->isActive() ? 'Deactiveren' : 'Activeren' }}</button></form>
+                    </div>
+                    <form method="POST" action="{{ route('settings.administration.bank-accounts.update', ['bankAccount' => $bankAccount->id()->toString()]) }}" class="mt-4 grid gap-4 sm:grid-cols-2">@csrf @method('PUT')
+                        <div><label class="text-sm font-semibold">Rekeninghouder</label><input name="account_holder" value="{{ $bankAccount->accountHolder()->value() }}" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                        <div><label class="text-sm font-semibold">Label</label><input name="label" value="{{ $bankAccount->label()->value() }}" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"></div>
+                        <div class="sm:col-span-2 flex justify-end"><button class="min-h-11 rounded-lg border border-blue-700 px-4 font-semibold text-blue-800">Presentatie bijwerken</button></div>
+                    </form>
+                    <form method="POST" action="{{ route('settings.administration.bank-accounts.configuration.update', ['bankAccount' => $bankAccount->id()->toString()]) }}" class="mt-4 grid gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2">@csrf @method('PUT')
+                        <div><label class="text-sm font-semibold">Bank-dagboek</label><select name="bank_journal_id" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"><option value="">Selecteer</option>@foreach($bankingSettings->bankJournals as $journal)<option value="{{ $journal->id()->toString() }}" @selected($bankConfig->configuration?->bankJournalId->toString() === $journal->id()->toString())>{{ $journal->code()->value() }} – {{ $journal->name()->value() }}</option>@endforeach</select></div>
+                        <div><label class="text-sm font-semibold">Bank-grootboekrekening</label><select name="bank_ledger_account_id" required class="mt-2 min-h-11 w-full rounded-lg border border-slate-300 px-3"><option value="">Selecteer</option>@foreach($bankingSettings->bankLedgerAccounts as $account)<option value="{{ $account->id()->toString() }}" @selected($bankConfig->configuration?->bankLedgerAccountId->toString() === $account->id()->toString())>{{ $account->code()->value() }} – {{ $account->name()->value() }}</option>@endforeach</select></div>
+                        <div class="sm:col-span-2 flex items-center justify-between gap-3"><span class="text-sm">Status: {{ $bankConfig->status->name }}</span><button @disabled(! $bankAccount->isActive() || $bankingSettings->bankJournals === [] || $bankingSettings->bankLedgerAccounts === []) class="min-h-11 rounded-lg bg-blue-700 px-5 font-semibold text-white disabled:bg-slate-400">Configuratie opslaan</button></div>
+                    </form>
+                </article>
+            @endforeach
+        </section>
     </div>
 </x-layouts.app>
