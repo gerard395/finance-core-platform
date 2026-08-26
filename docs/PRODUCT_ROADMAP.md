@@ -122,6 +122,12 @@ immutable AR/AP-control-LedgerAccount van zijn source posting. Historische facts
 deterministisch vanuit exact één same-side/exact-amount JournalEntryLine gebackfilld;
 latere configuratiewijziging of accountdeactivation verandert die identity niet.
 
+B2-002 maakt manual BankTransaction, exact één Payment en meerdere allocations duurzaam.
+Draft kan atomair worden aangepast of geannuleerd; Finalize valideert normale
+same-Relation EUR OpenItems, vereist exacte volledige allocatie en bevriest actor/tijd
+plus control-accounttruth. Zij maakt nog geen financiële boeking of settlement; row
+locks, BankingPostingConfiguration en PostingEngine blijven exclusief B2-003.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

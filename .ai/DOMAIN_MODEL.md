@@ -355,7 +355,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | BankAccount | Een financiële rekening identificeren | Een rekening voor het ontvangen, bewaren en uitbetalen van geld. |
 | BankStatement | Een aangeleverd rekeningoverzicht representeren | Een overzicht van bankmutaties over een bepaald tijdvak. |
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
-| Payment | Een bankmutatie aan een OpenItem alloceren | Een positief Money-bedrag dat als child entity binnen één BankTransaction naar precies één OpenItem verwijst. |
+| Payment | Een bankmutatie interpreteren | Exact één positief EUR Payment-child per manual BankTransaction, met meerdere OpenItem-allocations. |
 
 ### Banking Capability
 
@@ -363,9 +363,10 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 
 | Aggregate Root | Child Entity | Verantwoordelijkheid |
 | --- | --- | --- |
-| BankTransaction | Payment | Een bankmutatie als primaire financiële gebeurtenis vastleggen en haar betalingen beheren. |
+| BankTransaction | Payment, PaymentAllocation | Een bankmutatie als primaire financiële gebeurtenis en haar allocatie-intent beheren. |
 
-Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een child entity en wordt uitsluitend via de BankTransaction Aggregate Root beheerd.
+Een manual BankTransaction bevat exact één Payment. Payment en diens allocations zijn
+children en worden uitsluitend via de BankTransaction Aggregate Root beheerd.
 
 #### Domain Service
 
@@ -374,13 +375,12 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 #### Businessregels
 
 - BankTransaction is binnen Banking de primaire financiële gebeurtenis.
-- Een BankTransaction kan nul, één of meerdere Payments bevatten.
-- Iedere Payment behoort altijd tot precies één OpenItem.
-- Payment-bedragen zijn strikt positief, gebruiken dezelfde Currency als de BankTransaction en zijn alleen wijzigbaar zolang de transactie Imported is.
-- De BankTransaction-context is immutable; alleen status en de eigen Payment-collectie wijzigen via domeingedrag.
-- Matching vereist minimaal één Payment en vergelijkt de exacte Money-som met het absolute BankTransaction-bedrag.
-- Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
-- Matching maakt geen Payments, JournalEntries of PostingRequests.
+- Een manual BankTransaction bevat exact één Payment met nul of meer Draft-allocations.
+- Iedere allocation behoort tot precies één OpenItem; targets zijn uniek binnen Payment.
+- Payment- en allocationbedragen zijn strikt positief EUR; het transactionbedrag is signed.
+- Draft is wijzigbaar; Finalized bevriest movement, Payment en allocations.
+- Finalize vereist minimaal één allocation en vergelijkt de exacte som met het absolute BankTransaction-bedrag.
+- Finalize valideert OpenItem-readiness maar maakt geen JournalEntry of Settlement.
 - Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
 - Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
 

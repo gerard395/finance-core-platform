@@ -6,38 +6,33 @@ namespace App\Domain\Banking\Entities;
 
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Banking\Enums\BankTransactionStatus;
+use App\Domain\Banking\Enums\PaymentType;
+use App\Domain\Banking\ValueObjects\AdministrationBankAccountId;
 use App\Domain\Banking\ValueObjects\BankTransactionId;
 use App\Domain\Banking\ValueObjects\BankTransactionReference;
-use App\Domain\Banking\ValueObjects\PaymentId;
+use App\Domain\Banking\ValueObjects\TransactionDate;
 use App\Domain\Banking\ValueObjects\TransactionDescription;
-use App\Domain\Relations\ValueObjects\BankAccountId;
+use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Shared\Finance\Money;
 use DateTimeImmutable;
 use DomainException;
 
 final class BankTransaction
 {
-    /** @var array<string, Payment> */
-    private array $payments = [];
-
-    public function __construct(
-        private readonly BankTransactionId $id,
-        private readonly BankAccountId $bankAccountId,
-        private readonly AdministrationId $administrationId,
-        private readonly DateTimeImmutable $bookingDate,
-        private readonly DateTimeImmutable $valueDate,
-        private readonly Money $amount,
-        private readonly BankTransactionReference $reference,
-        private readonly TransactionDescription $description,
-        private BankTransactionStatus $status,
-    ) {}
+    public function __construct(private readonly BankTransactionId $id, private AdministrationBankAccountId $bankAccountId, private readonly AdministrationId $administrationId, private TransactionDate $transactionDate, private Money $amount, private BankTransactionReference $reference, private TransactionDescription $description, private Payment $payment, private BankTransactionStatus $status, private readonly UserId $createdBy, private readonly DateTimeImmutable $createdAt, private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null)
+    {
+        $this->assertCoherent();
+        if ($status === BankTransactionStatus::Finalized && ($finalizedBy === null || $finalizedAt === null)) {
+            throw new DomainException('Finalized audit facts are required.');
+        }
+    }
 
     public function id(): BankTransactionId
     {
         return $this->id;
     }
 
-    public function bankAccountId(): BankAccountId
+    public function bankAccountId(): AdministrationBankAccountId
     {
         return $this->bankAccountId;
     }
@@ -47,14 +42,9 @@ final class BankTransaction
         return $this->administrationId;
     }
 
-    public function bookingDate(): DateTimeImmutable
+    public function transactionDate(): TransactionDate
     {
-        return $this->bookingDate;
-    }
-
-    public function valueDate(): DateTimeImmutable
-    {
-        return $this->valueDate;
+        return $this->transactionDate;
     }
 
     public function amount(): Money
@@ -72,78 +62,95 @@ final class BankTransaction
         return $this->description;
     }
 
+    public function payment(): Payment
+    {
+        return $this->payment;
+    }
+
     public function status(): BankTransactionStatus
     {
         return $this->status;
     }
 
-    /** @return list<Payment> */
-    public function payments(): array
+    public function createdBy(): UserId
     {
-        return array_values($this->payments);
+        return $this->createdBy;
     }
 
-    public function payment(PaymentId $paymentId): ?Payment
+    public function createdAt(): DateTimeImmutable
     {
-        return $this->payments[$paymentId->toString()] ?? null;
+        return $this->createdAt;
     }
 
-    public function hasPayment(PaymentId $paymentId): bool
+    public function finalizedBy(): ?UserId
     {
-        return isset($this->payments[$paymentId->toString()]);
+        return $this->finalizedBy;
     }
 
-    public function addPayment(Payment $payment): void
+    public function finalizedAt(): ?DateTimeImmutable
     {
-        $this->assertImportedForPaymentChanges();
-
-        if (! $this->amount->currency()->equals($payment->amount()->currency())) {
-            throw new DomainException('Payment currency must match the bank transaction currency.');
-        }
-
-        $key = $payment->id()->toString();
-
-        if (isset($this->payments[$key])) {
-            throw new DomainException('Bank transaction already contains a payment with this identity.');
-        }
-
-        $this->payments[$key] = $payment;
+        return $this->finalizedAt;
     }
 
-    public function removePayment(PaymentId $paymentId): void
+    public function updateDraft(AdministrationBankAccountId $bankAccountId, TransactionDate $date, Money $amount, BankTransactionReference $reference, TransactionDescription $description, Payment $payment): void
     {
-        $this->assertImportedForPaymentChanges();
-        unset($this->payments[$paymentId->toString()]);
+        $this->assertDraft();
+        $this->bankAccountId = $bankAccountId;
+        $this->transactionDate = $date;
+        $this->amount = $amount;
+        $this->reference = $reference;
+        $this->description = $description;
+        $this->payment = $payment;
+        $this->assertCoherent();
     }
 
-    public function match(): void
+    /** @param list<PaymentAllocation> $allocations */
+    public function replaceAllocations(array $allocations): void
     {
-        $this->transitionTo(BankTransactionStatus::Matched, [BankTransactionStatus::Imported]);
+        $this->assertDraft();
+        $this->payment->replaceAllocations($allocations);
     }
 
-    public function post(): void
+    /** @param list<PaymentAllocation> $allocations */
+    public function finalize(UserId $actor, DateTimeImmutable $at, array $allocations): void
     {
-        $this->transitionTo(BankTransactionStatus::Posted, [BankTransactionStatus::Matched]);
-    }
-
-    /** @param list<BankTransactionStatus> $allowedFrom */
-    private function transitionTo(BankTransactionStatus $target, array $allowedFrom): void
-    {
-        if ($this->status === $target) {
+        if ($this->status === BankTransactionStatus::Finalized) {
             return;
-        }
-
-        if (! in_array($this->status, $allowedFrom, true)) {
-            throw new DomainException("Bank transaction cannot transition from {$this->status->value} to {$target->value}.");
-        }
-
-        $this->status = $target;
+        } $this->assertDraft();
+        $this->payment->replaceAllocations($allocations);
+        if ($allocations === [] || ! $this->payment->allocationTotal()->equals($this->amount->absolute())) {
+            throw new DomainException('Finalization requires exact full allocation.');
+        } foreach ($allocations as $allocation) {
+            if (! $allocation->isFinalized()) {
+                throw new DomainException('Finalized allocation snapshots are required.');
+            }
+        } $this->status = BankTransactionStatus::Finalized;
+        $this->finalizedBy = $actor;
+        $this->finalizedAt = $at;
     }
 
-    private function assertImportedForPaymentChanges(): void
+    public function cancel(): void
     {
-        if ($this->status !== BankTransactionStatus::Imported) {
-            throw new DomainException('Payments can only be changed while the bank transaction is imported.');
+        $this->assertDraft();
+        $this->status = BankTransactionStatus::Cancelled;
+    }
+
+    private function assertDraft(): void
+    {
+        if ($this->status !== BankTransactionStatus::Draft) {
+            throw new DomainException('Only Draft bank transactions are mutable.');
+        }
+    }
+
+    private function assertCoherent(): void
+    {
+        if ($this->amount->isZero() || $this->amount->currency()->code() !== 'EUR') {
+            throw new DomainException('Bank transaction requires non-zero EUR Money.');
+        } if (! $this->payment->amount()->equals($this->amount->absolute())) {
+            throw new DomainException('Payment amount must equal absolute bank transaction amount.');
+        } $expected = $this->amount->isPositive() ? PaymentType::CustomerReceipt : PaymentType::SupplierPayment;
+        if ($this->payment->type() !== $expected) {
+            throw new DomainException('Payment type must be derived from signed amount.');
         }
     }
 }

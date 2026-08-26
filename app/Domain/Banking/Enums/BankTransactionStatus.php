@@ -6,7 +6,8 @@ namespace App\Domain\Banking\Enums;
 
 enum BankTransactionStatus: string
 {
-    case Imported = 'imported';
-    case Matched = 'matched';
+    case Draft = 'draft';
+    case Finalized = 'finalized';
     case Posted = 'posted';
+    case Cancelled = 'cancelled';
 }
