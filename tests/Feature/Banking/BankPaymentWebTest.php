@@ -241,12 +241,14 @@ final class BankPaymentWebTest extends TestCase
         $this->login();
 
         $fresh = $this->get('/banking/payments/create')->assertOk();
-        $fresh->assertSee('data-type="customer_receipt" data-relation="'.self::CUSTOMER.'"', false)
+        $fresh->assertSee('data-banking-payment-form', false)
+            ->assertSee('data-type="customer_receipt" data-relation="'.self::CUSTOMER.'"', false)
             ->assertSee('data-type="supplier_payment" data-relation="'.self::SUPPLIER.'"', false)
-            ->assertSee("type.addEventListener('change',update)", false)
-            ->assertSee("relation.addEventListener('change',update)", false)
+            ->assertSee("document.querySelector('[data-banking-payment-form]')", false)
+            ->assertSee("form.addEventListener('input',synchronize)", false)
+            ->assertSee("form.addEventListener('change',synchronize)", false)
             ->assertSee("window.addEventListener('pageshow',update)", false)
-            ->assertSee("document.querySelector('form').addEventListener('input'", false)
+            ->assertDontSee("document.querySelector('form')", false)
             ->assertSee('allocation.disabled=!checkbox.checked', false)
             ->assertSee('allocation.required=checkbox.checked', false)
             ->assertSee('if(!visible)checkbox.checked=false', false)
