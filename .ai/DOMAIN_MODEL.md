@@ -678,3 +678,18 @@ request geëvalueerd. Selectors zijn actief en tenant-scoped; bestaand documentd
 gebruikt uitsluitend historische snapshots. Presentation levert een expliciete
 PostingDate aan de Application-use-case en toont na succes het Payable/Credit OpenItem,
 maar berekent of schrijft zelf geen financiële waarheid en biedt geen paymentflow.
+
+## 11. Banking – atomische cash settlement
+
+`BankTransaction` bezit exact één Payment met PaymentAllocation-children. Finalize
+bevriest allocaties maar reserveert geen OpenItem-saldo. `PostBankTransaction` lockt de
+tenant-scoped transaction en daarna unieke OpenItems deterministisch, herleest actuele
+settlements en matches en valideert EUR, Relation, type/side, open saldo en het
+historische `controlLedgerAccountId`.
+
+Uitsluitend PostingEngine maakt de ene JournalEntry. CustomerReceipt boekt Bank debet
+en historische receivable-controlaccounts credit; SupplierPayment doet het omgekeerde
+voor payable-controlaccounts. Per allocation ontstaat één immutable cash
+OpenItemSettlement met duurzame allocation- en JournalEntry-trace. OpenItemMatch blijft
+document matching. JournalEntry, settlements, append-only postinglinkage en Posted met
+actor/tijd committen atomisch; open saldo blijft een afleiding van immutable feiten.

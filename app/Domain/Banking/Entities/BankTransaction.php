@@ -19,11 +19,14 @@ use DomainException;
 
 final class BankTransaction
 {
-    public function __construct(private readonly BankTransactionId $id, private AdministrationBankAccountId $bankAccountId, private readonly AdministrationId $administrationId, private TransactionDate $transactionDate, private Money $amount, private BankTransactionReference $reference, private TransactionDescription $description, private Payment $payment, private BankTransactionStatus $status, private readonly UserId $createdBy, private readonly DateTimeImmutable $createdAt, private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null)
+    public function __construct(private readonly BankTransactionId $id, private AdministrationBankAccountId $bankAccountId, private readonly AdministrationId $administrationId, private TransactionDate $transactionDate, private Money $amount, private BankTransactionReference $reference, private TransactionDescription $description, private Payment $payment, private BankTransactionStatus $status, private readonly UserId $createdBy, private readonly DateTimeImmutable $createdAt, private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null, private ?UserId $postedBy = null, private ?DateTimeImmutable $postedAt = null)
     {
         $this->assertCoherent();
-        if ($status === BankTransactionStatus::Finalized && ($finalizedBy === null || $finalizedAt === null)) {
+        if (in_array($status, [BankTransactionStatus::Finalized, BankTransactionStatus::Posted], true) && ($finalizedBy === null || $finalizedAt === null)) {
             throw new DomainException('Finalized audit facts are required.');
+        }
+        if ($status === BankTransactionStatus::Posted && ($postedBy === null || $postedAt === null)) {
+            throw new DomainException('Posted audit facts are required.');
         }
     }
 
@@ -90,6 +93,26 @@ final class BankTransaction
     public function finalizedAt(): ?DateTimeImmutable
     {
         return $this->finalizedAt;
+    }
+
+    public function postedBy(): ?UserId
+    {
+        return $this->postedBy;
+    }
+
+    public function postedAt(): ?DateTimeImmutable
+    {
+        return $this->postedAt;
+    }
+
+    public function markPosted(UserId $actor, DateTimeImmutable $at): void
+    {
+        if ($this->status !== BankTransactionStatus::Finalized) {
+            throw new DomainException('Only Finalized bank transactions can be posted.');
+        }
+        $this->status = BankTransactionStatus::Posted;
+        $this->postedBy = $actor;
+        $this->postedAt = $at;
     }
 
     public function updateDraft(AdministrationBankAccountId $bankAccountId, TransactionDate $date, Money $amount, BankTransactionReference $reference, TransactionDescription $description, Payment $payment): void

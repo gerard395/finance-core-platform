@@ -128,6 +128,13 @@ same-Relation EUR OpenItems, vereist exacte volledige allocatie en bevriest acto
 plus control-accounttruth. Zij maakt nog geen financiële boeking of settlement; row
 locks, BankingPostingConfiguration en PostingEngine blijven exclusief B2-003.
 
+B2-003 realiseert de atomische financiële waarheid: een Finalized BankTransaction wordt
+onder tenant-scoped BankTransaction- en deterministische OpenItem-locks geboekt via
+PostingEngine, met één JournalEntry, één cash Settlement per allocation, één duurzame
+postinglinkage en Posted-auditfacts. Actuele open balances worden onder lock herlezen;
+historische OpenItem-controlaccounts blijven leidend. Echte MySQL-races borgen
+idempotency en bescherming tegen oversettlement. Banking Web blijft B2-004.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

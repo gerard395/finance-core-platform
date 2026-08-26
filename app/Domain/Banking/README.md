@@ -11,7 +11,7 @@ alloceren. Finalize vereist minimaal één allocation en een som exact gelijk aa
 absolute bankbedrag; unallocated cash, overpayment, suspense en FX bestaan niet in V1.
 
 De lifecycle is `Draft → Finalized → Posted` en `Draft → Cancelled`. B2-002 ondersteunt
-create/update/finalize/cancel; Posted is uitsluitend reconstitueerbaar voor B2-003.
+create/update/finalize/cancel; B2-003 voert de enige atomische Posted-overgang uit.
 Finalized bevriest bankrekening, TransactionDate, signed amount, reference, description,
 Relation en allocations en bewaart actor/tijd uit de Application clock.
 
@@ -28,6 +28,13 @@ los van RelationBankAccount en document-IBAN. Draft/Finalize vereist een actieve
 same-tenant EUR-rekening, maar geen BankingPostingConfiguration; die configuratie wordt
 pas bij Post gelezen.
 
-B2-002 maakt geen JournalEntry, JournalEntryLine, Settlement, Match of postinglinkage.
-Alle financiële gevolgen blijven exclusief bij B2-003 en Accounting `PostingEngine`.
+B2-003 lockt de transaction en de unieke OpenItems in deterministische identityvolgorde,
+leest actuele settlement/match-feiten opnieuw en gebruikt de actuele bankconfiguratie.
+CustomerReceipt is Bank-debet/control-credit; SupplierPayment is control-debet/Bank-
+credit. Ieder allocation gebruikt exact het historische `OpenItem.controlLedgerAccountId`.
+Eén outer transaction bewaart één PostingEngine-JournalEntry, één Settlement per
+allocation, één postinglinkage en PostedBy/PostedAt. Finalize reserveert geen saldo;
+echte MySQL-locking voorkomt oversettlement en ondersteunt partial, multi-OpenItem en
+meerdere betalingen over tijd. OpenItemMatch blijft onaangepast.
+
 Bankimport, reconciliation, PSD2, FX, reversal en Banking Web blijven buiten scope.

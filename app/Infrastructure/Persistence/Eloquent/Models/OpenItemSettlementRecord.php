@@ -18,6 +18,7 @@ final class OpenItemSettlementRecord extends Model
         'id',
         'administration_id',
         'open_item_id',
+        'payment_allocation_id',
         'effective_date',
         'amount',
         'currency',
