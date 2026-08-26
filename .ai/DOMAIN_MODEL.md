@@ -693,3 +693,10 @@ voor payable-controlaccounts. Per allocation ontstaat één immutable cash
 OpenItemSettlement met duurzame allocation- en JournalEntry-trace. OpenItemMatch blijft
 document matching. JournalEntry, settlements, append-only postinglinkage en Posted met
 actor/tijd committen atomisch; open saldo blijft een afleiding van immutable feiten.
+
+De B2 Webgrens gebruikt tenant-scoped Application-composities voor list/detail en
+eligible masterdata. Presentation vertaalt alleen de keuze klantontvangst/
+leveranciersbetaling en een positief gebruikersbedrag naar signed Money; zij bepaalt
+geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en Post zijn
+afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
+linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.

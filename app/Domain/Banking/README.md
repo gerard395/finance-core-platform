@@ -37,4 +37,12 @@ allocation, één postinglinkage en PostedBy/PostedAt. Finalize reserveert geen 
 echte MySQL-locking voorkomt oversettlement en ondersteunt partial, multi-OpenItem en
 meerdere betalingen over tijd. OpenItemMatch blijft onaangepast.
 
-Bankimport, reconciliation, PSD2, FX, reversal en Banking Web blijven buiten scope.
+Bankimport, reconciliation, PSD2, FX en reversal blijven buiten scope.
+
+B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
+scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag
+levert alleen gevalideerde input en toont Application-readmodels; lifecycle, eligibility,
+exacte allocation-som, locks, actuele open saldi, historical controlaccounts,
+JournalEntry en Settlements blijven buiten Presentation. Posted detail toont de ene
+postinglinkage en settlement/remaining amount per allocation. Bankimport, reconciliation,
+overpayment, suspense, FX en reversal blijven bewust vervolgscope.

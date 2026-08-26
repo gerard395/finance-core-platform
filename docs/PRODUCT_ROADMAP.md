@@ -135,6 +135,13 @@ postinglinkage en Posted-auditfacts. Actuele open balances worden onder lock her
 historische OpenItem-controlaccounts blijven leidend. Echte MySQL-races borgen
 idempotency en bescherming tegen oversettlement. Banking Web blijft B2-004.
 
+B2-004 sluit B2 productmatig af met Bank → Betalingen: permission-onafhankelijke
+list/detail, Draftbeheer en financieel Posten, veilige selectors voor operationele
+bankrekeningen/Relations/OpenItems en immutable postingresultaten met settlements en
+remaining balances. Receipt, supplier, partial, multiple-payment en multi-OpenItem
+flows zijn end-to-end gevalideerd; de B2-003 concurrencygaranties blijven intact.
+Import, reconciliation, overpayment, suspense, FX en reversal blijven deferred.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

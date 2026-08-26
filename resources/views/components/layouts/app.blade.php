@@ -33,7 +33,8 @@
             @if ($canViewPurchasing)
                 <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" :href="route('purchasing.invoices.index')" :active="request()->routeIs('purchasing.invoices.*')" /></x-navigation.section>
             @endif
-            <x-navigation.section title="Financieel"><x-navigation.item label="Bank" disabled /><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>
+            @if($canViewBanking)<x-navigation.section title="Bank"><x-navigation.item label="Betalingen" :href="route('banking.payments.index')" :active="request()->routeIs('banking.payments.*')" /></x-navigation.section>@endif
+            <x-navigation.section title="Financieel"><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>
             <x-navigation.section title="Beheer"><x-navigation.item label="Administraties" disabled /><x-navigation.item label="Gebruikers & rollen" disabled />@if ($canUpdateAdministrationSettings)<x-navigation.item label="Instellingen" :href="route('settings.administration.edit')" :active="request()->routeIs('settings.administration.*')" /><x-navigation.item label="Dagboeken" :href="route('settings.journals.index')" :active="request()->routeIs('settings.journals.*')" /><x-navigation.item label="Grootboekrekeningen" :href="route('settings.ledger-accounts.index')" :active="request()->routeIs('settings.ledger-accounts.*')" />@endif</x-navigation.section>
         </nav>
     </aside>
