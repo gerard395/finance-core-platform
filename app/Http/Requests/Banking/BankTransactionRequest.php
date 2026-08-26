@@ -35,4 +35,24 @@ final class BankTransactionRequest extends FormRequest
             'allocations.*.amount' => ['required', 'decimal:0,8', 'gt:0'],
         ];
     }
+
+    public function messages(): array
+    {
+        return [
+            'allocations.*.open_item_id.required' => 'Selecteer een openstaande post voor iedere allocatie.',
+            'allocations.*.open_item_id.uuid' => 'De geselecteerde openstaande post is ongeldig.',
+            'allocations.*.open_item_id.distinct' => 'Een openstaande post kan maar één keer worden geselecteerd.',
+            'allocations.*.amount.required' => 'Vul een allocatiebedrag in voor iedere geselecteerde openstaande post.',
+            'allocations.*.amount.decimal' => 'Vul een geldig allocatiebedrag in.',
+            'allocations.*.amount.gt' => 'Het allocatiebedrag moet groter zijn dan nul.',
+        ];
+    }
+
+    public function attributes(): array
+    {
+        return [
+            'allocations.*.open_item_id' => 'geselecteerde openstaande post',
+            'allocations.*.amount' => 'allocatiebedrag',
+        ];
+    }
 }
