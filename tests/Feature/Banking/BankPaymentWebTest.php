@@ -177,6 +177,64 @@ final class BankPaymentWebTest extends TestCase
         self::assertSame(0, DB::table('bank_transaction_postings')->where('bank_transaction_id', $id)->count());
     }
 
+    public function test_allocation_form_state_and_draft_payload_regressions(): void
+    {
+        $this->assignAll();
+        $this->login();
+
+        $create = $this->get('/banking/payments/create')->assertOk();
+        $create->assertSee('data-allocation-amount', false)
+            ->assertSee('disabled', false)
+            ->assertSee('Selecteer een openstaande post en vul daarna het allocatiebedrag in.');
+
+        $zero = $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '605', 'ZERO');
+        $zero['allocations'] = [
+            ['allocation_id' => '', 'amount' => ''],
+            ['allocation_id' => '', 'amount' => ''],
+        ];
+        $this->post('/banking/payments', $zero)->assertRedirect();
+        $zeroId = DB::table('bank_transactions')->where('reference', 'ZERO')->value('id');
+        self::assertNotNull($zeroId);
+        self::assertSame(0, DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $zeroId)->value('id'))->count());
+
+        $empty = $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '605', 'EMPTY');
+        $empty['allocations'][0]['amount'] = '';
+        $this->from('/banking/payments/create')->post('/banking/payments', $empty)
+            ->assertRedirect('/banking/payments/create')
+            ->assertSessionHasErrors(['allocations.0.amount' => 'Vul een allocatiebedrag in voor iedere geselecteerde openstaande post.']);
+        self::assertSame(0, DB::table('bank_transactions')->where('reference', 'EMPTY')->count());
+
+        $full = $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '605', 'FULL-605');
+        $full['allocations'][] = ['allocation_id' => '', 'amount' => ''];
+        $this->post('/banking/payments', $full)->assertRedirect();
+        $fullId = DB::table('bank_transactions')->where('reference', 'FULL-605')->value('id');
+        self::assertSame('605.00000000', DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $fullId)->value('id'))->value('amount'));
+
+        $partial = $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '605', 'PARTIAL-500');
+        $partial['allocations'][0]['amount'] = '500';
+        $this->post('/banking/payments', $partial)->assertRedirect();
+        $partialId = DB::table('bank_transactions')->where('reference', 'PARTIAL-500')->value('id');
+        self::assertSame('500.00000000', DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $partialId)->value('id'))->value('amount'));
+        $this->post('/banking/payments/'.$partialId.'/finalize')->assertRedirect();
+        self::assertSame('draft', DB::table('bank_transactions')->where('id', $partialId)->value('status'));
+
+        $existing = $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '40', 'EXISTING');
+        $this->post('/banking/payments', $existing)->assertRedirect();
+        $existingId = DB::table('bank_transactions')->where('reference', 'EXISTING')->value('id');
+        $edit = $this->get('/banking/payments/'.$existingId.'/edit')->assertOk();
+        $edit->assertSee('checked', false)->assertSee('required', false)->assertSee('value="40"', false);
+        $allocationId = DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $existingId)->value('id'))->value('id');
+        $existing['allocations'][0] = ['allocation_id' => $allocationId, 'open_item_id' => self::PAYABLE, 'amount' => '30'];
+        $this->put('/banking/payments/'.$existingId, $existing)->assertRedirect();
+        self::assertSame('30.00000000', DB::table('payment_allocations')->where('id', $allocationId)->value('amount'));
+        $existing['allocations'] = [
+            ['allocation_id' => $allocationId, 'amount' => ''],
+            ['allocation_id' => '', 'amount' => ''],
+        ];
+        $this->put('/banking/payments/'.$existingId, $existing)->assertRedirect();
+        self::assertSame(0, DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $existingId)->value('id'))->count());
+    }
+
     public function test_settings_sales_and_purchasing_permissions_grant_no_banking_access(): void
     {
         $this->app->make(AdministrationAuthorizationProvisioner::class)->provision();

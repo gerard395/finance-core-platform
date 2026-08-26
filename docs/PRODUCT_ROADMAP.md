@@ -603,6 +603,31 @@ geparkeerd totdat alle materiële Sales- en Purchase-fiscale source streams—in
 credits, international/reverse-charge en import/correcties—duurzaam en rapporteerbaar
 zijn.
 
+PROJECT-GAP-004 bevestigt B2 als complete handmatige EUR-cashflow en kiest exact
+**PC – Purchase Credits** als volgende implementatiebatch. Nu klantontvangsten en
+leveranciersbetalingen duurzaam kunnen worden geboekt en gesetteld, is het zwaarste
+correctnessgat de ontbrekende leverancierscreditnota. PC hergebruikt P3 immutable
+source-/TaxPosting-truth, de bestaande full-reversalprototypes, Sales-creditpatterns en
+het bewezen Payable/Debit-versus-Payable/Credit `OpenItemMatch`-model. De eerste batch
+ondersteunt uitsluitend volledige source-line reversals; een reeds gedane betaling
+blijft historische cashtruth en een creditsurplus blijft open supplier credit balance.
+
+Definitieve split: PC-000 contractalignment; PC-001 authorization, persistence en
+Application; PC-002 transactionele posting en Input-VAT-reversal; PC-003 matching en
+Web; PC-004 review/regression. Daarna volgt de **International Purchase VAT
+predecessor** voor multi-leg Output/Input truth, deductibility, regime-/datumbeleid en
+EUR-conversie. **Bank Import & Reconciliation** staat derde: CAMT.053-first via een
+afzonderlijk BankStatement/StatementLine-provenancemodel, gevolgd door user-confirmed
+promotie naar de bestaande B2 BankTransaction-flow. Het levert hoge automationwaarde,
+maar B2 biedt al een correcte handmatige fallback.
+
+Payment reversal, partial credits, accounting/fiscal periods, attachments/OCR en
+generic audit blijven expliciete debt. VAT/ICP reporting blijft geparkeerd totdat alle
+materiële domestic/international Sales- en Purchase-originals én credits duurzaam als
+Original/Reversal-TaxPostings bestaan, reverse-charge/import/deductibility en
+EUR-conversie zijn ontworpen en fiscale perioden/locks plus afrondingsbeleid gereed
+zijn.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
