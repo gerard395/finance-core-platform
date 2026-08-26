@@ -9,6 +9,7 @@ use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -33,6 +34,7 @@ final class OpenItem
         private readonly AdministrationId $administrationId,
         private readonly RelationId $relationId,
         private readonly JournalEntryId $journalEntryId,
+        private readonly LedgerAccountId $controlLedgerAccountId,
         private readonly OpenItemType $type,
         private readonly Money $originalAmount,
         private readonly PostingDate $openedOn,
@@ -55,6 +57,7 @@ final class OpenItem
         AdministrationId $administrationId,
         RelationId $relationId,
         JournalEntryId $journalEntryId,
+        LedgerAccountId $controlLedgerAccountId,
         OpenItemType $type,
         Money $originalAmount,
         PostingDate $openedOn,
@@ -63,7 +66,7 @@ final class OpenItem
         array $matches = [],
         ?DateTimeImmutable $dueDate = null,
     ): self {
-        $item = new self($id, $administrationId, $relationId, $journalEntryId, $type, $originalAmount, $openedOn, $side, $dueDate);
+        $item = new self($id, $administrationId, $relationId, $journalEntryId, $controlLedgerAccountId, $type, $originalAmount, $openedOn, $side, $dueDate);
         $indexed = [];
         $reversed = [];
 
@@ -144,6 +147,11 @@ final class OpenItem
     public function journalEntryId(): JournalEntryId
     {
         return $this->journalEntryId;
+    }
+
+    public function controlLedgerAccountId(): LedgerAccountId
+    {
+        return $this->controlLedgerAccountId;
     }
 
     public function type(): OpenItemType

@@ -9,6 +9,7 @@ use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -242,6 +243,7 @@ final class OpenItemsReportTest extends TestCase
             $this->administrationId(self::ADMINISTRATION_ID),
             $this->relationId(self::RELATION_ID),
             $this->journalEntryId(),
+            new LedgerAccountId($this->nextUuid('7')),
             OpenItemType::Receivable,
             $this->money('40'),
             $this->date('2026-01-02'),
@@ -290,6 +292,7 @@ final class OpenItemsReportTest extends TestCase
             $this->administrationId($administrationId),
             $this->relationId($relationId),
             $this->journalEntryId(),
+            new LedgerAccountId($this->nextUuid('7')),
             OpenItemType::Receivable,
             new Money($amount, $currency ?? new Currency('EUR')),
             $this->date($openedOn),

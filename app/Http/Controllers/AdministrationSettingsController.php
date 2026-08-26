@@ -7,6 +7,7 @@ namespace App\Http\Controllers;
 use App\Application\Administration\AdministrationSettingsWriteResult;
 use App\Application\Administration\GetAdministrationSettings;
 use App\Application\Administration\UpdateAdministrationSettings;
+use App\Application\Banking\GetBankingSettings;
 use App\Application\Fiscal\TaxCodeCatalogueProvisioner;
 use App\Application\Fiscal\TaxCodeReadRepository;
 use App\Application\Purchasing\GetPurchasePostingConfigurationSettings;
@@ -54,6 +55,7 @@ final readonly class AdministrationSettingsController
         private TaxCodeReadRepository $taxCodes,
         private SalesDocumentMasterDataStore $documentSettings,
         private UpdateSalesDocumentMasterData $updateDocumentSettings,
+        private GetBankingSettings $getBankingSettings,
     ) {}
 
     public function edit(Request $request): View
@@ -70,6 +72,7 @@ final readonly class AdministrationSettingsController
             'purchasePostingSettings' => $this->getPurchasePostingSettings->execute($context->administration->id()),
             'inputTaxCodes' => $this->taxCodes->findActiveForAdministrationAndDirection($context->administration->id(), TaxPostingDirection::Input),
             'documentSettings' => $this->documentSettings->readMasterData($context->administration->id()),
+            'bankingSettings' => $this->getBankingSettings->execute($context->administration->id()),
         ]);
     }
 

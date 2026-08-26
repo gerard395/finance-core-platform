@@ -103,6 +103,45 @@ De eerste Banking-domeiniteratie is voltooid in B1-000 tot en met B1-004. Bankin
 
 OpenItem en alle financiële boekingen blijven eigendom van Accounting; uitsluitend `PostingEngine` maakt JournalEntries. UI, bankimport, reconciliation, PSD2, Laravel, databases en infrastructuur vallen buiten de Banking Foundation.
 
+B2-000 lijnt de volgende productiteratie uit. Manual BankTransaction wordt de enige
+postingbron voor één CustomerReceipt of SupplierPayment met meerdere same-Relation
+OpenItem-allocations. Signed EUR Money onderscheidt ontvangst/uitgave; Draft → Finalized
+→ Posted bevriest de intent voordat één outer transaction via PostingEngine de Bank
+JournalEntry, Applied settlements, linkage en Posted-status bewaart. Partial en meerdere
+payments zijn toegestaan; allocation sum moet exact de absolute bankwaarde zijn.
+
+B2-001 voegt typed authorization en productmatig onderhoudbare operationele
+AdministrationBankAccounts plus per-rekening BankingPostingConfiguration toe. Die mapt
+expliciet naar active Bank Journal en active Asset Bank LedgerAccount. Relation-
+bankrekeningen en organisation-IBAN zijn geen Administration-cashaccount; historische
+AR/AP-control-accounttruth hoort op het OpenItem. Bankimport, CAMT/MT940, PSD2/API,
+reconciliation, FX, unallocated cash en overpayment/suspense blijven vervolgscope.
+
+B2-001A rondt de Accounting-predecessor af: ieder OpenItem bewaart nu verplicht de
+immutable AR/AP-control-LedgerAccount van zijn source posting. Historische facts zijn
+deterministisch vanuit exact één same-side/exact-amount JournalEntryLine gebackfilld;
+latere configuratiewijziging of accountdeactivation verandert die identity niet.
+
+B2-002 maakt manual BankTransaction, exact één Payment en meerdere allocations duurzaam.
+Draft kan atomair worden aangepast of geannuleerd; Finalize valideert normale
+same-Relation EUR OpenItems, vereist exacte volledige allocatie en bevriest actor/tijd
+plus control-accounttruth. Zij maakt nog geen financiële boeking of settlement; row
+locks, BankingPostingConfiguration en PostingEngine blijven exclusief B2-003.
+
+B2-003 realiseert de atomische financiële waarheid: een Finalized BankTransaction wordt
+onder tenant-scoped BankTransaction- en deterministische OpenItem-locks geboekt via
+PostingEngine, met één JournalEntry, één cash Settlement per allocation, één duurzame
+postinglinkage en Posted-auditfacts. Actuele open balances worden onder lock herlezen;
+historische OpenItem-controlaccounts blijven leidend. Echte MySQL-races borgen
+idempotency en bescherming tegen oversettlement. Banking Web blijft B2-004.
+
+B2-004 sluit B2 productmatig af met Bank → Betalingen: permission-onafhankelijke
+list/detail, Draftbeheer en financieel Posten, veilige selectors voor operationele
+bankrekeningen/Relations/OpenItems en immutable postingresultaten met settlements en
+remaining balances. Receipt, supplier, partial, multiple-payment en multi-OpenItem
+flows zijn end-to-end gevalideerd; de B2-003 concurrencygaranties blijven intact.
+Import, reconciliation, overpayment, suspense, FX en reversal blijven deferred.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

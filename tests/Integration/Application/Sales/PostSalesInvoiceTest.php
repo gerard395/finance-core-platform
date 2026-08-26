@@ -93,6 +93,12 @@ final class PostSalesInvoiceTest extends TestCase
         self::assertSame('EUR', $openItem->getAttribute('currency'));
         self::assertSame($this->relationId(1), $openItem->getAttribute('relation_id'));
         self::assertSame($entry->getAttribute('id'), $openItem->getAttribute('journal_entry_id'));
+        self::assertSame($this->accountId(1, 1), $openItem->getAttribute('control_ledger_account_id'));
+
+        DB::table('sales_posting_configurations')->where('administration_id', self::A)->update([
+            'accounts_receivable_ledger_account_id' => $this->accountId(1, 4),
+        ]);
+        self::assertSame($this->accountId(1, 1), $openItem->fresh()->getAttribute('control_ledger_account_id'));
 
         $linkage = SalesInvoicePostingRecord::query()->where('sales_invoice_id', $this->invoiceId(1, 1))->firstOrFail();
         self::assertSame($entry->getAttribute('id'), $linkage->getAttribute('journal_entry_id'));
@@ -323,7 +329,7 @@ final class PostSalesInvoiceTest extends TestCase
         DB::table('relations')->insert(['id' => $this->relationId($tenant), 'administration_id' => $administration, 'code' => 'REL'.$tenant, 'display_name' => 'Snapshot Customer '.$tenant, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('customers')->insert(['id' => $this->customerId($tenant), 'administration_id' => $administration, 'relation_id' => $this->relationId($tenant), 'customer_number' => 'C'.$tenant, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('journals')->insert(['id' => $this->journalId($tenant), 'administration_id' => $administration, 'code' => 'SALES', 'name' => 'Sales journal', 'type' => 'sales', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
-        foreach ([1 => 'asset', 2 => 'revenue', 3 => 'liability'] as $sequence => $type) {
+        foreach ([1 => 'asset', 2 => 'revenue', 3 => 'liability', 4 => 'asset'] as $sequence => $type) {
             DB::table('ledger_accounts')->insert(['id' => $this->accountId($tenant, $sequence), 'administration_id' => $administration, 'code' => 'P'.$sequence, 'name' => 'Posting account '.$sequence, 'type' => $type, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         }
         foreach ([1 => ['VAT21', '21'], 2 => ['VAT9', '9'], 3 => ['VAT0', '0']] as $sequence => [$code, $rate]) {

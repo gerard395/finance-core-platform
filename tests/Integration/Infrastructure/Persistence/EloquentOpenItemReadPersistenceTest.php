@@ -15,6 +15,7 @@ use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -28,6 +29,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentOpenItemRepository;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemSettlementRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
@@ -56,6 +58,14 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         $this->createAdministration(self::ADMINISTRATION_B, 'B');
 
         foreach ([self::ADMINISTRATION_A, self::ADMINISTRATION_B] as $administration) {
+            LedgerAccountRecord::query()->create([
+                'id' => $this->controlAccountId($administration)->toString(),
+                'administration_id' => $administration,
+                'code' => 'AR',
+                'name' => 'Accounts receivable',
+                'type' => 'asset',
+                'status' => 'active',
+            ]);
             for ($sequence = 1; $sequence <= 5; $sequence++) {
                 $this->createPostedEntry($administration, $sequence);
             }
@@ -78,10 +88,12 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         self::assertTrue($item->administrationId()->equals($read[0]->administrationId()));
         self::assertTrue($item->relationId()->equals($read[0]->relationId()));
         self::assertTrue($item->journalEntryId()->equals($read[0]->journalEntryId()));
+        self::assertTrue($item->controlLedgerAccountId()->equals($read[0]->controlLedgerAccountId()));
         self::assertSame(OpenItemType::Receivable, $read[0]->type());
         self::assertSame(OpenItemSide::Debit, $read[0]->side());
         self::assertSame('debit', OpenItemRecord::query()->firstOrFail()->getAttribute('side'));
         self::assertSame('receivable', OpenItemRecord::query()->firstOrFail()->getAttribute('open_item_type'));
+        self::assertSame($this->controlAccountId(self::ADMINISTRATION_A)->toString(), OpenItemRecord::query()->firstOrFail()->getAttribute('control_ledger_account_id'));
         self::assertSame('1000.12345678', $read[0]->originalAmount()->amount());
         self::assertSame('EUR', $read[0]->originalAmount()->currency()->code());
         self::assertSame('2026-01-01', $read[0]->openedOn()->value()->format('Y-m-d'));
@@ -132,6 +144,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
                 'administration_id' => self::ADMINISTRATION_A,
                 'relation_id' => '40000000-0000-4000-8000-000000000001',
                 'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
+                'control_ledger_account_id' => $this->controlAccountId(self::ADMINISTRATION_A)->toString(),
                 'open_item_type' => 'other',
                 'side' => OpenItemSide::Debit->value,
                 'original_amount' => '100',
@@ -149,12 +162,37 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             'administration_id' => self::ADMINISTRATION_A,
             'relation_id' => '40000000-0000-4000-8000-000000000001',
             'journal_entry_id' => $this->journalEntryId(self::ADMINISTRATION_A, 1)->toString(),
+            'control_ledger_account_id' => $this->controlAccountId(self::ADMINISTRATION_A)->toString(),
             'open_item_type' => OpenItemType::Receivable->value,
             'side' => 'other',
             'original_amount' => '100',
             'currency' => 'EUR',
             'opened_on' => '2026-01-01',
         ]);
+    }
+
+    public function test_control_account_is_required_same_tenant_and_restricts_delete_without_blocking_historical_reads_when_inactive(): void
+    {
+        $column = DB::selectOne(<<<'SQL'
+            SELECT COLUMN_DEFAULT, IS_NULLABLE
+            FROM information_schema.COLUMNS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'open_items'
+              AND COLUMN_NAME = 'control_ledger_account_id'
+            SQL);
+        self::assertNotNull($column);
+        self::assertSame('NO', $column->IS_NULLABLE);
+        self::assertNull($column->COLUMN_DEFAULT);
+
+        $item = $this->openItem(self::ADMINISTRATION_A, '100');
+        $this->repository->append($item);
+        LedgerAccountRecord::query()->whereKey($item->controlLedgerAccountId()->toString())->update(['status' => 'inactive']);
+
+        $read = $this->read(self::ADMINISTRATION_A, '2026-01-31')[0];
+        self::assertTrue($item->controlLedgerAccountId()->equals($read->controlLedgerAccountId()));
+
+        $this->expectException(QueryException::class);
+        LedgerAccountRecord::query()->whereKey($item->controlLedgerAccountId()->toString())->delete();
     }
 
     public function test_full_future_history_is_hydrated_and_domain_reproduces_as_of_amounts(): void
@@ -220,6 +258,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             $this->administrationId(self::ADMINISTRATION_A),
             new RelationId(new Uuid('40000000-0000-4000-8000-000000000001')),
             $this->journalEntryId(self::ADMINISTRATION_B, 1),
+            $this->controlAccountId(self::ADMINISTRATION_A),
             OpenItemType::Receivable,
             new Money('100', new Currency('EUR')),
             $this->date('2026-01-01'),
@@ -231,6 +270,23 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         } catch (DomainException) {
             self::assertSame(0, OpenItemRecord::query()->count());
         }
+    }
+
+    public function test_cross_tenant_control_account_is_rejected_by_the_database(): void
+    {
+        $item = new OpenItem(
+            new OpenItemId(new Uuid('30000000-0000-4000-8000-000000000009')),
+            $this->administrationId(self::ADMINISTRATION_A),
+            new RelationId(new Uuid('40000000-0000-4000-8000-000000000001')),
+            $this->journalEntryId(self::ADMINISTRATION_A, 1),
+            $this->controlAccountId(self::ADMINISTRATION_B),
+            OpenItemType::Receivable,
+            new Money('100', new Currency('EUR')),
+            $this->date('2026-01-01'),
+        );
+
+        $this->expectException(QueryException::class);
+        $this->repository->append($item);
     }
 
     public function test_cross_tenant_settlement_source_is_rejected_without_history_write(): void
@@ -356,6 +412,7 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
             $this->administrationId($administration),
             new RelationId(new Uuid(sprintf('40000000-0000-4000-8000-%012d', $sequence))),
             $this->journalEntryId($administration, 1),
+            $this->controlAccountId($administration),
             $type,
             new Money($amount, new Currency('EUR')),
             $this->date($openedOn),
@@ -419,6 +476,13 @@ final class EloquentOpenItemReadPersistenceTest extends TestCase
         $prefix = $administration === self::ADMINISTRATION_A ? '60000000' : '61000000';
 
         return new JournalEntryId(new Uuid(sprintf('%s-0000-4000-8000-%012d', $prefix, $sequence)));
+    }
+
+    private function controlAccountId(string $administration): LedgerAccountId
+    {
+        return new LedgerAccountId(new Uuid($administration === self::ADMINISTRATION_A
+            ? '80000000-0000-4000-8000-000000000001'
+            : '81000000-0000-4000-8000-000000000001'));
     }
 
     private function settlementId(int $sequence): OpenItemSettlementId

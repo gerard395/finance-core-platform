@@ -355,7 +355,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | BankAccount | Een financiële rekening identificeren | Een rekening voor het ontvangen, bewaren en uitbetalen van geld. |
 | BankStatement | Een aangeleverd rekeningoverzicht representeren | Een overzicht van bankmutaties over een bepaald tijdvak. |
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
-| Payment | Een bankmutatie aan een OpenItem alloceren | Een positief Money-bedrag dat als child entity binnen één BankTransaction naar precies één OpenItem verwijst. |
+| Payment | Een bankmutatie interpreteren | Exact één positief EUR Payment-child per manual BankTransaction, met meerdere OpenItem-allocations. |
 
 ### Banking Capability
 
@@ -363,9 +363,10 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 
 | Aggregate Root | Child Entity | Verantwoordelijkheid |
 | --- | --- | --- |
-| BankTransaction | Payment | Een bankmutatie als primaire financiële gebeurtenis vastleggen en haar betalingen beheren. |
+| BankTransaction | Payment, PaymentAllocation | Een bankmutatie als primaire financiële gebeurtenis en haar allocatie-intent beheren. |
 
-Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een child entity en wordt uitsluitend via de BankTransaction Aggregate Root beheerd.
+Een manual BankTransaction bevat exact één Payment. Payment en diens allocations zijn
+children en worden uitsluitend via de BankTransaction Aggregate Root beheerd.
 
 #### Domain Service
 
@@ -374,13 +375,12 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 #### Businessregels
 
 - BankTransaction is binnen Banking de primaire financiële gebeurtenis.
-- Een BankTransaction kan nul, één of meerdere Payments bevatten.
-- Iedere Payment behoort altijd tot precies één OpenItem.
-- Payment-bedragen zijn strikt positief, gebruiken dezelfde Currency als de BankTransaction en zijn alleen wijzigbaar zolang de transactie Imported is.
-- De BankTransaction-context is immutable; alleen status en de eigen Payment-collectie wijzigen via domeingedrag.
-- Matching vereist minimaal één Payment en vergelijkt de exacte Money-som met het absolute BankTransaction-bedrag.
-- Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
-- Matching maakt geen Payments, JournalEntries of PostingRequests.
+- Een manual BankTransaction bevat exact één Payment met nul of meer Draft-allocations.
+- Iedere allocation behoort tot precies één OpenItem; targets zijn uniek binnen Payment.
+- Payment- en allocationbedragen zijn strikt positief EUR; het transactionbedrag is signed.
+- Draft is wijzigbaar; Finalized bevriest movement, Payment en allocations.
+- Finalize vereist minimaal één allocation en vergelijkt de exacte som met het absolute BankTransaction-bedrag.
+- Finalize valideert OpenItem-readiness maar maakt geen JournalEntry of Settlement.
 - Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
 - Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
 
@@ -395,6 +395,39 @@ Een BankTransaction kan nul, één of meerdere Payments bevatten. Payment is een
 - Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
 
 **Capabilitystatus:** Banking Foundation first domain iteration completed.
+
+### B2 manual Bank Payments
+
+B2 definieert BankTransaction als het Administration-owned factual bankmovement en de
+enige aggregate/use-casebron voor financiële posting. Signed EUR Money is positief voor
+CustomerReceipt en negatief voor SupplierPayment. Exact één Payment-child per manual
+BankTransaction bezit meerdere positieve allocations naar same-Administration,
+same-Relation, same-type compatible OpenItems; Payment heeft geen zelfstandige lifecycle.
+
+De lifecycle wordt Draft → Finalized → Posted en Draft → Cancelled. Finalized bevriest
+movement/interpretatie/allocations; één outer Application-transaction lockt targets op
+gesorteerde OpenItemId, maakt via PostingEngine de Bank JournalEntry, append-only Applied
+settlements en postinglinkage en markeert pas daarna Posted. OpenItem originalAmount
+blijft immutable. Settlement is cashrealisatie; Match blijft een opposite-side
+documentbalanceverbinding.
+
+Een operationele AdministrationBankAccount is niet de Relation BankAccount en niet het
+organisation-IBAN voor documentdisplay. Per AdministrationBankAccount mapt
+BankingPostingConfiguration expliciet naar active Bank Journal en active Asset Bank
+LedgerAccount. AR/AP is immutable `controlLedgerAccountId`-openingstruth van het
+OpenItem; Banking herleest geen actuele Sales/Purchase-config en gebruikt geen
+accountheuristiek.
+
+B2 V1 is EUR-only, vereist volledige allocation van het absolute bankbedrag en kent
+geen unallocated remainder, overpayment/suspense, import, reconciliation of FX.
+TransactionDate en expliciete PostingDate zijn verschillende feiten.
+
+B2-001A maakt `OpenItem.controlLedgerAccountId` verplichte immutable Accounting-truth.
+SalesInvoice, SalesCredit en PurchaseInvoice leveren de werkelijk geboekte AR/AP-
+LedgerAccount uit dezelfde postingtransactie. Bestaande facts zijn uitsluitend via één
+same-side, exact-amount source JournalEntryLine gebackfilld; nul of meerdere kandidaten
+zijn een harde fout. Een same-tenant RESTRICT-FK bewaakt de identity. Actuele posting-
+configuratie, rekeningcode/naam/type of active status herschrijven deze historie nooit.
 
 ### Integrated Financial Flow – I1
 
@@ -645,3 +678,25 @@ request geëvalueerd. Selectors zijn actief en tenant-scoped; bestaand documentd
 gebruikt uitsluitend historische snapshots. Presentation levert een expliciete
 PostingDate aan de Application-use-case en toont na succes het Payable/Credit OpenItem,
 maar berekent of schrijft zelf geen financiële waarheid en biedt geen paymentflow.
+
+## 11. Banking – atomische cash settlement
+
+`BankTransaction` bezit exact één Payment met PaymentAllocation-children. Finalize
+bevriest allocaties maar reserveert geen OpenItem-saldo. `PostBankTransaction` lockt de
+tenant-scoped transaction en daarna unieke OpenItems deterministisch, herleest actuele
+settlements en matches en valideert EUR, Relation, type/side, open saldo en het
+historische `controlLedgerAccountId`.
+
+Uitsluitend PostingEngine maakt de ene JournalEntry. CustomerReceipt boekt Bank debet
+en historische receivable-controlaccounts credit; SupplierPayment doet het omgekeerde
+voor payable-controlaccounts. Per allocation ontstaat één immutable cash
+OpenItemSettlement met duurzame allocation- en JournalEntry-trace. OpenItemMatch blijft
+document matching. JournalEntry, settlements, append-only postinglinkage en Posted met
+actor/tijd committen atomisch; open saldo blijft een afleiding van immutable feiten.
+
+De B2 Webgrens gebruikt tenant-scoped Application-composities voor list/detail en
+eligible masterdata. Presentation vertaalt alleen de keuze klantontvangst/
+leveranciersbetaling en een positief gebruikersbedrag naar signed Money; zij bepaalt
+geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en Post zijn
+afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
+linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.

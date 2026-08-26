@@ -6,8 +6,9 @@ namespace App\Application\Accounting;
 
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
+use App\Domain\Banking\ValueObjects\PaymentAllocationId;
 
 interface OpenItemSettlementStore
 {
-    public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement): void;
+    public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement, ?PaymentAllocationId $paymentAllocationId = null): void;
 }

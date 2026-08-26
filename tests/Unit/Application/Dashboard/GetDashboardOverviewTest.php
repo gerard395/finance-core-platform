@@ -185,6 +185,7 @@ final class GetDashboardOverviewTest extends TestCase
             $this->administration(self::ADMINISTRATION_A),
             new RelationId($this->uuid('4', $sequence)),
             $this->journalEntryId(10 + $sequence),
+            $this->accountId(1),
             $type,
             $this->money($amount),
             $this->date('2026-08-01'),

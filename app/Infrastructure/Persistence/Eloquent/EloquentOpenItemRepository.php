@@ -10,6 +10,7 @@ use App\Application\Accounting\OpenItemMatchRepository;
 use App\Application\Accounting\OpenItemReadRepository;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Accounting\OpenItemStore;
+use App\Application\Banking\BankingOpenItemLocker;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemMatch;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
@@ -18,11 +19,13 @@ use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemMatchId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Banking\ValueObjects\PaymentAllocationId;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
@@ -37,8 +40,34 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
-final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenItemReadRepository, OpenItemSettlementStore, OpenItemStore
+final class EloquentOpenItemRepository implements BankingOpenItemLocker, OpenItemMatchRepository, OpenItemReadRepository, OpenItemSettlementStore, OpenItemStore
 {
+    public function findForAdministration(AdministrationId $administrationId, OpenItemId $openItemId): ?OpenItem
+    {
+        $record = OpenItemRecord::query()
+            ->with('settlements')
+            ->where('administration_id', $administrationId->toString())
+            ->whereKey($openItemId->toString())
+            ->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
+    public function lock(AdministrationId $administrationId, array $ids): array
+    {
+        $values = array_map(static fn (OpenItemId $id): string => $id->toString(), $ids);
+        sort($values);
+        $records = OpenItemRecord::query()->where('administration_id', $administrationId->toString())->whereIn('id', $values)->orderBy('id')->lockForUpdate()->get();
+        $settlements = OpenItemSettlementRecord::query()->where('administration_id', $administrationId->toString())->whereIn('open_item_id', $values)->orderBy('id')->lockForUpdate()->get()->groupBy('open_item_id');
+        $matches = OpenItemMatchRecord::query()->where('administration_id', $administrationId->toString())->where(static fn ($query) => $query->whereIn('debit_open_item_id', $values)->orWhereIn('credit_open_item_id', $values))->orderBy('id')->lockForUpdate()->get();
+
+        return $records->map(function (OpenItemRecord $record) use ($settlements, $matches): OpenItem {
+            $record->setRelation('settlements', $settlements->get($record->getAttribute('id'), new Collection));
+
+            return $this->hydrate($record, $matches);
+        })->all();
+    }
+
     public function findForAdministrationAsOf(
         AdministrationId $administrationId,
         PostingDate $asOfDate,
@@ -75,6 +104,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
                 'administration_id' => $openItem->administrationId()->toString(),
                 'relation_id' => $openItem->relationId()->toString(),
                 'journal_entry_id' => $openItem->journalEntryId()->toString(),
+                'control_ledger_account_id' => $openItem->controlLedgerAccountId()->toString(),
                 'open_item_type' => $openItem->type()->value,
                 'side' => $openItem->side()->value,
                 'original_amount' => $openItem->originalAmount()->amount(),
@@ -147,20 +177,25 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
         return OpenItemMatchAppendResult::Appended;
     }
 
-    public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement): void
+    public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement, ?PaymentAllocationId $paymentAllocationId = null): void
     {
         if ($openItem->settlement($settlement->id()) !== $settlement) {
             throw new DomainException('Only a settlement owned and validated by the OpenItem can be appended.');
         }
 
-        DB::transaction(function () use ($openItem, $settlement): void {
+        DB::transaction(function () use ($openItem, $settlement, $paymentAllocationId): void {
             $record = OpenItemRecord::query()->whereKey($openItem->id()->toString())->lockForUpdate()->first();
 
             if ($record === null || $record->getAttribute('administration_id') !== $openItem->administrationId()->toString()) {
                 throw new DomainException('The persisted OpenItem does not belong to this Administration.');
             }
 
-            $record->load('settlements');
+            $record->setRelation('settlements', OpenItemSettlementRecord::query()
+                ->where('administration_id', $openItem->administrationId()->toString())
+                ->where('open_item_id', $openItem->id()->toString())
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get());
             $current = $this->hydrate($record);
             if ($settlement->type() === OpenItemSettlementType::Applied) {
                 $current->applySettlement($settlement->id(), $settlement->effectiveDate(), $settlement->amount(), $settlement->sourceJournalEntryId());
@@ -178,6 +213,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
 
             $persistedIds = OpenItemSettlementRecord::query()
                 ->where('open_item_id', $openItem->id()->toString())
+                ->lockForUpdate()
                 ->pluck('id')->sort()->values()->all();
             $expectedIds = array_values(array_filter(
                 array_map(static fn (OpenItemSettlement $item): string => $item->id()->toString(), $openItem->settlements()),
@@ -198,6 +234,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
                 'id' => $settlement->id()->toString(),
                 'administration_id' => $openItem->administrationId()->toString(),
                 'open_item_id' => $openItem->id()->toString(),
+                'payment_allocation_id' => $paymentAllocationId?->toString(),
                 'effective_date' => $settlement->effectiveDate()->value()->format('Y-m-d'),
                 'amount' => $settlement->amount()->amount(),
                 'currency' => $settlement->amount()->currency()->code(),
@@ -208,7 +245,8 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
         });
     }
 
-    private function hydrate(OpenItemRecord $record): OpenItem
+    /** @param Collection<int, OpenItemMatchRecord>|null $lockedMatches */
+    private function hydrate(OpenItemRecord $record, ?Collection $lockedMatches = null): OpenItem
     {
         /** @var Collection<int, OpenItemSettlementRecord> $settlementRecords */
         $settlementRecords = $record->getRelation('settlements');
@@ -224,14 +262,17 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
                 $reversedId === null ? null : new OpenItemSettlementId(new Uuid($reversedId)),
             );
         })->all();
-        $matches = OpenItemMatchRecord::query()
-            ->where('administration_id', $record->getAttribute('administration_id'))
-            ->where(static fn ($query) => $query
-                ->where('debit_open_item_id', $record->getAttribute('id'))
-                ->orWhere('credit_open_item_id', $record->getAttribute('id')))
-            ->orderBy('occurred_on')
-            ->orderBy('id')
-            ->get()
+        $matchRecords = $lockedMatches === null
+            ? OpenItemMatchRecord::query()
+                ->where('administration_id', $record->getAttribute('administration_id'))
+                ->where(static fn ($query) => $query
+                    ->where('debit_open_item_id', $record->getAttribute('id'))
+                    ->orWhere('credit_open_item_id', $record->getAttribute('id')))
+                ->orderBy('occurred_on')
+                ->orderBy('id')
+                ->get()
+            : $lockedMatches->filter(static fn (OpenItemMatchRecord $match): bool => $match->getAttribute('debit_open_item_id') === $record->getAttribute('id') || $match->getAttribute('credit_open_item_id') === $record->getAttribute('id'));
+        $matches = $matchRecords
             ->map(static fn (OpenItemMatchRecord $match): OpenItemMatch => new OpenItemMatch(
                 new OpenItemMatchId(new Uuid($match->getAttribute('id'))),
                 new AdministrationId(new Uuid($match->getAttribute('administration_id'))),
@@ -247,6 +288,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
             new AdministrationId(new Uuid($record->getAttribute('administration_id'))),
             new RelationId(new Uuid($record->getAttribute('relation_id'))),
             new JournalEntryId(new Uuid($record->getAttribute('journal_entry_id'))),
+            new LedgerAccountId(new Uuid($record->getAttribute('control_ledger_account_id'))),
             OpenItemType::from($record->getAttribute('open_item_type')),
             new Money((string) $record->getAttribute('original_amount'), new Currency($record->getAttribute('currency'))),
             new PostingDate(new DateTimeImmutable($record->getAttribute('opened_on')->format('Y-m-d'))),

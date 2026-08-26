@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Integration\FinancialFlow;
 
-use App\Application\Banking\CreateBankTransactionPostingRequest;
 use App\Application\Sales\CreateSalesInvoicePostingRequest;
 use App\Domain\Accounting\Entities\OpenItem;
-use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\Requests\PostingRequest;
 use App\Domain\Accounting\Services\PostingEngine;
@@ -21,15 +19,6 @@ use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
-use App\Domain\Banking\Entities\BankTransaction;
-use App\Domain\Banking\Entities\Payment;
-use App\Domain\Banking\Enums\BankTransactionStatus;
-use App\Domain\Banking\Services\Matching;
-use App\Domain\Banking\ValueObjects\BankTransactionId;
-use App\Domain\Banking\ValueObjects\BankTransactionReference;
-use App\Domain\Banking\ValueObjects\PaymentId;
-use App\Domain\Banking\ValueObjects\TransactionDescription;
-use App\Domain\Relations\ValueObjects\BankAccountId;
 use App\Domain\Relations\ValueObjects\CustomerId;
 use App\Domain\Relations\ValueObjects\RelationId;
 use App\Domain\Sales\Entities\SalesInvoice;
@@ -49,7 +38,7 @@ use PHPUnit\Framework\TestCase;
 
 final class EndToEndFinancialFlowTest extends TestCase
 {
-    public function test_sales_invoice_is_posted_and_fully_settled_through_banking(): void
+    public function test_sales_invoice_is_posted_and_creates_compatible_open_item_truth(): void
     {
         $currency = new Currency('EUR');
         $administrationId = $this->administrationId();
@@ -62,6 +51,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             new Money('62.50', $currency),
         ));
         $invoice->finalize();
+        $receivableAccountId = $this->ledgerAccountId('00000000-0000-4000-8000-000000000011');
 
         $invoiceId = $invoice->id();
         $invoiceNumber = $invoice->number();
@@ -69,7 +59,7 @@ final class EndToEndFinancialFlowTest extends TestCase
         $invoiceRequest = (new CreateSalesInvoicePostingRequest)->execute(
             $invoice,
             $this->journalId('00000000-0000-4000-8000-000000000010'),
-            $this->ledgerAccountId('00000000-0000-4000-8000-000000000011'),
+            $receivableAccountId,
             $this->ledgerAccountId('00000000-0000-4000-8000-000000000012'),
             $this->journalEntryLineId('00000000-0000-4000-8000-000000000013'),
             $this->journalEntryLineId('00000000-0000-4000-8000-000000000014'),
@@ -95,6 +85,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $administrationId,
             $relationId,
             $invoiceEntry->id(),
+            $receivableAccountId,
             OpenItemType::Receivable,
             $invoiceAmount,
             $invoiceEntry->postingDate(),
@@ -104,47 +95,9 @@ final class EndToEndFinancialFlowTest extends TestCase
         self::assertSame($invoiceEntry->id(), $openItem->journalEntryId());
         self::assertSame(OpenItemType::Receivable, $openItem->type());
 
-        $transaction = $this->bankTransaction($administrationId, $currency, '125');
-        $payment = new Payment($this->paymentId(), $openItemId, new Money('125', $currency));
-        $transaction->addPayment($payment);
-        self::assertSame($openItemId, $payment->openItemId());
-
-        $matchingResult = (new Matching)->match($transaction);
-        self::assertTrue($matchingResult->isSuccess());
-        self::assertSame($transaction, $matchingResult->transaction());
-        self::assertTrue($matchingResult->matchedAmount()->equals($payment->amount()));
-
-        $bankRequest = (new CreateBankTransactionPostingRequest)->execute(
-            $transaction,
-            $this->journalId('00000000-0000-4000-8000-000000000020'),
-            $this->ledgerAccountId('00000000-0000-4000-8000-000000000021'),
-            $this->ledgerAccountId('00000000-0000-4000-8000-000000000022'),
-            $this->journalEntryLineId('00000000-0000-4000-8000-000000000023'),
-            $this->journalEntryLineId('00000000-0000-4000-8000-000000000024'),
-            new PostingDate(new DateTimeImmutable('2026-07-20')),
-            new JournalEntryReference('BANK-2026-001'),
-        );
-        self::assertTrue($validation->validate($bankRequest)->isValid());
-        $bankResult = $this->postingEngine($validation, '00000000-0000-4000-8000-000000000025')->post($bankRequest);
-        self::assertTrue($bankResult->isSuccess());
-        $bankEntry = $bankResult->journalEntry();
-        self::assertNotNull($bankEntry);
-        self::assertSame($administrationId, $bankRequest->administrationId());
-        self::assertSame($administrationId, $bankEntry->administrationId());
-        self::assertTrue($bankEntry->isPosted());
-        $this->assertBalanced($bankRequest, $invoiceAmount);
-
-        $openItem->applySettlement(
-            $this->openItemSettlementId('00000000-0000-4000-8000-000000000026'),
-            $bankEntry->postingDate(),
-            $matchingResult->matchedAmount(),
-            $bankEntry->id(),
-        );
-        self::assertTrue($openItem->openAmount()->isZero());
-        self::assertTrue($openItem->isClosed());
-        self::assertSame(OpenItemStatus::Closed, $openItem->status());
+        self::assertTrue($openItem->isOpen());
+        self::assertSame('125', $openItem->openAmount()->amount());
         self::assertSame('EUR', $openItem->openAmount()->currency()->code());
-        self::assertSame('EUR', $transaction->amount()->currency()->code());
         self::assertSame($invoiceId, $invoice->id());
         self::assertSame($invoiceNumber, $invoice->number());
         self::assertSame($invoiceLines, $invoice->lines());
@@ -185,22 +138,6 @@ final class EndToEndFinancialFlowTest extends TestCase
         }
     }
 
-    public function test_failed_matching_does_not_mutate_open_item(): void
-    {
-        $currency = new Currency('EUR');
-        $openItem = $this->openItem('125');
-        $transaction = $this->bankTransaction($this->administrationId(), $currency, '125');
-        $transaction->addPayment(new Payment($this->paymentId(), $openItem->id(), new Money('100', $currency)));
-
-        $result = (new Matching)->match($transaction);
-
-        self::assertFalse($result->isSuccess());
-        self::assertSame('100', $result->matchedAmount()->amount());
-        self::assertSame(BankTransactionStatus::Imported, $transaction->status());
-        self::assertSame('125', $openItem->openAmount()->amount());
-        self::assertTrue($openItem->isOpen());
-    }
-
     private function invoice(AdministrationId $administrationId, RelationId $relationId, Currency $currency): SalesInvoice
     {
         return new SalesInvoice(
@@ -216,21 +153,6 @@ final class EndToEndFinancialFlowTest extends TestCase
         );
     }
 
-    private function bankTransaction(AdministrationId $administrationId, Currency $currency, string $amount): BankTransaction
-    {
-        return new BankTransaction(
-            new BankTransactionId(new Uuid('00000000-0000-4000-8000-000000000030')),
-            new BankAccountId(new Uuid('00000000-0000-4000-8000-000000000031')),
-            $administrationId,
-            new DateTimeImmutable('2026-07-20'),
-            new DateTimeImmutable('2026-07-20'),
-            new Money($amount, $currency),
-            new BankTransactionReference('BANK-2026-001'),
-            new TransactionDescription('Customer payment'),
-            BankTransactionStatus::Imported,
-        );
-    }
-
     private function openItem(string $amount): OpenItem
     {
         $money = new Money($amount, new Currency('EUR'));
@@ -240,6 +162,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $this->administrationId(),
             $this->relationId(),
             new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000040')),
+            new LedgerAccountId(new Uuid('00000000-0000-4000-8000-000000000010')),
             OpenItemType::Receivable,
             $money,
             new PostingDate(new DateTimeImmutable('2026-07-15')),
@@ -293,11 +216,6 @@ final class EndToEndFinancialFlowTest extends TestCase
     private function openItemSettlementId(string $uuid): OpenItemSettlementId
     {
         return new OpenItemSettlementId(new Uuid($uuid));
-    }
-
-    private function paymentId(): PaymentId
-    {
-        return new PaymentId(new Uuid('00000000-0000-4000-8000-000000000006'));
     }
 
     private function journalId(string $uuid): JournalId

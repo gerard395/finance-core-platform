@@ -151,6 +151,11 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         self::assertSame('receivable', $creditOpenItem->open_item_type);
         self::assertSame('credit', $creditOpenItem->side);
         self::assertSame('175.5', (string) $creditOpenItem->original_amount);
+        self::assertSame($this->id(1, 50, 1), $creditOpenItem->control_ledger_account_id);
+        DB::table('sales_posting_configurations')->where('administration_id', self::A)->update([
+            'accounts_receivable_ledger_account_id' => $this->id(1, 50, 4),
+        ]);
+        self::assertSame($this->id(1, 50, 1), DB::table('open_items')->where('id', $creditOpenItem->id)->value('control_ledger_account_id'));
         self::assertSame(1, DB::table('open_item_matches')->count());
         self::assertSame('175.5', (string) DB::table('open_item_matches')->value('amount'));
         $linkage = SalesCreditInvoicePostingRecord::query()->where('sales_credit_invoice_id', $this->creditId()->toString())->firstOrFail();
@@ -390,7 +395,7 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         DB::table('relations')->insert(['id' => $this->id($tenant, 20, 1), 'administration_id' => $admin, 'code' => 'REL'.$tenant, 'display_name' => 'Snapshot Customer '.$tenant, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('customers')->insert(['id' => $this->id($tenant, 30, 1), 'administration_id' => $admin, 'relation_id' => $this->id($tenant, 20, 1), 'customer_number' => 'C'.$tenant, 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('journals')->insert(['id' => $this->id($tenant, 10, 1), 'administration_id' => $admin, 'code' => 'SALES', 'name' => 'Sales', 'type' => 'sales', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
-        foreach ([1 => 'asset', 2 => 'revenue', 3 => 'liability'] as $n => $type) {
+        foreach ([1 => 'asset', 2 => 'revenue', 3 => 'liability', 4 => 'asset'] as $n => $type) {
             DB::table('ledger_accounts')->insert(['id' => $this->id($tenant, 50, $n), 'administration_id' => $admin, 'code' => 'A'.$n, 'name' => 'Account '.$n, 'type' => $type, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         }
         foreach ([1 => ['VAT21', '21'], 2 => ['VAT9', '9']] as $n => [$code, $rate]) {

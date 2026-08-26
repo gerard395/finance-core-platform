@@ -72,6 +72,8 @@ final class PostPurchaseInvoiceTest extends TestCase
 
     private const string JOURNAL = '93000000-0000-4000-8000-000000000011';
 
+    private const string OTHER_AP = '93000000-0000-4000-8000-000000000012';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -100,6 +102,11 @@ final class PostPurchaseInvoiceTest extends TestCase
         self::assertSame('171', $open?->original_amount);
         self::assertSame(self::RELATION, $open?->relation_id);
         self::assertSame('2026-09-20', $open?->due_date);
+        self::assertSame(self::AP, $open?->control_ledger_account_id);
+        DB::table('purchase_posting_configurations')->where('administration_id', self::ADMIN)->update([
+            'accounts_payable_ledger_account_id' => self::OTHER_AP,
+        ]);
+        self::assertSame(self::AP, DB::table('open_items')->where('id', $open?->id)->value('control_ledger_account_id'));
         self::assertSame(1, DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoiceId)->count());
         self::assertSame('posted', DB::table('purchase_invoices')->where('id', $invoiceId)->value('status'));
         self::assertSame(0, DB::table('open_item_settlements')->count());
@@ -272,7 +279,7 @@ final class PostPurchaseInvoiceTest extends TestCase
         DB::table('domain_users')->insert(['id' => self::USER, 'display_name' => 'Actor', 'email' => 'post@example.com', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         DB::table('relations')->insert(['id' => self::RELATION, 'administration_id' => self::ADMIN, 'code' => 'SUP', 'display_name' => 'Supplier', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('suppliers')->insert(['id' => self::SUPPLIER, 'administration_id' => self::ADMIN, 'relation_id' => self::RELATION, 'supplier_number' => 'S000001', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
-        foreach ([[self::EXPENSE, '4000', 'Expense', 'expense'], [self::ASSET, '0200', 'Asset', 'asset'], [self::AP, '1600', 'Accounts payable', 'liability'], [self::VAT, '1520', 'Input VAT', 'asset']] as [$id, $code, $name, $type]) {
+        foreach ([[self::EXPENSE, '4000', 'Expense', 'expense'], [self::ASSET, '0200', 'Asset', 'asset'], [self::AP, '1600', 'Accounts payable', 'liability'], [self::OTHER_AP, '1601', 'Other accounts payable', 'liability'], [self::VAT, '1520', 'Input VAT', 'asset']] as [$id, $code, $name, $type]) {
             DB::table('ledger_accounts')->insert(['id' => $id, 'administration_id' => self::ADMIN, 'code' => $code, 'name' => $name, 'type' => $type, 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         }
         DB::table('journals')->insert(['id' => self::JOURNAL, 'administration_id' => self::ADMIN, 'code' => 'INK', 'name' => 'Purchase', 'type' => 'purchase', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);

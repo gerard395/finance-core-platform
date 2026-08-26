@@ -1,41 +1,48 @@
 # Banking Domain
 
-## Doel
+Banking beheert handmatige EUR-bankbewegingen. `BankTransaction` is de Aggregate Root
+en enige toekomstige postingbron. Zij bezit exact één `Payment`; Payment bezit meerdere
+`PaymentAllocation` children en heeft geen zelfstandige lifecycle.
 
-Banking beheert bankmutaties als zelfstandige, frameworkonafhankelijke aggregates. `BankTransaction` is de primaire financiële gebeurtenis en verwijst naar een bestaande BankAccount uit Relations en een Administration.
+Een positief signed BankTransaction-bedrag is een CustomerReceipt, een negatief bedrag
+een SupplierPayment. Payment en allocations zijn positieve EUR Money. Eén Payment hoort
+bij één Relation en mag meerdere normale OpenItems van diezelfde Relation gedeeltelijk
+alloceren. Finalize vereist minimaal één allocation en een som exact gelijk aan het
+absolute bankbedrag; unallocated cash, overpayment, suspense en FX bestaan niet in V1.
 
-## BankTransaction
+De lifecycle is `Draft → Finalized → Posted` en `Draft → Cancelled`. B2-002 ondersteunt
+create/update/finalize/cancel; B2-003 voert de enige atomische Posted-overgang uit.
+Finalized bevriest bankrekening, TransactionDate, signed amount, reference, description,
+Relation en allocations en bewaart actor/tijd uit de Application clock.
 
-BankTransaction bevat immutable identiteit, BankAccountId, AdministrationId, BookingDate, ValueDate, Money-bedrag, referentie en omschrijving. Het aggregate beheert zijn Payment child entities; daarnaast wijzigt alleen de status via expliciet domeingedrag.
+Finalize valideert readiness tegen actuele OpenItem-truth, maar reserveert geen saldo.
+CustomerReceipt accepteert alleen Receivable/Debit, SupplierPayment alleen
+Payable/Credit; alle targets zijn same-tenant, same-Relation, EUR, open en groot genoeg.
+Iedere finalized allocation bewaart de immutable targetfacts type, side, Relation en
+`controlLedgerAccountId`. Een later inactive control account herschrijft die historische
+identity niet. Definitieve oversubscriptionbescherming gebeurt pas in B2-003 onder
+deterministisch gesorteerde OpenItem locks.
 
-Iedere BankTransaction hoort bij precies één Administration. AdministrationId en BankAccountId worden beide immutable en expliciet vastgelegd. De consistentie tussen deze identifiers wordt later buiten het aggregate gecontroleerd, omdat daarvoor externe gegevens nodig zijn.
+`AdministrationBankAccount` is de operationele Administration-owned rekening en staat
+los van RelationBankAccount en document-IBAN. Draft/Finalize vereist een actieve
+same-tenant EUR-rekening, maar geen BankingPostingConfiguration; die configuratie wordt
+pas bij Post gelezen.
 
-```text
-Imported → Matched → Posted
-```
+B2-003 lockt de transaction en de unieke OpenItems in deterministische identityvolgorde,
+leest actuele settlement/match-feiten opnieuw en gebruikt de actuele bankconfiguratie.
+CustomerReceipt is Bank-debet/control-credit; SupplierPayment is control-debet/Bank-
+credit. Ieder allocation gebruikt exact het historische `OpenItem.controlLedgerAccountId`.
+Eén outer transaction bewaart één PostingEngine-JournalEntry, één Settlement per
+allocation, één postinglinkage en PostedBy/PostedAt. Finalize reserveert geen saldo;
+echte MySQL-locking voorkomt oversettlement en ondersteunt partial, multi-OpenItem en
+meerdere betalingen over tijd. OpenItemMatch blijft onaangepast.
 
-Dezelfde overgang herhalen is idempotent. Posted is een eindstatus; iedere andere ongeldige overgang resulteert in een `DomainException`.
+Bankimport, reconciliation, PSD2, FX en reversal blijven buiten scope.
 
-## Payment
-
-Payment bestaat uitsluitend als child entity binnen BankTransaction en bevat een immutable PaymentId, OpenItemId en positief Money-bedrag. Payment-mutaties zijn alleen toegestaan zolang de BankTransaction Imported is. Payment-bedragen gebruiken dezelfde Currency als de BankTransaction en dubbele PaymentId-waarden worden geweigerd.
-
-## Matching
-
-De frameworkonafhankelijke domain service Matching telt bestaande Payment-allocaties exact op via `Money::add()` en vergelijkt de som met de absolute waarde van het BankTransaction-bedrag. Alleen een Imported transactie met minimaal één volledig passende allocatie kan naar Matched overgaan. Een mislukte match laat transactie en Payments ongewijzigd; opnieuw matchen van Matched is idempotent en Posted wordt geweigerd.
-
-## Grenzen
-
-- Geldbedragen gebruiken het gedeelde `Money` value object en geen floats.
-- Banking heeft geen dependency op Sales of Purchasing.
-- Banking mag uitsluitend afhankelijk zijn van Shared, Administration, Accounting en Relations.
-- BankTransaction maakt geen JournalEntries; financiële boekingen blijven de verantwoordelijkheid van Accounting en PostingEngine.
-- Matching maakt geen Payments, JournalEntries of PostingRequests en muteert geen allocaties.
-- Import en importformaten zoals CAMT053, MT940 en CSV vallen buiten de Banking Foundation.
-- Reconciliation, settlement en PSD2 vallen buiten de Banking Foundation.
-- PostingRequest en PostingEngine zijn Accounting-verantwoordelijkheden en vallen buiten Banking.
-- Banking bevat geen Laravel-, database-, repository- of infrastructuurafhankelijkheden.
-
-## Capabilitystatus
-
-Banking Foundation first domain iteration completed.
+B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
+scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag
+levert alleen gevalideerde input en toont Application-readmodels; lifecycle, eligibility,
+exacte allocation-som, locks, actuele open saldi, historical controlaccounts,
+JournalEntry en Settlements blijven buiten Presentation. Posted detail toont de ene
+postinglinkage en settlement/remaining amount per allocation. Bankimport, reconciliation,
+overpayment, suspense, FX en reversal blijven bewust vervolgscope.

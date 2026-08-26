@@ -93,13 +93,20 @@ buiten P3. De stabiele permission-IDs zijn respectievelijk
 
 ## Banking
 
-| Permission Name | Korte beschrijving |
-| --- | --- |
-| View Bank Accounts | Bankrekeningen en hun basisgegevens raadplegen. |
-| Manage Bank Accounts | Bankrekeningen toevoegen, wijzigen en deactiveren. |
-| Import Bank Statements | Bankafschriften voor verwerking aanleveren. |
-| Process Bank Transactions | Bankmutaties beoordelen en verwerken. |
-| Allocate Payments | Betalingen aan openstaande posten of andere bestemmingen toewijzen. |
+B2 gebruikt drie onafhankelijke typed permissions voor handmatige bankbetalingen.
+
+| Permission Code | UUID | Korte beschrijving |
+| --- | --- | --- |
+| `BANKING.VIEW` | `b2010000-0000-4000-8000-000000000001` | Handmatige BankTransactions, Payments, allocations en settlementresultaat read-only raadplegen. |
+| `BANKING.PAYMENTS_MANAGE` | `b2010000-0000-4000-8000-000000000002` | Draft manual payments aanmaken/wijzigen, allocations beheren, finaliseren en Draft annuleren; geeft geen postingrecht. |
+| `BANKING.PAYMENTS_POST` | `b2010000-0000-4000-8000-000000000003` | Een immutable Finalized Payment via de transactionele Banking-postingorchestrator posten en de OpenItems settelen. |
+
+De canonieke rollen zijn `BANKING_MANAGER` (`b2020000-0000-4000-8000-000000000001`,
+View + Payments Manage) en `BANKING_POSTER`
+(`b2020000-0000-4000-8000-000000000002`, View + Payments Post), zonder automatische membershipassignment of
+role-name authorization. Operationele Administration-bankrekeningen en
+BankingPostingConfiguration gebruiken `ADMINISTRATION.SETTINGS_UPDATE`. Import,
+reconciliation, suspense/overpayment en reversalpermissions bestaan niet in B2 V1.
 
 ## Documents
 

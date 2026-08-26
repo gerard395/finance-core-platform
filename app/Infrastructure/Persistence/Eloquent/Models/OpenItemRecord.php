@@ -20,6 +20,7 @@ final class OpenItemRecord extends Model
         'administration_id',
         'relation_id',
         'journal_entry_id',
+        'control_ledger_account_id',
         'open_item_type',
         'side',
         'original_amount',
