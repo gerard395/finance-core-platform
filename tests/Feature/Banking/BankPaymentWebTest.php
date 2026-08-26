@@ -235,6 +235,36 @@ final class BankPaymentWebTest extends TestCase
         self::assertSame(0, DB::table('payment_allocations')->where('payment_id', DB::table('payments')->where('bank_transaction_id', $existingId)->value('id'))->count());
     }
 
+    public function test_restored_form_state_uses_one_filter_path_for_change_and_pageshow(): void
+    {
+        $this->assignAll();
+        $this->login();
+
+        $fresh = $this->get('/banking/payments/create')->assertOk();
+        $fresh->assertSee('data-type="customer_receipt" data-relation="'.self::CUSTOMER.'"', false)
+            ->assertSee('data-type="supplier_payment" data-relation="'.self::SUPPLIER.'"', false)
+            ->assertSee("type.addEventListener('change',update)", false)
+            ->assertSee("relation.addEventListener('change',update)", false)
+            ->assertSee("window.addEventListener('pageshow',update)", false)
+            ->assertSee("document.querySelector('form').addEventListener('input'", false)
+            ->assertSee('allocation.disabled=!checkbox.checked', false)
+            ->assertSee('allocation.required=checkbox.checked', false)
+            ->assertSee('if(!visible)checkbox.checked=false', false)
+            ->assertSee('update()});', false);
+
+        $restoredSupplier = $this->withSession(['_old_input' => ['payment_type' => 'supplier_payment', 'relation_id' => self::SUPPLIER]])
+            ->get('/banking/payments/create')->assertOk();
+        $restoredSupplier->assertSee('value="supplier_payment" selected', false)
+            ->assertSee('value="'.self::SUPPLIER.'" selected', false)
+            ->assertSee('data-type="supplier_payment" data-relation="'.self::SUPPLIER.'"', false);
+
+        $restoredCustomer = $this->withSession(['_old_input' => ['payment_type' => 'customer_receipt', 'relation_id' => self::CUSTOMER]])
+            ->get('/banking/payments/create')->assertOk();
+        $restoredCustomer->assertSee('value="customer_receipt" selected', false)
+            ->assertSee('value="'.self::CUSTOMER.'" selected', false)
+            ->assertSee('data-type="customer_receipt" data-relation="'.self::CUSTOMER.'"', false);
+    }
+
     public function test_settings_sales_and_purchasing_permissions_grant_no_banking_access(): void
     {
         $this->app->make(AdministrationAuthorizationProvisioner::class)->provision();
