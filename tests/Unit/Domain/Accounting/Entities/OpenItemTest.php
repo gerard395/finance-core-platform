@@ -10,6 +10,7 @@ use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemStatus;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -33,6 +34,7 @@ final class OpenItemTest extends TestCase
         self::assertSame('123e4567-e89b-42d3-a456-426614174000', $item->administrationId()->toString());
         self::assertSame('936da01f-9abd-4d9d-80c7-02af85c822a8', $item->relationId()->toString());
         self::assertSame('6ba7b810-9dad-41d1-80b4-00c04fd430c8', $item->journalEntryId()->toString());
+        self::assertSame('7ba7b810-9dad-41d1-80b4-00c04fd430c8', $item->controlLedgerAccountId()->toString());
         self::assertSame(OpenItemType::Receivable, $item->type());
         self::assertSame($openedOn, $item->openedOn());
         self::assertSame('1000', $item->originalAmount()->amount());
@@ -254,6 +256,7 @@ final class OpenItemTest extends TestCase
             $original->administrationId(),
             $original->relationId(),
             $original->journalEntryId(),
+            $original->controlLedgerAccountId(),
             OpenItemType::Payable,
             $original->originalAmount(),
             $original->openedOn(),
@@ -382,6 +385,7 @@ final class OpenItemTest extends TestCase
             new AdministrationId(new Uuid('123e4567-e89b-42d3-a456-426614174000')),
             new RelationId(new Uuid('936da01f-9abd-4d9d-80c7-02af85c822a8')),
             new JournalEntryId(new Uuid('6ba7b810-9dad-41d1-80b4-00c04fd430c8')),
+            new LedgerAccountId(new Uuid('7ba7b810-9dad-41d1-80b4-00c04fd430c8')),
             $type,
             $this->money($originalAmount),
             $openedOn ?? $this->date('2026-01-01'),
@@ -418,6 +422,7 @@ final class OpenItemTest extends TestCase
             $item->administrationId(),
             $item->relationId(),
             $item->journalEntryId(),
+            $item->controlLedgerAccountId(),
             $item->type(),
             $item->originalAmount(),
             $item->openedOn(),

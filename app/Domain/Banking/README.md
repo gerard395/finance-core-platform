@@ -56,6 +56,11 @@ BankingPostingConfiguration naar active Bank Journal en active Asset Bank accoun
 OpenItems dragen voor nieuwe facts hun historische AR/AP control-account-ID; geen
 actuele configuratie of rekeningheuristiek reconstrueert die waarheid.
 
+B2-001A heeft dit predecessorcontract gerealiseerd als verplicht immutable
+`OpenItem.controlLedgerAccountId`, inclusief deterministische historische backfill en
+same-tenant RESTRICT-FK. Een later inactive control account blijft historische
+postingtruth en wordt bij settlement niet automatisch vervangen.
+
 `OpenItemSettlement` is cashrealisatie; `OpenItemMatch` blijft uitsluitend een
 opposite-side documentbalance-match. Partial en meerdere payments en één payment over
 meerdere same-Relation OpenItems zijn toegestaan. Allocation sum moet exact de absolute

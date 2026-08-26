@@ -14,6 +14,7 @@ use App\Application\Relations\SupplierStore;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -365,6 +366,7 @@ final class EloquentRelationClassificationReadPersistenceTest extends TestCase
             $this->administration(self::ADMINISTRATION_A),
             $relationId,
             new JournalEntryId($this->uuid('6', $sequence)),
+            new LedgerAccountId($this->uuid('7', $sequence)),
             $type,
             new Money('100', new Currency('EUR')),
             new PostingDate(new DateTimeImmutable('2026-01-01')),

@@ -133,7 +133,7 @@ final readonly class PostSalesCreditInvoice
                 }
                 $openItem = new OpenItem(
                     $this->identities->openItemId(), $administrationId, $creditCustomer->relationId(), $journalEntry->id(),
-                    OpenItemType::Receivable, $gross, $postingDate, OpenItemSide::Credit,
+                    $configuration->accountsReceivableLedgerAccountId(), OpenItemType::Receivable, $gross, $postingDate, OpenItemSide::Credit,
                 );
                 $this->journalEntries->append($journalEntry);
                 foreach ($fiscalResult->taxPostings() as $taxPosting) {

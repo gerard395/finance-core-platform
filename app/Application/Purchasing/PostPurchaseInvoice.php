@@ -109,7 +109,7 @@ final readonly class PostPurchaseInvoice
                     $tax = $line->tax();
                     $this->taxPostings->append(new TaxPosting($taxPostingId, $administrationId, $tax->id, $tax->rate, $line->net(), $line->taxAmount(), TaxPostingDirection::Input, TaxSourceDocumentType::PurchaseInvoice, new TaxSourceDocumentId($invoice->id()->uuid()), new TaxSourceLineId($line->id()->uuid()), new PostingDate($invoice->fiscalReportingDate()), $entry->id(), $baseLineId, $taxLineId, TaxPostingType::Original, null, $tax->treatment, $tax->vatReturn, $tax->icp));
                 }
-                $openItem = new OpenItem($this->identities->openItemId(), $administrationId, $invoice->supplierSnapshot()->relationId, $entry->id(), OpenItemType::Payable, $invoice->grossTotal(), $postingDate, OpenItemSide::Credit, $invoice->dueDate());
+                $openItem = new OpenItem($this->identities->openItemId(), $administrationId, $invoice->supplierSnapshot()->relationId, $entry->id(), $configuration->accountsPayableLedgerAccountId, OpenItemType::Payable, $invoice->grossTotal(), $postingDate, OpenItemSide::Credit, $invoice->dueDate());
                 $this->openItems->append($openItem);
                 if (! $this->postings->append(new PurchaseInvoicePosting($administrationId, $invoiceId, $entry->id(), $openItem->id(), $postingDate, $this->clock->now()))) {
                     throw new \RuntimeException('Duplicate posting linkage.');

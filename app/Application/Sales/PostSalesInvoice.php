@@ -126,6 +126,7 @@ final readonly class PostSalesInvoice
                     $administrationId,
                     $customer->relationId(),
                     $journalEntry->id(),
+                    $configuration->accountsReceivableLedgerAccountId(),
                     OpenItemType::Receivable,
                     $gross,
                     $postingDate,

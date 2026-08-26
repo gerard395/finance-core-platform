@@ -422,6 +422,13 @@ B2 V1 is EUR-only, vereist volledige allocation van het absolute bankbedrag en k
 geen unallocated remainder, overpayment/suspense, import, reconciliation of FX.
 TransactionDate en expliciete PostingDate zijn verschillende feiten.
 
+B2-001A maakt `OpenItem.controlLedgerAccountId` verplichte immutable Accounting-truth.
+SalesInvoice, SalesCredit en PurchaseInvoice leveren de werkelijk geboekte AR/AP-
+LedgerAccount uit dezelfde postingtransactie. Bestaande facts zijn uitsluitend via één
+same-side, exact-amount source JournalEntryLine gebackfilld; nul of meerdere kandidaten
+zijn een harde fout. Een same-tenant RESTRICT-FK bewaakt de identity. Actuele posting-
+configuratie, rekeningcode/naam/type of active status herschrijven deze historie nooit.
+
 ### Integrated Financial Flow – I1
 
 #### Flow

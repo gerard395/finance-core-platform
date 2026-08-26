@@ -18,6 +18,7 @@ use App\Domain\Accounting\Enums\OpenItemSettlementType;
 use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemMatchId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
@@ -75,6 +76,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
                 'administration_id' => $openItem->administrationId()->toString(),
                 'relation_id' => $openItem->relationId()->toString(),
                 'journal_entry_id' => $openItem->journalEntryId()->toString(),
+                'control_ledger_account_id' => $openItem->controlLedgerAccountId()->toString(),
                 'open_item_type' => $openItem->type()->value,
                 'side' => $openItem->side()->value,
                 'original_amount' => $openItem->originalAmount()->amount(),
@@ -247,6 +249,7 @@ final class EloquentOpenItemRepository implements OpenItemMatchRepository, OpenI
             new AdministrationId(new Uuid($record->getAttribute('administration_id'))),
             new RelationId(new Uuid($record->getAttribute('relation_id'))),
             new JournalEntryId(new Uuid($record->getAttribute('journal_entry_id'))),
+            new LedgerAccountId(new Uuid($record->getAttribute('control_ledger_account_id'))),
             OpenItemType::from($record->getAttribute('open_item_type')),
             new Money((string) $record->getAttribute('original_amount'), new Currency($record->getAttribute('currency'))),
             new PostingDate(new DateTimeImmutable($record->getAttribute('opened_on')->format('Y-m-d'))),

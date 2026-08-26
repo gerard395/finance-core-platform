@@ -62,6 +62,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             new Money('62.50', $currency),
         ));
         $invoice->finalize();
+        $receivableAccountId = $this->ledgerAccountId('00000000-0000-4000-8000-000000000011');
 
         $invoiceId = $invoice->id();
         $invoiceNumber = $invoice->number();
@@ -69,7 +70,7 @@ final class EndToEndFinancialFlowTest extends TestCase
         $invoiceRequest = (new CreateSalesInvoicePostingRequest)->execute(
             $invoice,
             $this->journalId('00000000-0000-4000-8000-000000000010'),
-            $this->ledgerAccountId('00000000-0000-4000-8000-000000000011'),
+            $receivableAccountId,
             $this->ledgerAccountId('00000000-0000-4000-8000-000000000012'),
             $this->journalEntryLineId('00000000-0000-4000-8000-000000000013'),
             $this->journalEntryLineId('00000000-0000-4000-8000-000000000014'),
@@ -95,6 +96,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $administrationId,
             $relationId,
             $invoiceEntry->id(),
+            $receivableAccountId,
             OpenItemType::Receivable,
             $invoiceAmount,
             $invoiceEntry->postingDate(),
@@ -240,6 +242,7 @@ final class EndToEndFinancialFlowTest extends TestCase
             $this->administrationId(),
             $this->relationId(),
             new JournalEntryId(new Uuid('00000000-0000-4000-8000-000000000040')),
+            new LedgerAccountId(new Uuid('00000000-0000-4000-8000-000000000010')),
             OpenItemType::Receivable,
             $money,
             new PostingDate(new DateTimeImmutable('2026-07-15')),

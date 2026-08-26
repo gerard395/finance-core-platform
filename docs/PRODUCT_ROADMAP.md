@@ -117,6 +117,11 @@ bankrekeningen en organisation-IBAN zijn geen Administration-cashaccount; histor
 AR/AP-control-accounttruth hoort op het OpenItem. Bankimport, CAMT/MT940, PSD2/API,
 reconciliation, FX, unallocated cash en overpayment/suspense blijven vervolgscope.
 
+B2-001A rondt de Accounting-predecessor af: ieder OpenItem bewaart nu verplicht de
+immutable AR/AP-control-LedgerAccount van zijn source posting. Historische facts zijn
+deterministisch vanuit exact één same-side/exact-amount JournalEntryLine gebackfilld;
+latere configuratiewijziging of accountdeactivation verandert die identity niet.
+
 ## Capability 09 – Documents
 
 **Status:** Planned

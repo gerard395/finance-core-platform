@@ -15,6 +15,7 @@ use App\Domain\Accounting\Enums\JournalEntryStatus;
 use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemType;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\OpenItemSettlementId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
@@ -26,6 +27,7 @@ use App\Domain\Shared\Identity\Uuid;
 use App\Infrastructure\Persistence\Eloquent\Models\AdministrationRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\JournalRecord;
+use App\Infrastructure\Persistence\Eloquent\Models\LedgerAccountRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\OpenItemMatchRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\RelationRecord;
 use DateTimeImmutable;
@@ -50,6 +52,14 @@ final class MatchOpenItemsTest extends TestCase
         $this->relation(self::ADMIN_A, 2);
         $this->relation(self::ADMIN_B, 3);
         foreach ([self::ADMIN_A, self::ADMIN_B] as $administration) {
+            LedgerAccountRecord::query()->create([
+                'id' => $this->accountId($administration)->toString(),
+                'administration_id' => $administration,
+                'code' => 'AR',
+                'name' => 'Accounts receivable',
+                'type' => 'asset',
+                'status' => 'active',
+            ]);
             for ($sequence = 1; $sequence <= 4; $sequence++) {
                 $this->postedEntry($administration, $sequence);
             }
@@ -187,6 +197,7 @@ final class MatchOpenItemsTest extends TestCase
         DB::table('open_items')->whereIn('administration_id', [self::ADMIN_A, self::ADMIN_B])->delete();
         JournalEntryRecord::query()->whereIn('administration_id', [self::ADMIN_A, self::ADMIN_B])->delete();
         JournalRecord::query()->whereIn('administration_id', [self::ADMIN_A, self::ADMIN_B])->delete();
+        LedgerAccountRecord::query()->whereIn('administration_id', [self::ADMIN_A, self::ADMIN_B])->delete();
         RelationRecord::query()->whereIn('administration_id', [self::ADMIN_A, self::ADMIN_B])->delete();
         AdministrationRecord::query()->whereIn('id', [self::ADMIN_A, self::ADMIN_B])->delete();
     }
@@ -204,7 +215,7 @@ final class MatchOpenItemsTest extends TestCase
 
     private function item(int $sequence, string $amount, OpenItemSide $side, int $relation = 1, string $currency = 'EUR', string $administration = self::ADMIN_A): OpenItem
     {
-        return new OpenItem($this->itemId($sequence), $this->adminId($administration), new RelationId(new Uuid(sprintf('40000000-0000-4000-8000-%012d', $relation))), $this->entryId($administration, min($sequence, 4)), OpenItemType::Receivable, new Money($amount, new Currency($currency)), $this->date('2026-01-01'), $side);
+        return new OpenItem($this->itemId($sequence), $this->adminId($administration), new RelationId(new Uuid(sprintf('40000000-0000-4000-8000-%012d', $relation))), $this->entryId($administration, min($sequence, 4)), $this->accountId($administration), OpenItemType::Receivable, new Money($amount, new Currency($currency)), $this->date('2026-01-01'), $side);
     }
 
     private function match(OpenItem $debit, OpenItem $credit, string $amount, string $date = '2026-01-10'): MatchOpenItemsResult
@@ -264,6 +275,13 @@ final class MatchOpenItemsTest extends TestCase
     private function entryId(string $administration, int $sequence): JournalEntryId
     {
         return new JournalEntryId(new Uuid(sprintf($administration === self::ADMIN_A ? '60000000-0000-4000-8000-%012d' : '61000000-0000-4000-8000-%012d', $sequence)));
+    }
+
+    private function accountId(string $administration): LedgerAccountId
+    {
+        return new LedgerAccountId(new Uuid($administration === self::ADMIN_A
+            ? '80000000-0000-4000-8000-000000000001'
+            : '81000000-0000-4000-8000-000000000001'));
     }
 
     private function date(string $date): PostingDate

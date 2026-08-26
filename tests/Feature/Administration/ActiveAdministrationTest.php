@@ -173,6 +173,7 @@ final class ActiveAdministrationTest extends TestCase
         $prefix = (string) $sequence;
         $assetId = $prefix.'1000000-0000-4000-8000-000000000001';
         $revenueId = $prefix.'2000000-0000-4000-8000-000000000001';
+        $liabilityId = $prefix.'2100000-0000-4000-8000-000000000001';
         $entryId = $prefix.'3000000-0000-4000-8000-000000000001';
         $baseLineId = $prefix.'4000000-0000-4000-8000-000000000001';
         $taxLineId = $prefix.'5000000-0000-4000-8000-000000000001';
@@ -182,6 +183,7 @@ final class ActiveAdministrationTest extends TestCase
         foreach ([
             [$assetId, '1000', 'Asset', 'asset'],
             [$revenueId, '8000', 'Revenue', 'revenue'],
+            [$liabilityId, '1600', 'Liability', 'liability'],
         ] as [$id, $code, $name, $type]) {
             LedgerAccountRecord::query()->create([
                 'id' => $id,
@@ -243,6 +245,7 @@ final class ActiveAdministrationTest extends TestCase
                 'administration_id' => $administration->id()->toString(),
                 'relation_id' => $relationId,
                 'journal_entry_id' => $entryId,
+                'control_ledger_account_id' => $type === 'receivable' ? $assetId : $liabilityId,
                 'open_item_type' => $type,
                 'side' => $type === 'receivable' ? 'debit' : 'credit',
                 'original_amount' => $amount,
