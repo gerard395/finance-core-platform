@@ -71,6 +71,20 @@ buiten P3. De stabiele permission-IDs zijn respectievelijk
 `8c0eb3c2-2c80-4960-85bd-8649508cba83` en
 `09544538-b049-4cf5-a691-8b88427f7b31`.
 
+PC-000 reserveert daarnaast drie onafhankelijke PurchaseCredit-permissions voor
+implementatie in PC-001. Bestaande invoicepermissions worden niet verbreed.
+
+| Permission Code | Korte beschrijving |
+| --- | --- |
+| `PURCHASING.CREDITS_DRAFT_MANAGE` | Draft leverancierscreditnota's tegen een eligible source invoice aanmaken, wijzigen en vóór posting annuleren; uitsluitend volledige source-line selectie. |
+| `PURCHASING.CREDITS_FINALIZE` | Een valide Draft creditnota inhoudelijk vaststellen als immutable Finalized document; geeft geen postingrecht. |
+| `PURCHASING.CREDITS_POST` | Een Finalized creditnota atomisch financieel/fiscaal posten en exact tegen haar source matchen voor zover daar saldo beschikbaar is; geeft geen draftbeheer of finalisatierecht. |
+
+`PURCHASING.VIEW` geldt ook voor creditlist/detail/source-read. Na PC-001 bevat
+`PURCHASING_MANAGER` daarnaast credit DraftManage en Finalize; `PURCHASING_POSTER`
+daarnaast credit Post. Er volgt geen automatische membershipassignment. PC-000
+documenteert dit contract maar implementeert of provisiont nog geen permission.
+
 ## Accounting
 
 | Permission Name | Korte beschrijving |

@@ -68,4 +68,23 @@ ondersteunde Input-TaxCode-selectors; detail blijft historische snapshots tonen.
 vereist een expliciete PostingDate en presenteert daarna linkage en het Payable/Credit
 OpenItem. Er bestaat geen GET-mutatie, automatische finalize/post of paymentactie.
 
-`PurchaseCreditInvoice` blijft een bestaand prototype en valt buiten P3.
+## PurchaseCreditInvoice contract (PC-000)
+
+Een PurchaseCreditInvoice is een ontvangen leverancierscreditnota tegen exact één
+same-tenant, same-supplier Posted PurchaseInvoice. PC V1 selecteert één of meer volledige
+source PurchaseInvoiceLines; iedere source line is maximaal eenmaal creditable en wordt
+zonder actuele Supplier-, TaxCode-, account- of configurationsinterpretatie exact
+gereversed. Partial quantity/amount/tax en source-less of cross-invoice credits zijn
+uitgesteld.
+
+De credit heeft een eigen extern, case-sensitive suppliercreditnummer met afzonderlijke
+namespace en unieke Administration + Supplier + nummer-identity. Zij gebruikt de
+historische supplier/address/line/fiscal snapshots en de werkelijk geboekte source-
+accounts. De lifecycle is Draft → Finalized → Posted of pre-post Cancelled, met actor-
+en clockaudit bij Finalize/Post.
+
+Post maakt via Accounting/Fiscal een gebalanceerde historical-account reversal,
+Input/Reversal TaxPostings en een positieve Payable/Debit. Die wordt automatisch tot
+het actuele source-openbedrag via OpenItemMatch tegen de Payable/Credit gematcht. Een
+overschot blijft open supplier credit balance; bestaande settlements/cash worden nooit
+teruggedraaid. De volledige contracten en concurrencyvolgorde staan in PC-000.
