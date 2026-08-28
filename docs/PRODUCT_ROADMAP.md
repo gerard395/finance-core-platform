@@ -674,11 +674,18 @@ authorization, tenantlocks, Webflow en concurrentie-/rollbacktests. Partial reve
 mutatie van originals, refund als nieuwe bankmovement, import, FX en period management
 blijven buiten B3.
 
-Definitieve B3-split: B3-000 contractalignment; B3-001 authorization/persistence;
-B3-002 atomische JournalEntry-reversal; B3-003 settlement reversals/concurrency;
-B3-004 Webflow; B3-005 review en development acceptance. Vóór acceptance wordt voor
+Definitieve B3-split na contractalignment: B3-000 contractalignment; B3-001 independent
+authorization plus reversal- en settlementlinkage-persistence; B3-002 één atomische
+historische contra-JournalEntry plus alle append-only settlementreversals; B3-003
+permission-scoped Webflow plus echte MySQL-concurrency; B3-004 review, regressie en
+development acceptance. De original blijft immutable en status `Posted`; list/detail
+toont `Teruggedraaid` afgeleid. De correctie vereist een expliciete postingdatum,
+verplichte reason en actor/tijd, gebruikt exact de historische Journal/LedgerAccounts,
+raakt geen TaxPosting of OpenItemMatch en ondersteunt geen partial/importreversal.
+Vóór acceptance wordt voor
 `dev-admin@financecore.local` expliciet gecontroleerd: required/effective permission,
-canonical role/assignment zonder duplicate, navigation/actie, Bank Journal, Bank
+de aparte least-privilege `BANKING_REVERSAL_OPERATOR`-role/assignment zonder duplicate,
+navigation/actie, Bank Journal, Bank
 LedgerAccount, AdministrationBankAccount, BankingPostingConfiguration-readiness en een
 concrete Posted Payment-fixture. Dit is developmentbeleid en geen automatische
 productie-role assignment.

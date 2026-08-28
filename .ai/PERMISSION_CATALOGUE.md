@@ -109,20 +109,26 @@ creditpermission-IDs zijn `3a85b19c-8196-47bb-90e2-94c4aa72c101`,
 
 ## Banking
 
-B2 gebruikt drie onafhankelijke typed permissions voor handmatige bankbetalingen.
+B2 gebruikt drie onafhankelijke typed permissions voor handmatige bankbetalingen. B3
+voegt een afzonderlijke high-impact reversalpermission toe.
 
 | Permission Code | UUID | Korte beschrijving |
 | --- | --- | --- |
 | `BANKING.VIEW` | `b2010000-0000-4000-8000-000000000001` | Handmatige BankTransactions, Payments, allocations en settlementresultaat read-only raadplegen. |
 | `BANKING.PAYMENTS_MANAGE` | `b2010000-0000-4000-8000-000000000002` | Draft manual payments aanmaken/wijzigen, allocations beheren, finaliseren en Draft annuleren; geeft geen postingrecht. |
 | `BANKING.PAYMENTS_POST` | `b2010000-0000-4000-8000-000000000003` | Een immutable Finalized Payment via de transactionele Banking-postingorchestrator posten en de OpenItems settelen. |
+| `BANKING.PAYMENTS_REVERSE` | `b2010000-0000-4000-8000-000000000004` | Eén Posted handmatige BankTransaction volledig, append-only en atomisch corrigeren; geeft geen manage- of algemeen postingrecht. |
 
 De canonieke rollen zijn `BANKING_MANAGER` (`b2020000-0000-4000-8000-000000000001`,
 View + Payments Manage) en `BANKING_POSTER`
 (`b2020000-0000-4000-8000-000000000002`, View + Payments Post), zonder automatische membershipassignment of
-role-name authorization. Operationele Administration-bankrekeningen en
+role-name authorization. B3 reserveert daarnaast `BANKING_REVERSAL_OPERATOR`
+(`b2020000-0000-4000-8000-000000000003`, View + Payments Reverse). De bestaande
+`BANKING_POSTER` krijgt reverse niet impliciet: correctie blijft afzonderlijk
+toekenbaar en intrekbaar. Operationele Administration-bankrekeningen en
 BankingPostingConfiguration gebruiken `ADMINISTRATION.SETTINGS_UPDATE`. Import,
-reconciliation, suspense/overpayment en reversalpermissions bestaan niet in B2 V1.
+reconciliation en suspense/overpayment blijven buiten scope. Geen van deze rollen wordt
+automatisch aan production-memberships toegekend.
 
 ## Documents
 

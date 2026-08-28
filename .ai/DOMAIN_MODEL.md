@@ -705,6 +705,34 @@ geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en 
 afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
 linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.
 
+### Bank Payment Reversal
+
+Een B3 Bank Payment Reversal corrigeert exact één `Posted` handmatige BankTransaction
+volledig en atomisch. De original en al haar Payment-, allocation-, posting-, Journal-
+en Applied Settlement-facts blijven immutable en haar status blijft `Posted`;
+`Teruggedraaid` is uitsluitend afgeleid uit de unieke tenant-scoped
+BankTransactionReversal-linkage. Eén command vereist een expliciete
+ReversalPostingDate, verplichte begrensde immutable reason en authoritative
+ReversedBy/ReversedAt. Een tweede coherente poging is `AlreadyReversed`; incomplete of
+partieel vooraf gereversede sourcefacts zonder linkage zijn `FinancialStateInvalid`.
+
+De ene contra-JournalEntry spiegelt iedere originele line debit/credit op exact de
+historische Journal en LedgerAccountIds. Rename/inactive verandert die identity niet;
+actuele BankingPostingConfiguration wordt niet gebruikt. Omdat de bankposting geen
+fiscale bron is, ontstaat geen TaxPosting. Iedere originele allocation-identiteit leidt
+naar precies haar Applied Settlement; per fact ontstaat één full-amount append-only
+Reversal. Een Banking-owned reversal-settlementlinkage verbindt reversalbatch,
+allocation, OpenItem en beide settlementidentities.
+
+OpenItemMatches en unrelated settlements blijven onaangetast. Daardoor kan een
+settlementreversal een source Receivable/Payable heropenen terwijl een latere Sales- of
+PurchaseCredit-match historische documenttruth blijft. Open amount blijft zonder clamp
+afgeleid uit alle gedateerde facts. De outer transaction gebruikt de B2/PC-resourceorde
+en lexicografisch gesorteerde unieke OpenItemIds, zodat reversal, nieuwe payments en
+creditmatching serialiseerbaar blijven. `BANKING.PAYMENTS_REVERSE` hoort uitsluitend bij
+de aparte least-privilege `BANKING_REVERSAL_OPERATOR`; Web en JavaScript leiden nooit
+authorization of financiële eligibility af.
+
 ## 12. Purchase Credits – duurzame documentlaag
 
 PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,
