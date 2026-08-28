@@ -88,3 +88,8 @@ Input/Reversal TaxPostings en een positieve Payable/Debit. Die wordt automatisch
 het actuele source-openbedrag via OpenItemMatch tegen de Payable/Credit gematcht. Een
 overschot blijft open supplier credit balance; bestaande settlements/cash worden nooit
 teruggedraaid. De volledige contracten en concurrencyvolgorde staan in PC-000.
+
+PC-001 persisteert nu header en volledige source-line snapshots, inclusief de typed
+Original TaxPosting-reference en exacte source Payable/Credit OpenItem-reference.
+Create, Draft-update, Finalize en Cancel zijn tenant-scoped en schrijven geen financiële
+facts. Alleen PC-002 introduceert de posted source-line claim en Post-overgang.

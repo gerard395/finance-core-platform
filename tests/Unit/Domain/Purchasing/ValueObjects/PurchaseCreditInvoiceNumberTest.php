@@ -11,14 +11,14 @@ use PHPUnit\Framework\TestCase;
 
 final class PurchaseCreditInvoiceNumberTest extends TestCase
 {
-    public function test_it_normalizes_and_exposes_a_valid_number(): void
+    public function test_it_preserves_case_and_exposes_a_valid_external_number(): void
     {
         $number = new PurchaseCreditInvoiceNumber('pcr-001');
 
-        self::assertSame('PCR-001', $number->value());
-        self::assertSame('PCR-001', $number->toString());
-        self::assertSame('PCR-001', (string) $number);
-        self::assertTrue($number->equals(new PurchaseCreditInvoiceNumber('PCR-001')));
+        self::assertSame('pcr-001', $number->value());
+        self::assertSame('pcr-001', $number->toString());
+        self::assertSame('pcr-001', (string) $number);
+        self::assertFalse($number->equals(new PurchaseCreditInvoiceNumber('PCR-001')));
         self::assertFalse($number->equals(new PurchaseCreditInvoiceNumber('PCR-002')));
     }
 
@@ -35,10 +35,8 @@ final class PurchaseCreditInvoiceNumberTest extends TestCase
     {
         return [
             'empty' => [''],
-            'too short' => ['A'],
-            'too long' => [str_repeat('A', 33)],
-            'whitespace' => ['PCR 001'],
-            'invalid symbol' => ['PCR.001'],
+            'too long' => [str_repeat('A', 129)],
+            'control character' => ["PCR\n001"],
         ];
     }
 }

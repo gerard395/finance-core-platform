@@ -12,14 +12,19 @@ final readonly class PurchaseCreditInvoiceNumber
 
     public function __construct(string $value)
     {
-        if (preg_match('/\A[A-Za-z0-9][A-Za-z0-9_-]{1,31}\z/', $value) !== 1) {
-            throw new InvalidArgumentException('Purchase credit invoice number must contain 2 to 32 valid ASCII characters.');
+        $value = trim($value);
+        if ($value === '' || preg_match('/[\x00-\x1F\x7F]/u', $value) === 1 || mb_strlen($value) > 128) {
+            throw new InvalidArgumentException('Supplier credit invoice number is invalid.');
         }
-
-        $this->value = strtoupper($value);
+        $this->value = $value;
     }
 
     public function value(): string
+    {
+        return $this->value;
+    }
+
+    public function canonical(): string
     {
         return $this->value;
     }

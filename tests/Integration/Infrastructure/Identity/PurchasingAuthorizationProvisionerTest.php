@@ -26,9 +26,9 @@ final class PurchasingAuthorizationProvisionerTest extends TestCase
         $provisioner->provision();
 
         self::assertSame($before, [PermissionRecord::all()->toArray(), RoleRecord::all()->toArray(), RolePermissionRecord::all()->toArray()]);
-        self::assertSame(4, PermissionRecord::query()->count());
+        self::assertSame(7, PermissionRecord::query()->count());
         self::assertSame(2, RoleRecord::query()->count());
-        self::assertSame(5, RolePermissionRecord::query()->where('active', true)->count());
+        self::assertSame(8, RolePermissionRecord::query()->where('active', true)->count());
         self::assertSame(0, AdministrationMembershipRoleRecord::query()->count());
         foreach (PurchasingPermission::cases() as $permission) {
             $this->assertDatabaseHas('permissions', ['id' => $permission->id()->toString(), 'code' => $permission->value, 'status' => 'active']);

@@ -643,6 +643,10 @@ Application, PC-002 transactionele posting/tax reversal, PC-003 matching/Web en 
 review/regression blijft definitief. Partial credits, payment reversal, attachments/OCR,
 International Purchase VAT, Bank Import en VAT/ICP reporting blijven deferred.
 
+PC-001 levert nu authorization, tenant-safe aggregate/persistence en de
+Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 is de
+volgende grens voor posting, tax reversal, source-line claims en Payable/Debit.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

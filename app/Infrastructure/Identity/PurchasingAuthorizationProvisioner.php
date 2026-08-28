@@ -111,11 +111,14 @@ final readonly class PurchasingAuthorizationProvisioner
                 PurchasingPermission::View => 'fd6dfc80-cd97-43b8-bc42-49d582e8fa41',
                 PurchasingPermission::ManageInvoiceDrafts => 'e1288f44-c98c-4e88-a037-f5e2f019460d',
                 PurchasingPermission::FinalizeInvoices => 'd0645632-177b-430f-8b6a-e52b8fc3fa13',
+                PurchasingPermission::ManageCreditDrafts => '4a85b19c-8196-47bb-90e2-94c4aa72c101',
+                PurchasingPermission::FinalizeCredits => '4a85b19c-8196-47bb-90e2-94c4aa72c102',
                 default => throw new LogicException('Permission is not part of the Purchasing Manager role definition.'),
             },
             PurchasingRole::Poster => match ($permission) {
                 PurchasingPermission::View => '73a69871-9083-4a35-ad89-0ba8d52911d4',
                 PurchasingPermission::PostInvoices => '17c22b07-b0b2-46b5-b187-50a61201a48f',
+                PurchasingPermission::PostCredits => '4a85b19c-8196-47bb-90e2-94c4aa72c103',
                 default => throw new LogicException('Permission is not part of the Purchasing Poster role definition.'),
             },
         }));

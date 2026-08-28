@@ -39,8 +39,8 @@ enum PurchasingRole: string
     public function permissions(): array
     {
         return match ($this) {
-            self::Manager => [PurchasingPermission::View, PurchasingPermission::ManageInvoiceDrafts, PurchasingPermission::FinalizeInvoices],
-            self::Poster => [PurchasingPermission::View, PurchasingPermission::PostInvoices],
+            self::Manager => [PurchasingPermission::View, PurchasingPermission::ManageInvoiceDrafts, PurchasingPermission::FinalizeInvoices, PurchasingPermission::ManageCreditDrafts, PurchasingPermission::FinalizeCredits],
+            self::Poster => [PurchasingPermission::View, PurchasingPermission::PostInvoices, PurchasingPermission::PostCredits],
         };
     }
 }

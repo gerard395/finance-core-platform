@@ -71,8 +71,8 @@ buiten P3. De stabiele permission-IDs zijn respectievelijk
 `8c0eb3c2-2c80-4960-85bd-8649508cba83` en
 `09544538-b049-4cf5-a691-8b88427f7b31`.
 
-PC-000 reserveert daarnaast drie onafhankelijke PurchaseCredit-permissions voor
-implementatie in PC-001. Bestaande invoicepermissions worden niet verbreed.
+PC-001 implementeert daarnaast drie onafhankelijke PurchaseCredit-permissions.
+Bestaande invoicepermissions worden niet verbreed.
 
 | Permission Code | Korte beschrijving |
 | --- | --- |
@@ -82,8 +82,10 @@ implementatie in PC-001. Bestaande invoicepermissions worden niet verbreed.
 
 `PURCHASING.VIEW` geldt ook voor creditlist/detail/source-read. Na PC-001 bevat
 `PURCHASING_MANAGER` daarnaast credit DraftManage en Finalize; `PURCHASING_POSTER`
-daarnaast credit Post. Er volgt geen automatische membershipassignment. PC-000
-documenteert dit contract maar implementeert of provisiont nog geen permission.
+daarnaast credit Post. Er volgt geen automatische membershipassignment. De stabiele
+creditpermission-IDs zijn `3a85b19c-8196-47bb-90e2-94c4aa72c101`,
+`3a85b19c-8196-47bb-90e2-94c4aa72c102` en
+`3a85b19c-8196-47bb-90e2-94c4aa72c103`.
 
 ## Accounting
 

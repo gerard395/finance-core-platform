@@ -704,3 +704,11 @@ leveranciersbetaling en een positief gebruikersbedrag naar signed Money; zij bep
 geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en Post zijn
 afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
 linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.
+
+## 12. Purchase Credits – duurzame documentlaag
+
+PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,
+immutable supplier/address/source-line/account/tax snapshots, Original TaxPosting-IDs,
+de exacte source Payable/Credit en Created/Finalized/Cancelled auditfacts. Draft,
+Finalize en Cancel veroorzaken geen Accounting- of Fiscal-mutaties; Posted kan worden
+gereconstitueerd maar wordt pas door PC-002 gemuteerd.
