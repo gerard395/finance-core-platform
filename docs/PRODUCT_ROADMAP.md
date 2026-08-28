@@ -690,6 +690,14 @@ LedgerAccount, AdministrationBankAccount, BankingPostingConfiguration-readiness 
 concrete Posted Payment-fixture. Dit is developmentbeleid en geen automatische
 productie-role assignment.
 
+B3-001 levert inmiddels de onafhankelijke Reverse-permission en least-privilege role
+zonder auto-assignment, de tenant-safe immutable reversal- en settlementlinkages en de
+typed historical source/readinesscontracten. Allocation → Applied Settlement en
+BankTransaction → posting → JournalEntry/lines zijn exact traceerbaar; inactive
+historical Journal/accounts, latere settlements en matches blijven geldige state. Er
+zijn nog geen contra-entry of settlementreversals gemaakt. Daarmee is B3-002 voor de
+atomische full reversal zonder predecessor gedeblokkeerd.
+
 De eerdere post-PC-prioriteit verandert door nieuwe acceptance-evidence: Payment
 Reversal is nu de directe correctnessprioriteit; daarna volgen **Accounting Periods &
 Posting Locks**, vervolgens de **International Purchase VAT predecessor**, daarna

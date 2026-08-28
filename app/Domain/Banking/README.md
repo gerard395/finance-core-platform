@@ -56,6 +56,16 @@ staan; openAmount wordt uit de complete historie afgeleid. Een aparte
 impliciet correctierecht geeft. Partial reversal, importreversal en period locks blijven
 deferred.
 
+B3-001 realiseert deze foundation met stable typed authorization, zonder automatische
+membershipassignment, plus immutable `BankTransactionReversal`- en
+`BankTransactionSettlementReversalLink`-facts. Additieve composite same-tenant FKs en
+uniques borgen exact één transactionreversal en één linkage per allocation/original/
+reversal settlement. De framework-onafhankelijke source-reader volgt uitsluitend
+BankTransaction → Payment/allocations → posting → historical JournalEntry/lines en de
+unieke allocation-settlementtrace. Eligibility is typed; andere settlements, matches,
+current open balance en inactive historical masterdata blokkeren niet. B3-001 zelf
+maakt geen financiële facts; de atomische command blijft exclusief B3-002.
+
 B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
 scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag
 levert alleen gevalideerde input en toont Application-readmodels; lifecycle, eligibility,

@@ -14,6 +14,7 @@ enum BankingPermission: string
     case View = 'BANKING.VIEW';
     case ManagePayments = 'BANKING.PAYMENTS_MANAGE';
     case PostPayments = 'BANKING.PAYMENTS_POST';
+    case ReversePayments = 'BANKING.PAYMENTS_REVERSE';
 
     public function id(): PermissionId
     {
@@ -21,6 +22,7 @@ enum BankingPermission: string
             self::View => 'b2010000-0000-4000-8000-000000000001',
             self::ManagePayments => 'b2010000-0000-4000-8000-000000000002',
             self::PostPayments => 'b2010000-0000-4000-8000-000000000003',
+            self::ReversePayments => 'b2010000-0000-4000-8000-000000000004',
         }));
     }
 
@@ -35,6 +37,7 @@ enum BankingPermission: string
             self::View => 'View Banking',
             self::ManagePayments => 'Manage Manual Bank Payments',
             self::PostPayments => 'Post Bank Payments',
+            self::ReversePayments => 'Reverse Bank Payments',
         });
     }
 }

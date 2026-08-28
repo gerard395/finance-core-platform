@@ -733,6 +733,16 @@ creditmatching serialiseerbaar blijven. `BANKING.PAYMENTS_REVERSE` hoort uitslui
 de aparte least-privilege `BANKING_REVERSAL_OPERATOR`; Web en JavaScript leiden nooit
 authorization of financiële eligibility af.
 
+B3-001 maakt de authorization- en persistencebasis concreet. De aparte canonical role
+bevat exact View + Reverse en wordt nooit automatisch aan een membership toegewezen.
+BankTransactionReversal en de per-allocation settlementlinkage zijn immutable typed
+facts met composite same-tenant RESTRICT-relaties en uniqueness op iedere exclusieve
+source/reversalclaim. Een Application source-reader levert B3-002 de volledige
+historische JournalEntry/linegraph en de unieke `payment_allocation_id`-settlementroute,
+zonder active-masterdata- of current-balancefilter. Typed eligibility onderscheidt
+Eligible, NotPosted, AlreadyReversed, FinancialStateInvalid en NotFound. De foundation
+creëert nog geen JournalEntry of settlementreversal en muteert `Posted` niet.
+
 ## 12. Purchase Credits – duurzame documentlaag
 
 PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,
