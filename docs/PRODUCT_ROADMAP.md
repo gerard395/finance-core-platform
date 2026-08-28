@@ -698,6 +698,14 @@ historical Journal/accounts, latere settlements en matches blijven geldige state
 zijn nog geen contra-entry of settlementreversals gemaakt. Daarmee is B3-002 voor de
 atomische full reversal zonder predecessor gedeblokkeerd.
 
+B3-002 levert nu die atomische full reversal: exact gespiegeld historical contra-journal
+via PostingEngine, append-only settlementreversals en volledige Banking-linkage/audit in
+één rollbackveilige transaction. Originals blijven Posted en immutable; TaxPosting,
+OpenItemMatch en unrelated cashfacts blijven onaangeraakt. Sequential en concurrent
+double reversal plus payment-/creditmatchraces zijn MySQL-geserialiseerd. Het typed
+Success-readmodel en de bestaande readiness-reader deblokkeren B3-003 voor uitsluitend
+de permission-scoped Webflow.
+
 De eerdere post-PC-prioriteit verandert door nieuwe acceptance-evidence: Payment
 Reversal is nu de directe correctnessprioriteit; daarna volgen **Accounting Periods &
 Posting Locks**, vervolgens de **International Purchase VAT predecessor**, daarna

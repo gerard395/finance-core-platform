@@ -72,6 +72,7 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
         if ($transaction === null) {
             return null;
         }
+        $reversal = $this->findByOriginal($administrationId, $bankTransactionId, $forUpdate);
         if ($forUpdate) {
             DB::table('payments')->where('administration_id', $administrationId->toString())->where('bank_transaction_id', $bankTransactionId->toString())->lockForUpdate()->get();
             DB::table('payment_allocations')->where('administration_id', $administrationId->toString())->where('payment_id', $transaction->payment()->id()->toString())->orderBy('id')->lockForUpdate()->get();
@@ -87,9 +88,6 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
         $coherent = $posting !== null && $journal !== null && $journal->isPosted() && $journal->id()->toString() === $posting->journalEntryId->toString();
         foreach ($transaction->payment()->allocations() as $allocation) {
             $query = DB::table('open_item_settlements')->where('administration_id', $administrationId->toString())->where('payment_allocation_id', $allocation->id()->toString());
-            if ($forUpdate) {
-                $query->lockForUpdate();
-            }
             $rows = $query->get();
             if ($rows->count() !== 1) {
                 $coherent = false;
@@ -103,7 +101,6 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
             $hasReversal = DB::table('open_item_settlements')->where('administration_id', $administrationId->toString())->where('reversed_settlement_id', $row->id)->exists();
             $settlements[] = new BankTransactionReversalSettlementSource($allocation->id(), $allocation->openItemId(), $this->settlement($row), $hasReversal);
         }
-        $reversal = $this->findByOriginal($administrationId, $bankTransactionId, $forUpdate);
         if ($reversal !== null) {
             $links = $this->findByReversal($administrationId, $reversal->id, $forUpdate);
             $coherent = $coherent && count($links) === count($settlements) && count($links) === count($transaction->payment()->allocations());

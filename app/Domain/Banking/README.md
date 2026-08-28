@@ -66,6 +66,16 @@ unieke allocation-settlementtrace. Eligibility is typed; andere settlements, mat
 current open balance en inactive historical masterdata blokkeren niet. B3-001 zelf
 maakt geen financiële facts; de atomische command blijft exclusief B3-002.
 
+B3-002 levert `ReverseBankTransaction` als één outer transaction. De command spiegelt
+iedere original JournalEntryLine via PostingEngine op exact de historical Journal en
+LedgerAccountIds, maakt daarna per allocation een OpenItem-owned full-amount settlement-
+reversal, persisteert het immutable reversalrecord en sluit af met alle Banking-links.
+Originals en status `Posted` blijven onaangeraakt; TaxPostings, nieuwe OpenItems en
+OpenItemMatch-mutaties ontstaan niet. Sorted OpenItemlocks, fresh history en begrensde
+MySQL-deadlockretry maken double reversal, nieuwe payments en creditmatching
+serialiseerbaar. Het Success-readmodel maakt B3-003 zonder Weblogica in Application
+mogelijk.
+
 B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
 scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag
 levert alleen gevalideerde input en toont Application-readmodels; lifecycle, eligibility,

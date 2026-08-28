@@ -743,6 +743,16 @@ zonder active-masterdata- of current-balancefilter. Typed eligibility onderschei
 Eligible, NotPosted, AlreadyReversed, FinancialStateInvalid en NotFound. De foundation
 creëert nog geen JournalEntry of settlementreversal en muteert `Posted` niet.
 
+B3-002 gebruikt deze graph in één atomische Application-command. PostingEngine maakt
+een line-for-line debit/creditmirror op de historical Journal en accounts; vervolgens
+voegt ieder locked OpenItem exact één full-amount Reversal toe. Reversalrecord en
+settlementlinkages worden pas geschreven wanneer hun JournalEntry-/settlementtargets
+bestaan, binnen dezelfde transaction. Matches blijven staan en openAmount blijft een
+afleiding van alle facts. Sequential/concurrent duplicate, payment- en creditmatchraces
+zijn onder sorted OpenItemlocks serialiseerbaar; de gedeelde transaction boundary
+herprobeert een door MySQL vastgestelde deadlock begrensd. Success exposeert uitsluitend
+typed references, settlementcount en resulterende Money-balances voor de latere Weblaag.
+
 ## 12. Purchase Credits – duurzame documentlaag
 
 PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,

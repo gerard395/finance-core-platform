@@ -5,17 +5,26 @@ declare(strict_types=1);
 namespace Tests\Integration\Application\Banking;
 
 use App\Application\Accounting\JournalEntryStore;
+use App\Application\Accounting\MatchOpenItems;
+use App\Application\Accounting\OpenItemReadRepository;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Banking\BankTransactionAllocationInput;
 use App\Application\Banking\BankTransactionPostingRepository;
 use App\Application\Banking\BankTransactionRepository;
 use App\Application\Banking\BankTransactionResult;
+use App\Application\Banking\BankTransactionReversalRepository;
+use App\Application\Banking\BankTransactionSettlementReversalLinkRepository;
 use App\Application\Banking\CancelBankTransaction;
 use App\Application\Banking\CreateManualBankTransaction;
 use App\Application\Banking\FinalizeBankTransaction;
 use App\Application\Banking\GetBankTransactionPostingDetail;
 use App\Application\Banking\PostBankTransaction;
 use App\Application\Banking\PostBankTransactionStatus;
+use App\Application\Banking\ReverseBankTransaction;
+use App\Application\Banking\ReverseBankTransactionStatus;
+use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\Entities\OpenItemSettlement;
+use App\Domain\Accounting\ValueObjects\JournalEntryId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -25,6 +34,7 @@ use App\Domain\Banking\Enums\PaymentType;
 use App\Domain\Banking\ValueObjects\AdministrationBankAccountId;
 use App\Domain\Banking\ValueObjects\BankTransactionId;
 use App\Domain\Banking\ValueObjects\BankTransactionReference;
+use App\Domain\Banking\ValueObjects\BankTransactionReversalReason;
 use App\Domain\Banking\ValueObjects\PaymentAllocationId;
 use App\Domain\Banking\ValueObjects\TransactionDate;
 use App\Domain\Banking\ValueObjects\TransactionDescription;
@@ -196,6 +206,164 @@ final class BankTransactionPersistenceTest extends TestCase
         }
     }
 
+    public function test_customer_receipt_reversal_mirrors_historical_multi_allocation_posting_and_restores_balances(): void
+    {
+        $this->configure(self::A);
+        [, $id] = $this->create()->execute($this->admin(self::A), $this->bank(self::A), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('150', new Currency('EUR')), new BankTransactionReference('REV-MULTI'), new TransactionDescription('Multi receipt'), $this->relation(self::A), $this->user(), [$this->allocation(1, '100'), $this->allocation(2, '50')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::A), $id, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $originalEntry = DB::table('bank_transaction_postings')->where('bank_transaction_id', $id->toString())->value('journal_entry_id');
+        $originalLines = DB::table('journal_entry_lines')->where('journal_entry_id', $originalEntry)->orderBy('id')->get();
+        $taxBefore = DB::table('tax_postings')->count();
+        DB::table('journals')->where('id', str_replace('b270', 'b278', self::A))->update(['status' => 'inactive']);
+        DB::table('ledger_accounts')->whereIn('id', [str_replace('b270', 'b279', self::A), $this->ledger(self::A)])->update(['status' => 'inactive', 'name' => 'Historical renamed']);
+
+        $result = $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Incorrect bank receipt'), $this->user());
+        self::assertSame(ReverseBankTransactionStatus::Success, $result->status);
+        self::assertSame(2, $result->success?->reversedSettlementCount);
+        self::assertSame($originalEntry, $result->success?->originalJournalEntryId->toString());
+        self::assertSame('posted', DB::table('bank_transactions')->where('id', $id->toString())->value('status'));
+        self::assertSame(1, DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $id->toString())->count());
+        self::assertSame(2, DB::table('bank_transaction_settlement_reversal_links')->count());
+        self::assertSame(2, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+        self::assertSame(2, DB::table('open_item_settlements')->where('type', 'applied')->count());
+        self::assertSame($taxBefore, DB::table('tax_postings')->count());
+        $reversalEntry = $result->success?->reversalJournalEntryId->toString();
+        self::assertSame(str_replace('b270', 'b278', self::A), DB::table('journal_entries')->where('id', $reversalEntry)->value('journal_id'));
+        $contraLines = DB::table('journal_entry_lines')->where('journal_entry_id', $reversalEntry)->get()->keyBy('description');
+        self::assertCount(3, $contraLines);
+        foreach ($originalLines as $line) {
+            $contra = $contraLines->get('Reversal '.$line->id);
+            self::assertNotNull($contra);
+            self::assertSame($line->ledger_account_id, $contra->ledger_account_id);
+            self::assertSame($line->debit_amount, $contra->credit_amount);
+            self::assertSame($line->credit_amount, $contra->debit_amount);
+            self::assertSame($line->currency, $contra->currency);
+        }
+        self::assertSame(0, bccomp('100', (string) $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(1))))?->openAmount()->amount(), 8));
+        self::assertSame(0, bccomp('50', (string) $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(2))))?->openAmount()->amount(), 8));
+
+        $again = $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-29')), new BankTransactionReversalReason('Second attempt'), $this->user());
+        self::assertSame(ReverseBankTransactionStatus::AlreadyReversed, $again->status);
+        self::assertSame(1, DB::table('bank_transaction_reversals')->count());
+        self::assertSame(2, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+    }
+
+    public function test_supplier_payment_and_other_payments_and_matches_remain_independent(): void
+    {
+        DB::table('open_items')->where('id', $this->item(3))->update(['original_amount' => '121']);
+        $this->configure(self::B);
+        [, $paymentA] = $this->create()->execute($this->admin(self::B), $this->bank(self::B), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('-40', new Currency('EUR')), new BankTransactionReference('SUP-A'), new TransactionDescription('Supplier A'), $this->relation(self::B), $this->user(), [$this->allocationFor(71, 3, '40')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::B), $paymentA, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::B), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        DB::table('open_items')->insert(['id' => $this->item(4), 'administration_id' => self::B, 'relation_id' => $this->relation(self::B)->toString(), 'journal_entry_id' => $this->entry(self::B), 'control_ledger_account_id' => $this->ledger(self::B), 'open_item_type' => 'payable', 'side' => 'debit', 'original_amount' => '121', 'currency' => 'EUR', 'opened_on' => '2026-08-01', 'due_date' => null, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('open_item_matches')->insert(['id' => $this->item(5), 'administration_id' => self::B, 'debit_open_item_id' => $this->item(4), 'credit_open_item_id' => $this->item(3), 'amount' => '81', 'currency' => 'EUR', 'occurred_on' => '2026-08-27', 'source_journal_entry_id' => $this->entry(self::B), 'created_at' => now(), 'updated_at' => now()]);
+        self::assertTrue($this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(3))))?->openAmount()->isZero());
+
+        $result = $this->reverse()->execute($this->admin(self::B), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Supplier payment correction'), $this->user());
+        self::assertSame(ReverseBankTransactionStatus::Success, $result->status);
+        self::assertSame(0, bccomp('40', (string) $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(3))))?->openAmount()->amount(), 8));
+        self::assertSame(0, bccomp('40', (string) $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(4))))?->openAmount()->amount(), 8));
+        self::assertSame(1, DB::table('open_item_matches')->count());
+
+        DB::table('open_items')->where('id', $this->item(1))->update(['original_amount' => '121']);
+        $this->configure(self::A);
+        [, $receiptA] = $this->createFinalized(self::A, '40', 72, 1, 'RECEIPT-A');
+        [, $receiptB] = $this->createFinalized(self::A, '81', 73, 1, 'RECEIPT-B');
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $receiptA, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $receiptB, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        self::assertSame(ReverseBankTransactionStatus::Success, $this->reverse()->execute($this->admin(self::A), $receiptA, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Reverse payment A'), $this->user())->status);
+        self::assertSame(0, bccomp('40', (string) $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(1))))?->openAmount()->amount(), 8));
+        self::assertSame(1, DB::table('open_item_settlements')->where('payment_allocation_id', $this->allocationFor(73, 1, '81')->id->toString())->count());
+    }
+
+    public function test_reversal_failures_at_each_write_boundary_roll_back_everything(): void
+    {
+        $this->configure(self::A);
+        foreach (['journal', 'settlement', 'reversal', 'link'] as $index => $boundary) {
+            DB::table('open_items')->where('id', $this->item(1))->update(['original_amount' => (string) (400 + $index * 100)]);
+            [, $id] = $this->createFinalized(self::A, '100', 80 + $index, 1, 'REV-FAIL-'.$boundary);
+            self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+            $before = [DB::table('journal_entries')->count(), DB::table('journal_entry_lines')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_reversals')->count(), DB::table('bank_transaction_settlement_reversal_links')->count()];
+            if ($boundary === 'journal') {
+                $mock = $this->createMock(JournalEntryStore::class);
+                $mock->method('append')->willThrowException(new \RuntimeException('journal'));
+                $this->app->instance(JournalEntryStore::class, $mock);
+            } elseif ($boundary === 'settlement') {
+                $mock = $this->createMock(OpenItemSettlementStore::class);
+                $mock->method('appendSettlement')->willThrowException(new \RuntimeException('settlement'));
+                $this->app->instance(OpenItemSettlementStore::class, $mock);
+            } elseif ($boundary === 'reversal') {
+                $mock = $this->createMock(BankTransactionReversalRepository::class);
+                $mock->method('appendReversal')->willReturn(false);
+                $this->app->instance(BankTransactionReversalRepository::class, $mock);
+            } else {
+                $mock = $this->createMock(BankTransactionSettlementReversalLinkRepository::class);
+                $mock->method('appendLink')->willReturn(false);
+                $this->app->instance(BankTransactionSettlementReversalLinkRepository::class, $mock);
+            }
+            self::assertSame(ReverseBankTransactionStatus::PostingFailure, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Forced rollback'), $this->user())->status, $boundary);
+            self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('journal_entry_lines')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_reversals')->count(), DB::table('bank_transaction_settlement_reversal_links')->count()], $boundary);
+            $this->app->forgetInstance(JournalEntryStore::class);
+            $this->app->forgetInstance(OpenItemSettlementStore::class);
+            $this->app->forgetInstance(BankTransactionReversalRepository::class);
+            $this->app->forgetInstance(BankTransactionSettlementReversalLinkRepository::class);
+        }
+    }
+
+    public function test_fully_paid_purchase_credit_and_sales_credit_matches_remain_independent(): void
+    {
+        $this->configure(self::B);
+        $this->openItem(self::B, 6, 'payable', 'credit', '121');
+        [, $supplierPayment] = $this->create()->execute($this->admin(self::B), $this->bank(self::B), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('-121', new Currency('EUR')), new BankTransactionReference('FULLY-PAID'), new TransactionDescription('Fully paid supplier invoice'), $this->relation(self::B), $this->user(), [$this->allocationFor(95, 6, '121')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::B), $supplierPayment, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::B), $supplierPayment, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $this->openItem(self::B, 7, 'payable', 'debit', '121');
+        self::assertSame(ReverseBankTransactionStatus::Success, $this->reverse()->execute($this->admin(self::B), $supplierPayment, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Reverse fully paid supplier payment'), $this->user())->status);
+        self::assertSame(0, bccomp('121', (string) $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(6))))?->openAmount()->amount(), 8));
+        self::assertSame(0, bccomp('121', (string) $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(7))))?->openAmount()->amount(), 8));
+
+        $this->configure(self::A);
+        $this->openItem(self::A, 8, 'receivable', 'debit', '121');
+        [, $receipt] = $this->createFinalized(self::A, '40', 96, 8, 'SALES-CREDIT');
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $receipt, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $this->openItem(self::A, 9, 'receivable', 'credit', '121');
+        self::assertSame('Success', $this->app->make(MatchOpenItems::class)->execute($this->admin(self::A), new OpenItemId(new Uuid($this->item(8))), new OpenItemId(new Uuid($this->item(9))), new Money('81', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new JournalEntryId(new Uuid($this->entry(self::A))))->status->name);
+        self::assertSame(ReverseBankTransactionStatus::Success, $this->reverse()->execute($this->admin(self::A), $receipt, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Reverse receipt after sales credit'), $this->user())->status);
+        self::assertSame(0, bccomp('40', (string) $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(8))))?->openAmount()->amount(), 8));
+        self::assertSame(0, bccomp('40', (string) $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(9))))?->openAmount()->amount(), 8));
+        self::assertSame(1, DB::table('open_item_matches')->where('administration_id', self::A)->count());
+    }
+
+    public function test_failure_on_second_settlement_reversal_rolls_back_first_and_contra_journal(): void
+    {
+        $this->configure(self::A);
+        [, $id] = $this->create()->execute($this->admin(self::A), $this->bank(self::A), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('150', new Currency('EUR')), new BankTransactionReference('SECOND-FAIL'), new TransactionDescription('Second settlement failure'), $this->relation(self::A), $this->user(), [$this->allocationFor(97, 1, '100'), $this->allocationFor(98, 2, '50')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::A), $id, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $real = $this->app->make(OpenItemSettlementStore::class);
+        $this->app->instance(OpenItemSettlementStore::class, new class($real) implements OpenItemSettlementStore
+        {
+            private int $calls = 0;
+
+            public function __construct(private OpenItemSettlementStore $inner) {}
+
+            public function appendSettlement(OpenItem $openItem, OpenItemSettlement $settlement, ?PaymentAllocationId $paymentAllocationId = null): void
+            {
+                $this->calls++;
+                if ($this->calls === 2) {
+                    throw new \RuntimeException('Forced second settlement failure.');
+                }
+                $this->inner->appendSettlement($openItem, $settlement, $paymentAllocationId);
+            }
+        });
+        $before = [DB::table('journal_entries')->count(), DB::table('journal_entry_lines')->count(), DB::table('open_item_settlements')->count()];
+        self::assertSame(ReverseBankTransactionStatus::PostingFailure, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Rollback both settlements'), $this->user())->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('journal_entry_lines')->count(), DB::table('open_item_settlements')->count()]);
+        self::assertSame(0, DB::table('bank_transaction_reversals')->count());
+        self::assertSame(0, DB::table('bank_transaction_settlement_reversal_links')->count());
+    }
+
     public function test_real_mysql_double_finalize_has_one_success_and_one_already_finalized(): void
     {
         if (! function_exists('pcntl_fork')) {
@@ -248,6 +416,98 @@ final class BankTransactionPersistenceTest extends TestCase
         $this->cleanupCommittedFixtures();
     }
 
+    public function test_real_mysql_double_reversal_creates_one_complete_financial_truth(): void
+    {
+        $this->configure(self::A);
+        [, $id] = $this->createFinalized(self::A, '100', 91, 1, 'DOUBLE-REV');
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'bank-reverse-'), tempnam(sys_get_temp_dir(), 'bank-reverse-')];
+        $children = [];
+        foreach ($files as $file) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    $result = $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Concurrent correction'), $this->user());
+                    file_put_contents($file, $result->status->name);
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        DB::purge();
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        sort($results);
+        self::assertSame(['AlreadyReversed', 'Success'], $results);
+        self::assertSame(1, DB::table('bank_transaction_reversals')->count());
+        self::assertSame(1, DB::table('bank_transaction_settlement_reversal_links')->count());
+        self::assertSame(1, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+        self::assertSame(1, DB::table('journal_entries')->where('reference', 'REV-'.$id->toString())->count());
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        $this->cleanupCommittedFixtures();
+    }
+
+    public function test_real_mysql_reversal_and_new_payment_are_serializable(): void
+    {
+        DB::table('open_items')->where('id', $this->item(1))->update(['original_amount' => '100']);
+        $this->configure(self::A);
+        [, $paymentA] = $this->createFinalized(self::A, '100', 92, 1, 'RACE-REV-A');
+        [, $paymentB] = $this->createFinalized(self::A, '100', 93, 1, 'RACE-POST-B');
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $results = $this->runConcurrentBankOperations(
+            fn (): string => 'reverse:'.$this->reverse()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Concurrent payment correction'), $this->user())->status->name,
+            fn (): string => 'payment:'.$this->postBankTransaction()->execute($this->admin(self::A), $paymentB, new PostingDate(new DateTimeImmutable('2026-08-28')), $this->user())->name,
+        );
+        self::assertContains('reverse:Success', $results);
+        self::assertTrue(in_array('payment:Success', $results, true) || in_array('payment:AllocationExceedsOpenBalance', $results, true), implode(', ', $results));
+        self::assertSame(1, DB::table('bank_transaction_reversals')->count());
+        self::assertSame(1, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+        $open = $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(1))))?->openAmount();
+        self::assertNotNull($open);
+        self::assertFalse($open->isNegative());
+        self::assertFalse($open->subtract(new Money('100', new Currency('EUR')))->isPositive());
+        $this->cleanupCommittedFixtures();
+    }
+
+    public function test_real_mysql_supplier_reversal_and_purchase_credit_style_match_are_serializable(): void
+    {
+        DB::table('open_items')->where('id', $this->item(3))->update(['original_amount' => '121']);
+        $this->configure(self::B);
+        [, $payment] = $this->create()->execute($this->admin(self::B), $this->bank(self::B), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('-40', new Currency('EUR')), new BankTransactionReference('RACE-CREDIT'), new TransactionDescription('Payment before credit'), $this->relation(self::B), $this->user(), [$this->allocationFor(94, 3, '40')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::B), $payment, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::B), $payment, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        DB::table('open_items')->insert(['id' => $this->item(4), 'administration_id' => self::B, 'relation_id' => $this->relation(self::B)->toString(), 'journal_entry_id' => $this->entry(self::B), 'control_ledger_account_id' => $this->ledger(self::B), 'open_item_type' => 'payable', 'side' => 'debit', 'original_amount' => '121', 'currency' => 'EUR', 'opened_on' => '2026-08-01', 'due_date' => null, 'created_at' => now(), 'updated_at' => now()]);
+        $results = $this->runConcurrentBankOperations(
+            fn (): string => 'reverse:'.$this->reverse()->execute($this->admin(self::B), $payment, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Concurrent supplier correction'), $this->user())->status->name,
+            fn (): string => 'match:'.$this->app->make(MatchOpenItems::class)->executeAvailable($this->admin(self::B), new OpenItemId(new Uuid($this->item(4))), new OpenItemId(new Uuid($this->item(3))), new PostingDate(new DateTimeImmutable('2026-08-28')), new JournalEntryId(new Uuid($this->entry(self::B))))->status->name,
+        );
+        self::assertContains('reverse:Success', $results);
+        self::assertContains('match:Success', $results);
+        self::assertSame(1, DB::table('open_item_matches')->count());
+        self::assertSame(1, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+        $source = $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(3))));
+        $credit = $this->openItems()->findForAdministration($this->admin(self::B), new OpenItemId(new Uuid($this->item(4))));
+        self::assertNotNull($source);
+        self::assertNotNull($credit);
+        self::assertFalse($source->openAmount()->isNegative());
+        self::assertFalse($credit->openAmount()->isNegative());
+        self::assertTrue(($source->openAmount()->isZero() && $credit->openAmount()->isZero()) || ($source->openAmount()->equals(new Money('40', new Currency('EUR'))) && $credit->openAmount()->equals(new Money('40', new Currency('EUR')))));
+        $this->cleanupCommittedFixtures();
+    }
+
     public function test_real_mysql_competing_over_allocation_allows_only_one_post(): void
     {
         DB::table('open_items')->where('id', $this->item(1))->update(['original_amount' => '1000']);
@@ -295,6 +555,16 @@ final class BankTransactionPersistenceTest extends TestCase
     private function postBankTransaction(): PostBankTransaction
     {
         return $this->app->make(PostBankTransaction::class);
+    }
+
+    private function reverse(): ReverseBankTransaction
+    {
+        return $this->app->make(ReverseBankTransaction::class);
+    }
+
+    private function openItems(): OpenItemReadRepository
+    {
+        return $this->app->make(OpenItemReadRepository::class);
     }
 
     private function configure(string $admin): void
@@ -409,9 +679,49 @@ final class BankTransactionPersistenceTest extends TestCase
         return $results;
     }
 
+    /** @return list<string> */
+    private function runConcurrentBankOperations(callable $first, callable $second): array
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        DB::commit();
+        $files = [(string) tempnam(sys_get_temp_dir(), 'bank-op-'), (string) tempnam(sys_get_temp_dir(), 'bank-op-')];
+        $children = [];
+        foreach ([[$files[0], $first], [$files[1], $second]] as [$file, $operation]) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    file_put_contents($file, $operation());
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'ERROR:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        DB::purge();
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+
+        return $results;
+    }
+
     private function cleanupCommittedFixtures(): void
     {
+        DB::table('bank_transaction_settlement_reversal_links')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('bank_transaction_reversals')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('open_item_settlements')->whereIn('administration_id', [self::A, self::B])->where('type', 'reversal')->delete();
         DB::table('open_item_settlements')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('open_item_matches')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('bank_transaction_postings')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('journal_entry_lines')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('payment_allocations')->whereIn('administration_id', [self::A, self::B])->delete();
