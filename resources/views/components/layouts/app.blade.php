@@ -31,7 +31,7 @@
                 @endif
             </x-navigation.section>
             @if ($canViewPurchasing)
-                <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" :href="route('purchasing.invoices.index')" :active="request()->routeIs('purchasing.invoices.*')" /></x-navigation.section>
+                <x-navigation.section title="Inkoop"><x-navigation.item label="Inkoopfacturen" :href="route('purchasing.invoices.index')" :active="request()->routeIs('purchasing.invoices.*')" /><x-navigation.item label="Creditnota's" :href="route('purchasing.credits.index')" :active="request()->routeIs('purchasing.credits.*')" /></x-navigation.section>
             @endif
             @if($canViewBanking)<x-navigation.section title="Bank"><x-navigation.item label="Betalingen" :href="route('banking.payments.index')" :active="request()->routeIs('banking.payments.*')" /></x-navigation.section>@endif
             <x-navigation.section title="Financieel"><x-navigation.item label="Grootboek" disabled /><x-navigation.item label="Openstaande posten" disabled /><x-navigation.item label="BTW" disabled /><x-navigation.item label="Rapportages" disabled /></x-navigation.section>

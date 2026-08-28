@@ -68,4 +68,45 @@ ondersteunde Input-TaxCode-selectors; detail blijft historische snapshots tonen.
 vereist een expliciete PostingDate en presenteert daarna linkage en het Payable/Credit
 OpenItem. Er bestaat geen GET-mutatie, automatische finalize/post of paymentactie.
 
-`PurchaseCreditInvoice` blijft een bestaand prototype en valt buiten P3.
+## PurchaseCreditInvoice contract (PC-000)
+
+Een PurchaseCreditInvoice is een ontvangen leverancierscreditnota tegen exact één
+same-tenant, same-supplier Posted PurchaseInvoice. PC V1 selecteert één of meer volledige
+source PurchaseInvoiceLines; iedere source line is maximaal eenmaal creditable en wordt
+zonder actuele Supplier-, TaxCode-, account- of configurationsinterpretatie exact
+gereversed. Partial quantity/amount/tax en source-less of cross-invoice credits zijn
+uitgesteld.
+
+De credit heeft een eigen extern, case-sensitive suppliercreditnummer met afzonderlijke
+namespace en unieke Administration + Supplier + nummer-identity. Zij gebruikt de
+historische supplier/address/line/fiscal snapshots en de werkelijk geboekte source-
+accounts. De lifecycle is Draft → Finalized → Posted of pre-post Cancelled, met actor-
+en clockaudit bij Finalize/Post.
+
+Post maakt via Accounting/Fiscal een gebalanceerde historical-account reversal,
+Input/Reversal TaxPostings en een positieve Payable/Debit. Die wordt automatisch tot
+het actuele source-openbedrag via OpenItemMatch tegen de Payable/Credit gematcht. Een
+overschot blijft open supplier credit balance; bestaande settlements/cash worden nooit
+teruggedraaid. De volledige contracten en concurrencyvolgorde staan in PC-000.
+
+PC-001 persisteert nu header en volledige source-line snapshots, inclusief de typed
+Original TaxPosting-reference en exacte source Payable/Credit OpenItem-reference.
+Create, Draft-update, Finalize en Cancel zijn tenant-scoped en schrijven geen financiële
+facts. Alleen PC-002 introduceert de posted source-line claim en Post-overgang.
+
+PC-002 implementeert die overgang atomisch met het historische purchase journal, de
+gesnapshotte Expense/Asset-account, de originele Input-VAT-line en het AP-control
+account van het bron-open-item. Het positieve Payable/Debit heeft geen due date. PC-002
+maakt nog geen match of settlement; automatische matching uit het eindcontract volgt
+in PC-003.
+
+PC-003 matcht nu binnen dezelfde Post-transactie uitsluitend de concrete source
+Payable/Credit tegen de nieuwe Payable/Debit. Het bedrag is de kleinste actuele open
+waarde onder gesorteerde OpenItem-locks. Bestaande betalingen blijven settlements;
+een creditoverschot blijft open leverancierscredit. De Webflow biedt tenant-scoped
+bronselectie, volledige-regelcheckboxen en onafhankelijk geautoriseerde lifecycleacties.
+
+PC-004 heeft de volledige batch gereviewd. Matching gebruikt onder locks het actuele
+duurzame saldo, inclusief reeds geboekte later gedateerde settlements; creditability
+blijft onafhankelijk van het onbetaalde saldo. De PC-batch is regressiegetest en
+merge-ready zonder uitbreiding naar partial credits, refunds of payment reversal.

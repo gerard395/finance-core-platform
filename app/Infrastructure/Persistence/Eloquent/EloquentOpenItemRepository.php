@@ -120,7 +120,6 @@ final class EloquentOpenItemRepository implements BankingOpenItemLocker, OpenIte
         $ids = [$debitOpenItemId->toString(), $creditOpenItemId->toString()];
         sort($ids);
         $records = OpenItemRecord::query()
-            ->with('settlements')
             ->where('administration_id', $administrationId->toString())
             ->whereIn('id', $ids)
             ->orderBy('id')
@@ -128,11 +127,32 @@ final class EloquentOpenItemRepository implements BankingOpenItemLocker, OpenIte
             ->get()
             ->keyBy('id');
 
+        $settlements = OpenItemSettlementRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->whereIn('open_item_id', $ids)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get()
+            ->groupBy('open_item_id');
+        $matches = OpenItemMatchRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where(static fn ($query) => $query->whereIn('debit_open_item_id', $ids)->orWhereIn('credit_open_item_id', $ids))
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
         $debit = $records->get($debitOpenItemId->toString());
         $credit = $records->get($creditOpenItemId->toString());
 
+        if ($debit instanceof OpenItemRecord) {
+            $debit->setRelation('settlements', $settlements->get($debitOpenItemId->toString(), new Collection));
+        }
+        if ($credit instanceof OpenItemRecord) {
+            $credit->setRelation('settlements', $settlements->get($creditOpenItemId->toString(), new Collection));
+        }
+
         return $debit instanceof OpenItemRecord && $credit instanceof OpenItemRecord
-            ? new OpenItemMatchPair($this->hydrate($debit), $this->hydrate($credit))
+            ? new OpenItemMatchPair($this->hydrate($debit, $matches), $this->hydrate($credit, $matches))
             : null;
     }
 

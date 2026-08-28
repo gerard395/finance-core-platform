@@ -14,12 +14,13 @@ final class PurchasingAuthorizationDefinitionsTest extends TestCase
     {
         self::assertSame([
             'PURCHASING.VIEW', 'PURCHASING.INVOICES_DRAFT_MANAGE', 'PURCHASING.INVOICES_FINALIZE', 'PURCHASING.INVOICES_POST',
+            'PURCHASING.CREDITS_DRAFT_MANAGE', 'PURCHASING.CREDITS_FINALIZE', 'PURCHASING.CREDITS_POST',
         ], array_map(static fn (PurchasingPermission $permission): string => $permission->value, PurchasingPermission::cases()));
-        self::assertCount(4, array_unique(array_map(static fn (PurchasingPermission $permission): string => $permission->id()->toString(), PurchasingPermission::cases())));
+        self::assertCount(7, array_unique(array_map(static fn (PurchasingPermission $permission): string => $permission->id()->toString(), PurchasingPermission::cases())));
         self::assertSame(['PURCHASING_MANAGER', 'PURCHASING_POSTER'], array_map(static fn (PurchasingRole $role): string => $role->value, PurchasingRole::cases()));
         self::assertSame([
-            'PURCHASING.VIEW', 'PURCHASING.INVOICES_DRAFT_MANAGE', 'PURCHASING.INVOICES_FINALIZE',
+            'PURCHASING.VIEW', 'PURCHASING.INVOICES_DRAFT_MANAGE', 'PURCHASING.INVOICES_FINALIZE', 'PURCHASING.CREDITS_DRAFT_MANAGE', 'PURCHASING.CREDITS_FINALIZE',
         ], array_map(static fn (PurchasingPermission $permission): string => $permission->value, PurchasingRole::Manager->permissions()));
-        self::assertSame(['PURCHASING.VIEW', 'PURCHASING.INVOICES_POST'], array_map(static fn (PurchasingPermission $permission): string => $permission->value, PurchasingRole::Poster->permissions()));
+        self::assertSame(['PURCHASING.VIEW', 'PURCHASING.INVOICES_POST', 'PURCHASING.CREDITS_POST'], array_map(static fn (PurchasingPermission $permission): string => $permission->value, PurchasingRole::Poster->permissions()));
     }
 }

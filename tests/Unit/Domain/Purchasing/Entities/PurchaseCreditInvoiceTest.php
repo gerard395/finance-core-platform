@@ -30,7 +30,7 @@ final class PurchaseCreditInvoiceTest extends TestCase
         $creditInvoice = $this->createCreditInvoice();
 
         self::assertSame('550e8400-e29b-41d4-a716-446655440000', $creditInvoice->id()->toString());
-        self::assertSame('PCR-001', $creditInvoice->number()->value());
+        self::assertSame('pcr-001', $creditInvoice->number()->value());
         self::assertSame('550e8400-e29b-41d4-a716-446655440001', $creditInvoice->administrationId()->toString());
         self::assertSame('550e8400-e29b-41d4-a716-446655440002', $creditInvoice->supplierId()->toString());
         self::assertSame('EUR', $creditInvoice->currency()->code());

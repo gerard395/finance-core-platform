@@ -200,6 +200,10 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
 - P3-posting bewaart atomair JournalEntry, Input TaxPostings, één Payable/Credit OpenItem, append-only linkage en Posted-status. Paymentstatus wordt uit OpenItem afgeleid; PurchaseInvoice heeft geen handmatige Paid/PartiallyPaid-status.
 - Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert settlement/matching niet rechtstreeks.
+- PC V1 definieert PurchaseCreditInvoice als ontvangen leverancierscreditnota tegen exact één same-tenant/same-supplier Posted PurchaseInvoice. Zij selecteert één of meer volledige source PurchaseInvoiceLines uit uitsluitend die invoice; partial line amounts/quantities/tax en source-less credits zijn niet toegestaan.
+- Iedere PurchaseCreditLine heeft duurzame source-line linkage. Een source line kan maximaal eenmaal gepost volledig worden gecrediteerd; een bij Post geappende unieke reversal-claim en de unieke Original→Reversal TaxPosting-link bewaken dit ook onder concurrency zonder Draft/Cancelled-selecties permanent te laten claimen.
+- PurchaseCredit gebruikt de historische supplier/address/account/tax snapshots en de daadwerkelijk geboekte source JournalEntry-/TaxPosting-/Payable-rekeningen. De huidige Supplier, TaxCode of PurchasePostingConfiguration mag reversaltruth niet herinterpreteren.
+- PurchaseCredit-posting maakt een positieve Payable/Debit en matcht die atomisch via OpenItemMatch tot het actuele open source Payable/Credit-bedrag. Bestaande OpenItemSettlements/cash blijven staan; een remainder is een open supplier credit balance.
 - `PurchasePostingConfiguration` is Administration-owned en verwijst met harde tenant-FK's naar exact een active Purchase Journal, active Liability/AP en active Asset/Input VAT. De typed reader kent Missing, Success en exacte InvalidReference; er bestaat geen default Expense-account of heuristische replacement.
 - De domestic Input-catalogus bevat uitsluitend typed Input standard/reduced/zero/exempt/outside-scope codes en wordt expliciet create-missing-only via Administration-settings beschikbaar gemaakt. TaxCodekeuze blijft later line-owned.
 
@@ -700,3 +704,22 @@ leveranciersbetaling en een positief gebruikersbedrag naar signed Money; zij bep
 geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en Post zijn
 afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
 linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.
+
+## 12. Purchase Credits – duurzame documentlaag
+
+PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,
+immutable supplier/address/source-line/account/tax snapshots, Original TaxPosting-IDs,
+de exacte source Payable/Credit en Created/Finalized/Cancelled auditfacts. Draft,
+Finalize en Cancel veroorzaken geen Accounting- of Fiscal-mutaties; Posted kan worden
+gereconstitueerd maar wordt pas door PC-002 gemuteerd.
+
+PC-002 maakt `Posted` atomisch met auditactor/-tijd, expliciete boekingsdatum,
+historische net/VAT/AP/journal-reversal, een `Payable/Debit` zonder vervaldatum en
+duurzame source-line claims plus posting linkage. Actuele purchase-configuratie wordt
+niet geraadpleegd. Match en settlement blijven buiten PC-002; het postingreadmodel
+levert PC-003 alle identiteiten om actuele open saldi onder locks te herlezen.
+
+PC-003 neemt matching op in dezelfde postingtransactie. Onder gesorteerde OpenItem-locks
+is het bedrag `min(bron open, credit open)`; cashsettlements blijven immutable en een
+overschot blijft als Payable/Debit leverancierscredit open. De permission-onafhankelijke
+Webflow selecteert uitsluitend volledige regels van een tenant-owned Posted EUR-bron.

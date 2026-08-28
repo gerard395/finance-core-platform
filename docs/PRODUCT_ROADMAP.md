@@ -628,6 +628,30 @@ Original/Reversal-TaxPostings bestaan, reverse-charge/import/deductibility en
 EUR-conversie zijn ontworpen en fiscale perioden/locks plus afrondingsbeleid gereed
 zijn.
 
+PC-000 heeft de PurchaseCredit-contracten definitief uitgelijnd. Domestic EUR V1
+vereist exact één Posted same-supplier source PurchaseInvoice en ondersteunt één of
+meer volledige source-line reversals uit uitsluitend die invoice. De credit gebruikt
+een eigen externe suppliercreditidentity en bewaart source snapshots; historische
+Expense/Asset-, Input-VAT- en AP-rekeningen komen uit de werkelijk geboekte source
+facts. Post creëert Input/Reversal TaxPostings en een Payable/Debit, die atomisch tot
+het actuele source-openbedrag wordt gematcht. Een betaald deel blijft cashtruth en het
+creditsurplus blijft open supplier credit balance.
+
+De bestaande schemafundamenten leveren alle kritieke historische truth en locking;
+er is geen designpredecessor nodig. De split PC-001 authorization/persistence/
+Application, PC-002 transactionele posting/tax reversal, PC-003 matching/Web en PC-004
+review/regression blijft definitief. Partial credits, payment reversal, attachments/OCR,
+International Purchase VAT, Bank Import en VAT/ICP reporting blijven deferred.
+
+PC-001 levert nu authorization, tenant-safe aggregate/persistence en de
+Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 levert
+de transactionele historische journal/net/VAT/AP-reversal, posted audit, unieke
+bronregelclaims, een Payable/Debit zonder due date en het PC-003-postingreadmodel.
+PC-003 levert de automatische, payment-race-safe source matching en de volledige
+permission-scoped PurchaseCredit Webflow. PC-004 heeft de afsluitende review en brede
+regressie groen afgerond; de PC-batch is merge-ready. Partial credits, refunds en de
+overige expliciet uitgestelde capabilities blijven deferred.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

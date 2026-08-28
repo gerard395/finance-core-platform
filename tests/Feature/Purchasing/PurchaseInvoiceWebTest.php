@@ -90,6 +90,27 @@ final class PurchaseInvoiceWebTest extends TestCase
         self::assertSame(1, DB::table('tax_postings')->count());
         self::assertSame(1, DB::table('open_items')->count());
         $this->get('/purchasing/invoices/'.$invoice->id)->assertOk()->assertSee('Crediteur / openstaande post')->assertSee('121,00')->assertDontSee('Bewerken')->assertDontSee('Annuleren');
+        $sourceLine = DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('id');
+        $this->get('/purchasing/credits')->assertOk()->assertSee('Nieuwe creditnota');
+        $this->get('/purchasing/credits/create?source='.$invoice->id)->assertOk()->assertSee('Supplier &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Purchase');
+        $creditPayload = ['administration_id' => '95000000-0000-4000-8000-000000000001', 'source_invoice_id' => $invoice->id, 'supplier_credit_invoice_number' => 'CR-001<script>', 'supplier_credit_date' => '2026-08-23', 'received_date' => '2026-08-24', 'source_line_ids' => [$sourceLine], 'amount' => '0', 'ledger_account_id' => self::AP];
+        $creditResponse = $this->post('/purchasing/credits', $creditPayload);
+        $credit = DB::table('purchase_credit_invoices')->first();
+        self::assertNotNull($credit);
+        self::assertSame(self::ADMIN, $credit->administration_id);
+        $creditResponse->assertRedirect('/purchasing/credits/'.$credit->id);
+        $this->get('/purchasing/credits/'.$credit->id)->assertOk()->assertSee('CR-001&lt;script&gt;', false)->assertDontSee('CR-001<script>', false);
+        $creditPayload['supplier_credit_invoice_number'] = 'CR-001-EDIT';
+        $this->put('/purchasing/credits/'.$credit->id, $creditPayload)->assertRedirect('/purchasing/credits/'.$credit->id);
+        $this->post('/purchasing/credits/'.$credit->id.'/finalize')->assertRedirect('/purchasing/credits/'.$credit->id);
+        $this->post('/purchasing/credits/'.$credit->id.'/post', ['posting_date' => '2026-08-25'])->assertRedirect('/purchasing/credits/'.$credit->id);
+        self::assertSame('posted', DB::table('purchase_credit_invoices')->where('id', $credit->id)->value('status'));
+        self::assertSame(1, DB::table('purchase_credit_invoice_postings')->count());
+        self::assertSame(1, DB::table('purchase_credit_source_line_claims')->count());
+        self::assertSame(1, DB::table('open_item_matches')->count());
+        $this->get('/purchasing/credits/'.$credit->id)->assertOk()->assertSee('Automatisch verrekend')->assertSee('121,00')->assertSee('Leverancierscreditsaldo')->assertDontSee('Bewerken')->assertDontSee('Annuleren');
+        $this->get('/purchasing/credits/not-a-uuid')->assertNotFound();
+        $this->post('/purchasing/credits/not-a-uuid/post', ['posting_date' => '2026-08-25'])->assertNotFound();
         $this->post('/purchasing/invoices', $this->payload('SUP-002'));
         $cancelled = DB::table('purchase_invoices')->where('supplier_invoice_number', 'SUP-002')->first();
         self::assertNotNull($cancelled);
@@ -120,6 +141,25 @@ final class PurchaseInvoiceWebTest extends TestCase
         $this->post('/purchasing/invoices/00000000-0000-4000-8000-000000000001/post', ['posting_date' => '2026-08-25'])->assertForbidden();
         DB::table('administration_memberships')->where('id', self::MEMBERSHIP)->update(['active' => false]);
         $this->get('/purchasing/invoices')->assertRedirect('/administrations/select');
+    }
+
+    public function test_purchase_credit_permissions_are_independent(): void
+    {
+        $this->login();
+        $routes = [
+            PurchasingPermission::View->value => ['/purchasing/credits', 'get', 200],
+            PurchasingPermission::ManageCreditDrafts->value => ['/purchasing/credits/create', 'get', 200],
+            PurchasingPermission::FinalizeCredits->value => ['/purchasing/credits/00000000-0000-4000-8000-000000000001/finalize', 'post', 404],
+            PurchasingPermission::PostCredits->value => ['/purchasing/credits/00000000-0000-4000-8000-000000000001/post', 'post', 404],
+        ];
+        foreach ([PurchasingPermission::View, PurchasingPermission::ManageCreditDrafts, PurchasingPermission::FinalizeCredits, PurchasingPermission::PostCredits] as $index => $permission) {
+            DB::table('administration_membership_roles')->delete();
+            $this->assignOnly($permission, $index + 80);
+            foreach ($routes as $code => [$url, $method, $allowed]) {
+                $response = $method === 'get' ? $this->get($url) : $this->post($url, ['posting_date' => '2026-08-25']);
+                $code === $permission->value ? $response->assertStatus($allowed) : $response->assertForbidden();
+            }
+        }
     }
 
     private function fixtures(): void
