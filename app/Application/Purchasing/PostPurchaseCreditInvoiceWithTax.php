@@ -100,7 +100,7 @@ final readonly class PostPurchaseCreditInvoiceWithTax
                 $input->reversalTaxPostingId(), $creditInvoice->administrationId(), $original->taxCodeId(), $original->taxRate(),
                 $original->taxableBase(), $original->taxAmount(), TaxPostingDirection::Input, TaxSourceDocumentType::PurchaseCreditInvoice,
                 new TaxSourceDocumentId($creditInvoice->id()->uuid()), new TaxSourceLineId($line->id()->uuid()),
-                $entry->postingDate(), $entry->id(), $input->expenseReversalLineId(), $input->taxReversalLineId(),
+                new PostingDate($creditInvoice->fiscalReportingDate()), $entry->id(), $input->expenseReversalLineId(), $input->taxReversalLineId(),
                 TaxPostingType::Reversal, $original->id(),
                 $original->treatment(), $original->vatReturnClassification(), $original->icpClassification(),
             );

@@ -8,10 +8,14 @@ use App\Application\Purchasing\CancelPurchaseCreditInvoice;
 use App\Application\Purchasing\CreatePurchaseCreditInvoice;
 use App\Application\Purchasing\FinalizePurchaseCreditInvoice;
 use App\Application\Purchasing\GetPurchaseCreditInvoice;
+use App\Application\Purchasing\PostPurchaseCreditInvoice;
+use App\Application\Purchasing\PostPurchaseCreditInvoiceStatus;
 use App\Application\Purchasing\PurchaseCreditClock;
 use App\Application\Purchasing\PurchaseCreditDraftInput;
 use App\Application\Purchasing\PurchaseCreditMutationResult;
+use App\Application\Purchasing\PurchaseCreditPostingRepository;
 use App\Application\Purchasing\UpdateDraftPurchaseCreditInvoice;
+use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
@@ -113,6 +117,52 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         self::assertSame(PurchaseCreditMutationResult::InvalidLines, $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $empty->id, $this->actor()));
     }
 
+    public function test_finalized_credit_posts_historical_reversal_atomically_and_is_idempotent(): void
+    {
+        $created = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('PCR-POST'), $this->actor());
+        self::assertSame(PurchaseCreditMutationResult::Success, $created->status);
+        self::assertSame(PurchaseCreditMutationResult::Success, $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $created->id, $this->actor()));
+
+        DB::table('journals')->where('id', self::JOURNAL)->update(['status' => 'inactive']);
+        DB::table('ledger_accounts')->whereIn('id', [self::EXPENSE, self::VAT, self::AP])->update(['status' => 'inactive']);
+        $beforeMatches = DB::table('open_item_matches')->count();
+        $beforeSettlements = DB::table('open_item_settlements')->count();
+        $postingDate = new PostingDate(new DateTimeImmutable('2026-08-27'));
+        $post = $this->app->make(PostPurchaseCreditInvoice::class);
+
+        $result = $post->execute($this->admin(), $created->id, $postingDate, $this->actor());
+        self::assertSame(PostPurchaseCreditInvoiceStatus::Success, $result->status);
+        self::assertSame(PostPurchaseCreditInvoiceStatus::AlreadyPosted, $post->execute($this->admin(), $created->id, $postingDate, $this->actor())->status);
+        self::assertSame(1, DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame(1, DB::table('purchase_credit_source_line_claims')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame('posted', DB::table('purchase_credit_invoices')->where('id', $created->id->toString())->value('status'));
+        self::assertSame(self::USER, DB::table('purchase_credit_invoices')->where('id', $created->id->toString())->value('posted_by'));
+        self::assertSame(self::JOURNAL, DB::table('journal_entries')->where('id', $result->journalEntryId?->toString())->value('journal_id'));
+
+        $lines = DB::table('journal_entry_lines')->where('journal_entry_id', $result->journalEntryId?->toString())->get()->keyBy('ledger_account_id');
+        self::assertSame('100', (string) $lines[self::EXPENSE]->credit_amount);
+        self::assertSame('21', (string) $lines[self::VAT]->credit_amount);
+        self::assertSame('121', (string) $lines[self::AP]->debit_amount);
+        $tax = DB::table('tax_postings')->where('source_document_type', 'purchase_credit_invoice')->first();
+        self::assertSame(self::TAX_POSTING, $tax?->reversed_tax_posting_id);
+        self::assertSame('2026-08-22', $tax?->posting_date);
+        $open = DB::table('open_items')->where('id', $result->openItemId?->toString())->first();
+        self::assertSame('payable', $open?->open_item_type);
+        self::assertSame('debit', $open?->side);
+        self::assertSame('121', (string) $open?->original_amount);
+        self::assertNull($open?->due_date);
+        self::assertSame(self::AP, $open?->control_ledger_account_id);
+        self::assertSame(self::RELATION, $open?->relation_id);
+        $readModel = $this->app->make(PurchaseCreditPostingRepository::class)->findReadModel($this->admin(), $created->id);
+        self::assertSame(self::INVOICE, $readModel?->sourceInvoiceId->toString());
+        self::assertSame(self::OPEN_ITEM, $readModel?->sourcePayableOpenItemId->toString());
+        self::assertSame('121', $readModel?->grossAmount->amount());
+        self::assertTrue($readModel?->allSourceLinesClaimed);
+        self::assertCount(1, $readModel?->reversalTaxPostingIdsByCreditLine ?? []);
+        self::assertSame($beforeMatches, DB::table('open_item_matches')->count());
+        self::assertSame($beforeSettlements, DB::table('open_item_settlements')->count());
+    }
+
     public function test_real_mysql_duplicate_create_rename_and_double_finalize_are_serialized(): void
     {
         if (! function_exists('pcntl_fork')) {
@@ -141,6 +191,36 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         self::assertSame(['AlreadyFinalized', 'Success'], $finalizeResults);
         self::assertSame(self::USER, DB::table('purchase_credit_invoices')->where('id', $finalize->id->toString())->value('finalized_by'));
         self::assertSame(1, DB::table('purchase_credit_invoice_lines')->where('purchase_credit_invoice_id', $finalize->id->toString())->count());
+
+        $double = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('Race-post'), $this->actor());
+        $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $double->id, $this->actor());
+        $postResults = $this->forkResults('pc-post-', fn (): string => $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $double->id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor())->status->name);
+        sort($postResults);
+        self::assertSame(['AlreadyPosted', 'Success'], $postResults);
+        self::assertSame(1, DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $double->id->toString())->count());
+        $doubleLinkage = DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $double->id->toString())->first();
+        DB::table('purchase_credit_source_line_claims')->where('purchase_credit_invoice_id', $double->id->toString())->delete();
+        DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $double->id->toString())->delete();
+        DB::table('tax_postings')->where('source_document_id', $double->id->toString())->delete();
+        DB::table('open_items')->where('id', $doubleLinkage->open_item_id)->delete();
+        DB::table('journal_entry_lines')->where('journal_entry_id', $doubleLinkage->journal_entry_id)->delete();
+        DB::table('journal_entries')->where('id', $doubleLinkage->journal_entry_id)->delete();
+        DB::table('purchase_credit_invoice_lines')->where('purchase_credit_invoice_id', $double->id->toString())->delete();
+        DB::table('purchase_credit_invoices')->where('id', $double->id->toString())->delete();
+
+        $winner = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('Race-claim-a'), $this->actor());
+        $loser = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('Race-claim-b'), $this->actor());
+        $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $winner->id, $this->actor());
+        $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $loser->id, $this->actor());
+        $claimResults = $this->forkResults('pc-claim-', function (int $index) use ($winner, $loser): string {
+            $id = $index === 0 ? $winner->id : $loser->id;
+
+            return $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor())->status->name;
+        });
+        sort($claimResults);
+        self::assertSame(['SourceLineAlreadyCredited', 'Success'], $claimResults);
+        self::assertSame(1, DB::table('purchase_credit_source_line_claims')->where('source_purchase_invoice_line_id', self::LINE)->count());
+        self::assertSame(1, DB::table('purchase_credit_invoices')->whereIn('id', [$winner->id->toString(), $loser->id->toString()])->where('status', 'finalized')->count());
         $this->cleanupCommittedFixtures();
         DB::beginTransaction();
     }
@@ -198,10 +278,13 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
 
     private function cleanupCommittedFixtures(): void
     {
+        DB::table('purchase_credit_source_line_claims')->where('administration_id', self::A)->delete();
+        DB::table('purchase_credit_invoice_postings')->where('administration_id', self::A)->delete();
         DB::table('purchase_credit_invoice_lines')->where('administration_id', self::A)->delete();
         DB::table('purchase_credit_invoices')->where('administration_id', self::A)->delete();
         DB::table('purchase_invoice_postings')->where('administration_id', self::A)->delete();
         DB::table('open_items')->where('administration_id', self::A)->delete();
+        DB::table('tax_postings')->where('administration_id', self::A)->where('type', 'reversal')->delete();
         DB::table('tax_postings')->where('administration_id', self::A)->delete();
         DB::table('journal_entry_lines')->where('administration_id', self::A)->delete();
         DB::table('journal_entries')->where('administration_id', self::A)->delete();

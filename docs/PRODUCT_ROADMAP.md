@@ -644,8 +644,10 @@ review/regression blijft definitief. Partial credits, payment reversal, attachme
 International Purchase VAT, Bank Import en VAT/ICP reporting blijven deferred.
 
 PC-001 levert nu authorization, tenant-safe aggregate/persistence en de
-Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 is de
-volgende grens voor posting, tax reversal, source-line claims en Payable/Debit.
+Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 levert
+de transactionele historische journal/net/VAT/AP-reversal, posted audit, unieke
+bronregelclaims, een Payable/Debit zonder due date en het PC-003-postingreadmodel.
+Automatische matching blijft in PC-003.
 
 ## Releases
 

@@ -93,3 +93,9 @@ PC-001 persisteert nu header en volledige source-line snapshots, inclusief de ty
 Original TaxPosting-reference en exacte source Payable/Credit OpenItem-reference.
 Create, Draft-update, Finalize en Cancel zijn tenant-scoped en schrijven geen financiële
 facts. Alleen PC-002 introduceert de posted source-line claim en Post-overgang.
+
+PC-002 implementeert die overgang atomisch met het historische purchase journal, de
+gesnapshotte Expense/Asset-account, de originele Input-VAT-line en het AP-control
+account van het bron-open-item. Het positieve Payable/Debit heeft geen due date. PC-002
+maakt nog geen match of settlement; automatische matching uit het eindcontract volgt
+in PC-003.

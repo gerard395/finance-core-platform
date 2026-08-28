@@ -43,10 +43,13 @@ use App\Application\Identity\PermissionRepository;
 use App\Application\Identity\RolePermissionRepository;
 use App\Application\Identity\RoleRepository;
 use App\Application\Identity\UserRepository;
+use App\Application\Purchasing\PostPurchaseCreditInvoiceWithTax;
 use App\Application\Purchasing\PostPurchaseInvoice;
 use App\Application\Purchasing\PurchaseCreditClock;
+use App\Application\Purchasing\PurchaseCreditHistoricalPostingReader;
 use App\Application\Purchasing\PurchaseCreditIdentityGenerator;
 use App\Application\Purchasing\PurchaseCreditInvoiceRepository;
+use App\Application\Purchasing\PurchaseCreditPostingRepository;
 use App\Application\Purchasing\PurchaseCreditSourceReader;
 use App\Application\Purchasing\PurchaseInvoiceClock;
 use App\Application\Purchasing\PurchaseInvoiceIdentityGenerator;
@@ -211,7 +214,9 @@ use App\Infrastructure\Persistence\Eloquent\EloquentTaxCodeRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
 use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
+use App\Infrastructure\Purchasing\EloquentPurchaseCreditHistoricalPostingReader;
 use App\Infrastructure\Purchasing\EloquentPurchaseCreditInvoiceRepository;
+use App\Infrastructure\Purchasing\EloquentPurchaseCreditPostingRepository;
 use App\Infrastructure\Purchasing\EloquentPurchaseCreditSourceReader;
 use App\Infrastructure\Purchasing\EloquentPurchaseInvoiceMasterDataReader;
 use App\Infrastructure\Purchasing\EloquentPurchaseInvoicePostingRepository;
@@ -367,8 +372,19 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PurchaseInvoiceRepository::class, EloquentPurchaseInvoiceRepository::class);
         $this->app->bind(PurchaseCreditInvoiceRepository::class, EloquentPurchaseCreditInvoiceRepository::class);
         $this->app->bind(PurchaseCreditSourceReader::class, EloquentPurchaseCreditSourceReader::class);
+        $this->app->bind(PurchaseCreditHistoricalPostingReader::class, EloquentPurchaseCreditHistoricalPostingReader::class);
+        $this->app->bind(PurchaseCreditPostingRepository::class, EloquentPurchaseCreditPostingRepository::class);
         $this->app->bind(PurchaseCreditIdentityGenerator::class, LaravelPurchaseCreditIdentityGenerator::class);
         $this->app->bind(PurchaseCreditClock::class, SystemPurchaseCreditClock::class);
+        $this->app->bind(PostPurchaseCreditInvoiceWithTax::class, function ($app): PostPurchaseCreditInvoiceWithTax {
+            $identities = $app->make(PurchaseCreditIdentityGenerator::class);
+
+            return new PostPurchaseCreditInvoiceWithTax(
+                new TaxPostingReversalPolicy,
+                new TaxPostingIdentityPolicy,
+                new PostingEngine(new PostingValidation, fn () => $identities->journalEntryId()),
+            );
+        });
         $this->app->bind(PurchaseInvoiceMasterDataReader::class, EloquentPurchaseInvoiceMasterDataReader::class);
         $this->app->bind(PurchaseInvoiceIdentityGenerator::class, LaravelPurchaseInvoiceIdentityGenerator::class);
         $this->app->bind(PurchaseInvoiceClock::class, SystemPurchaseInvoiceClock::class);

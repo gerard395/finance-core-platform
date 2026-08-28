@@ -26,7 +26,7 @@ final class PurchaseCreditInvoice
     private array $lines = [];
 
     /** @param list<PurchaseCreditInvoiceLine> $lines */
-    public function __construct(private readonly PurchaseCreditInvoiceId $id, private PurchaseCreditInvoiceNumber $number, private readonly AdministrationId $administrationId, private readonly SupplierId $supplierId, private readonly Currency $currency, private DateTimeImmutable $creditInvoiceDate, private readonly ?PurchaseInvoiceId $sourcePurchaseInvoiceId, private PurchaseCreditInvoiceStatus $status, private readonly ?PurchaseSupplierSnapshot $supplier = null, private readonly ?PurchaseDocumentAddress $documentAddress = null, private ?DateTimeImmutable $receivedDate = null, private ?DateTimeImmutable $fiscalReportingDate = null, private readonly ?DateTimeImmutable $sourceSupplyDate = null, private readonly ?OpenItemId $sourcePayableOpenItemId = null, private readonly ?UserId $createdBy = null, private readonly ?DateTimeImmutable $createdAt = null, array $lines = [], private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null, private ?UserId $cancelledBy = null, private ?DateTimeImmutable $cancelledAt = null)
+    public function __construct(private readonly PurchaseCreditInvoiceId $id, private PurchaseCreditInvoiceNumber $number, private readonly AdministrationId $administrationId, private readonly SupplierId $supplierId, private readonly Currency $currency, private DateTimeImmutable $creditInvoiceDate, private readonly ?PurchaseInvoiceId $sourcePurchaseInvoiceId, private PurchaseCreditInvoiceStatus $status, private readonly ?PurchaseSupplierSnapshot $supplier = null, private readonly ?PurchaseDocumentAddress $documentAddress = null, private ?DateTimeImmutable $receivedDate = null, private ?DateTimeImmutable $fiscalReportingDate = null, private readonly ?DateTimeImmutable $sourceSupplyDate = null, private readonly ?OpenItemId $sourcePayableOpenItemId = null, private readonly ?UserId $createdBy = null, private readonly ?DateTimeImmutable $createdAt = null, array $lines = [], private ?UserId $finalizedBy = null, private ?DateTimeImmutable $finalizedAt = null, private ?UserId $cancelledBy = null, private ?DateTimeImmutable $cancelledAt = null, private ?UserId $postedBy = null, private ?DateTimeImmutable $postedAt = null)
     {
         $this->receivedDate ??= $creditInvoiceDate;
         $this->fiscalReportingDate ??= max($creditInvoiceDate, $this->receivedDate);
@@ -140,6 +140,16 @@ final class PurchaseCreditInvoice
         return $this->cancelledAt;
     }
 
+    public function postedBy(): ?UserId
+    {
+        return $this->postedBy;
+    }
+
+    public function postedAt(): ?DateTimeImmutable
+    {
+        return $this->postedAt;
+    }
+
     /** @return list<PurchaseCreditInvoiceLine> */
     public function lines(): array
     {
@@ -194,14 +204,17 @@ final class PurchaseCreditInvoice
     }
 
     /** Reconstitution compatibility only; PC-001 exposes no post use case. */
-    public function post(): void
+    public function post(?UserId $actor = null, ?DateTimeImmutable $at = null): void
     {
         if ($this->status === PurchaseCreditInvoiceStatus::Posted) {
             return;
         }
         if ($this->status !== PurchaseCreditInvoiceStatus::Finalized) {
             throw new DomainException('Only Finalized can be posted.');
-        }$this->status = PurchaseCreditInvoiceStatus::Posted;
+        }
+        $this->status = PurchaseCreditInvoiceStatus::Posted;
+        $this->postedBy = $actor;
+        $this->postedAt = $at;
     }
 
     public function cancel(?UserId $actor = null, ?DateTimeImmutable $at = null): void

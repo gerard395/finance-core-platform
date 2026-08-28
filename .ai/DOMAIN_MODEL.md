@@ -712,3 +712,9 @@ immutable supplier/address/source-line/account/tax snapshots, Original TaxPostin
 de exacte source Payable/Credit en Created/Finalized/Cancelled auditfacts. Draft,
 Finalize en Cancel veroorzaken geen Accounting- of Fiscal-mutaties; Posted kan worden
 gereconstitueerd maar wordt pas door PC-002 gemuteerd.
+
+PC-002 maakt `Posted` atomisch met auditactor/-tijd, expliciete boekingsdatum,
+historische net/VAT/AP/journal-reversal, een `Payable/Debit` zonder vervaldatum en
+duurzame source-line claims plus posting linkage. Actuele purchase-configuratie wordt
+niet geraadpleegd. Match en settlement blijven buiten PC-002; het postingreadmodel
+levert PC-003 alle identiteiten om actuele open saldi onder locks te herlezen.
