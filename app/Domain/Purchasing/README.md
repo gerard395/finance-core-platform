@@ -105,3 +105,8 @@ Payable/Credit tegen de nieuwe Payable/Debit. Het bedrag is de kleinste actuele 
 waarde onder gesorteerde OpenItem-locks. Bestaande betalingen blijven settlements;
 een creditoverschot blijft open leverancierscredit. De Webflow biedt tenant-scoped
 bronselectie, volledige-regelcheckboxen en onafhankelijk geautoriseerde lifecycleacties.
+
+PC-004 heeft de volledige batch gereviewd. Matching gebruikt onder locks het actuele
+duurzame saldo, inclusief reeds geboekte later gedateerde settlements; creditability
+blijft onafhankelijk van het onbetaalde saldo. De PC-batch is regressiegetest en
+merge-ready zonder uitbreiding naar partial credits, refunds of payment reversal.

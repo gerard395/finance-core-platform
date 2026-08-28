@@ -99,8 +99,8 @@ final readonly class PostPurchaseCreditInvoice
                 if ($pair === null) {
                     throw new \RuntimeException('Purchase credit matching OpenItems are unavailable.');
                 }
-                $sourceOpen = $pair->credit->openAmountAt($postingDate);
-                $creditOpen = $pair->debit->openAmountAt($postingDate);
+                $sourceOpen = $pair->credit->openAmount();
+                $creditOpen = $pair->debit->openAmount();
                 $matched = Money::zero($credit->currency());
                 if (! $sourceOpen->isZero() && ! $creditOpen->isZero()) {
                     $matched = $sourceOpen->subtract($creditOpen)->isPositive() ? $creditOpen : $sourceOpen;

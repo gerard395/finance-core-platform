@@ -206,6 +206,18 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         self::assertSame('81', (string) DB::table('open_item_matches')->value('amount'));
     }
 
+    public function test_current_open_balance_includes_a_durable_later_dated_settlement(): void
+    {
+        $this->sourceSettlement('a1000000-0000-4000-8000-000000000095', '40', '2026-08-28');
+        $result = $this->postCredit('PCR-LATER-SETTLEMENT');
+
+        self::assertSame(PostPurchaseCreditInvoiceStatus::Success, $result->status);
+        self::assertSame('81', $result->matchedAmount?->amount());
+        self::assertSame('0', $result->sourceRemainingAmount?->amount());
+        self::assertSame('40', $result->creditRemainingAmount?->amount());
+        self::assertSame('81', (string) DB::table('open_item_matches')->value('amount'));
+    }
+
     public function test_fully_paid_source_creates_no_match_and_leaves_supplier_credit_balance(): void
     {
         $this->sourceSettlement('a1000000-0000-4000-8000-000000000092', '121');
@@ -364,9 +376,9 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         return $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor());
     }
 
-    private function sourceSettlement(string $id, string $amount): void
+    private function sourceSettlement(string $id, string $amount, string $effectiveDate = '2026-08-20'): void
     {
-        DB::table('open_item_settlements')->insert(['id' => $id, 'administration_id' => self::A, 'open_item_id' => self::OPEN_ITEM, 'payment_allocation_id' => null, 'effective_date' => '2026-08-20', 'amount' => $amount, 'currency' => 'EUR', 'source_journal_entry_id' => self::ENTRY, 'type' => 'applied', 'reversed_settlement_id' => null, 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('open_item_settlements')->insert(['id' => $id, 'administration_id' => self::A, 'open_item_id' => self::OPEN_ITEM, 'payment_allocation_id' => null, 'effective_date' => $effectiveDate, 'amount' => $amount, 'currency' => 'EUR', 'source_journal_entry_id' => self::ENTRY, 'type' => 'applied', 'reversed_settlement_id' => null, 'created_at' => now(), 'updated_at' => now()]);
     }
 
     private function admin(): AdministrationId

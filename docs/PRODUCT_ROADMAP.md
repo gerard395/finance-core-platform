@@ -648,8 +648,9 @@ Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 l
 de transactionele historische journal/net/VAT/AP-reversal, posted audit, unieke
 bronregelclaims, een Payable/Debit zonder due date en het PC-003-postingreadmodel.
 PC-003 levert de automatische, payment-race-safe source matching en de volledige
-permission-scoped PurchaseCredit Webflow. PC-004 blijft de afsluitende review- en
-regressiegrens; partial credits en refunds blijven deferred.
+permission-scoped PurchaseCredit Webflow. PC-004 heeft de afsluitende review en brede
+regressie groen afgerond; de PC-batch is merge-ready. Partial credits, refunds en de
+overige expliciet uitgestelde capabilities blijven deferred.
 
 ## Releases
 
