@@ -147,6 +147,77 @@ final class BankPaymentWebTest extends TestCase
         $this->post('/banking/payments/not-a-uuid/post', ['posting_date' => '2026-08-26'])->assertNotFound();
     }
 
+    public function test_posted_customer_supplier_and_multi_allocation_payments_can_be_reversed_through_the_web(): void
+    {
+        $this->assignAll();
+        $this->login();
+
+        $receipt = $this->createAndPost('customer_receipt', self::CUSTOMER, self::RECEIVABLE, '40', 'REV-CUSTOMER');
+        $this->get('/banking/payments/'.$receipt)->assertOk()->assertSee('Betaling terugdraaien');
+        $this->get('/banking/payments/'.$receipt.'/reverse')->assertOk()->assertSee('Bankbetaling terugdraaien')->assertSee('EUR 40,00');
+        $this->post('/banking/payments/'.$receipt.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => '<script>alert(1)</script> correctie', 'administration_id' => self::OTHER_ADMIN])->assertRedirect('/banking/payments/'.$receipt);
+        $this->post('/banking/payments/'.$receipt.'/reverse', ['reversal_posting_date' => '2026-08-29', 'reason' => 'dubbele verzending'])->assertRedirect('/banking/payments/'.$receipt);
+        self::assertSame(1, DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $receipt)->count());
+        self::assertSame('2026-08-28', DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $receipt)->value('reversal_posting_date'));
+        self::assertSame(2, DB::table('open_item_settlements')->where('open_item_id', self::RECEIVABLE)->count());
+        $this->get('/banking/payments/'.$receipt)->assertOk()->assertSee('Teruggedraaid')->assertSee('Contra-boeking')->assertSee('EUR 100,00')->assertSee('&lt;script&gt;alert(1)&lt;/script&gt; correctie', false)->assertDontSee('<script>alert(1)</script>', false)->assertDontSee('Betaling terugdraaien');
+        $this->get('/banking/payments')->assertOk()->assertSee('Terugdraaid op')->assertSee('28-08-2026');
+
+        $multi = $this->payload('customer_receipt', self::CUSTOMER, self::RECEIVABLE_TWO, '50', 'REV-MULTI');
+        $multi['allocations'] = [['open_item_id' => self::RECEIVABLE_TWO, 'amount' => '30'], ['open_item_id' => self::RECEIVABLE_THREE, 'amount' => '20']];
+        $this->post('/banking/payments', $multi)->assertRedirect();
+        $multiId = DB::table('bank_transactions')->where('reference', 'REV-MULTI')->value('id');
+        $this->post('/banking/payments/'.$multiId.'/finalize')->assertRedirect();
+        $this->post('/banking/payments/'.$multiId.'/post', ['posting_date' => '2026-08-26'])->assertRedirect();
+        $this->post('/banking/payments/'.$multiId.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Meerdere posten herstellen'])->assertRedirect();
+        self::assertSame(2, DB::table('bank_transaction_settlement_reversal_links')->where('bank_transaction_reversal_id', DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $multiId)->value('id'))->count());
+        $this->get('/banking/payments/'.$multiId)->assertOk()->assertSee('Teruggedraaide settlements')->assertSee('EUR 30,00')->assertSee('EUR 20,00');
+
+        $supplier = $this->createAndPost('supplier_payment', self::SUPPLIER, self::PAYABLE, '40', 'REV-SUPPLIER');
+        $this->post('/banking/payments/'.$supplier.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Leveranciersbetaling herstellen'])->assertRedirect();
+        $this->get('/banking/payments/'.$supplier)->assertOk()->assertSee('Teruggedraaid')->assertSee('EUR 80,00');
+    }
+
+    public function test_reversal_routes_enforce_permissions_validation_uuid_and_financial_state(): void
+    {
+        $this->assignOnly(BankingPermission::View, 60);
+        $this->login();
+        $this->get('/banking/payments/00000000-0000-4000-8000-000000000001/reverse')->assertForbidden();
+        $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'test'])->assertForbidden();
+
+        DB::table('administration_membership_roles')->delete();
+        $this->assignOnly(BankingPermission::ReversePayments, 61);
+        $this->get('/banking/payments/not-a-uuid/reverse')->assertForbidden();
+        $this->post('/banking/payments/not-a-uuid/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'test'])->assertNotFound();
+
+        DB::table('administration_membership_roles')->where('id', 'b4100061-0000-4000-8000-000000000003')->update(['active' => false]);
+        $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'test'])->assertForbidden();
+        DB::table('administration_memberships')->where('id', self::MEMBERSHIP)->update(['active' => false]);
+        $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'test'])->assertRedirect('/administrations/select');
+    }
+
+    public function test_reversal_form_is_allowlisted_and_rejects_invalid_input_and_unposted_payments(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $posted = $this->createAndPost('customer_receipt', self::CUSTOMER, self::RECEIVABLE, '10', 'REV-VALIDATE');
+
+        $this->from('/banking/payments/'.$posted.'/reverse')->post('/banking/payments/'.$posted.'/reverse', ['reversal_posting_date' => 'not-a-date', 'reason' => ''])->assertRedirect('/banking/payments/'.$posted.'/reverse')->assertSessionHasErrors(['reversal_posting_date', 'reason']);
+        $this->from('/banking/payments/'.$posted.'/reverse')->post('/banking/payments/'.$posted.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => str_repeat('a', 501)])->assertSessionHasErrors('reason');
+        self::assertSame(0, DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $posted)->count());
+        $paymentId = DB::table('payments')->where('bank_transaction_id', $posted)->value('id');
+        $allocationId = DB::table('payment_allocations')->where('payment_id', $paymentId)->value('id');
+        DB::table('open_item_settlements')->where('payment_allocation_id', $allocationId)->delete();
+        $this->get('/banking/payments/'.$posted)->assertOk()->assertDontSee('Betaling terugdraaien');
+        $this->followingRedirects()->post('/banking/payments/'.$posted.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Inconsistente toestand'])->assertOk()->assertSee('De financiële status is gewijzigd of niet consistent.');
+
+        $this->post('/banking/payments', $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '10', 'REV-DRAFT'))->assertRedirect();
+        $draft = DB::table('bank_transactions')->where('reference', 'REV-DRAFT')->value('id');
+        $this->get('/banking/payments/'.$draft)->assertOk()->assertDontSee('Betaling terugdraaien');
+        $this->followingRedirects()->get('/banking/payments/'.$draft.'/reverse')->assertOk()->assertSee('Alleen een geboekte bankbetaling kan worden teruggedraaid.');
+        $this->followingRedirects()->post('/banking/payments/'.$draft.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Niet geboekt'])->assertOk()->assertSee('Alleen een geboekte bankbetaling kan worden teruggedraaid.');
+    }
+
     public function test_view_manage_and_post_are_independent_and_revocation_is_immediate(): void
     {
         $this->login();
@@ -156,6 +227,7 @@ final class BankPaymentWebTest extends TestCase
             ($permission === BankingPermission::View ? $this->get('/banking/payments') : $this->get('/banking/payments'))->assertStatus($permission === BankingPermission::View ? 200 : 403);
             $this->get('/banking/payments/create')->assertStatus($permission === BankingPermission::ManagePayments ? 200 : 403);
             $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/post', ['posting_date' => '2026-08-26'])->assertStatus($permission === BankingPermission::PostPayments ? 404 : 403);
+            $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'test'])->assertStatus($permission === BankingPermission::ReversePayments ? 404 : 403);
         }
         DB::table('administration_membership_roles')->update(['active' => false]);
         $this->post('/banking/payments/00000000-0000-4000-8000-000000000001/post', ['posting_date' => '2026-08-26'])->assertForbidden();
@@ -315,6 +387,16 @@ final class BankPaymentWebTest extends TestCase
     private function payload(string $type, string $relation, string $item, string $amount, string $reference): array
     {
         return ['bank_account_id' => self::BANK, 'transaction_date' => '2026-08-26', 'payment_type' => $type, 'amount' => $amount, 'relation_id' => $relation, 'reference' => $reference, 'description' => 'Web payment', 'allocations' => [['open_item_id' => $item, 'amount' => $amount]]];
+    }
+
+    private function createAndPost(string $type, string $relation, string $item, string $amount, string $reference): string
+    {
+        $this->post('/banking/payments', $this->payload($type, $relation, $item, $amount, $reference))->assertRedirect();
+        $id = (string) DB::table('bank_transactions')->where('reference', $reference)->value('id');
+        $this->post('/banking/payments/'.$id.'/finalize')->assertRedirect();
+        $this->post('/banking/payments/'.$id.'/post', ['posting_date' => '2026-08-26'])->assertRedirect();
+
+        return $id;
     }
 
     private function assignAll(): void

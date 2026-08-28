@@ -674,14 +674,45 @@ authorization, tenantlocks, Webflow en concurrentie-/rollbacktests. Partial reve
 mutatie van originals, refund als nieuwe bankmovement, import, FX en period management
 blijven buiten B3.
 
-Definitieve B3-split: B3-000 contractalignment; B3-001 authorization/persistence;
-B3-002 atomische JournalEntry-reversal; B3-003 settlement reversals/concurrency;
-B3-004 Webflow; B3-005 review en development acceptance. Vóór acceptance wordt voor
+Definitieve B3-split na contractalignment: B3-000 contractalignment; B3-001 independent
+authorization plus reversal- en settlementlinkage-persistence; B3-002 één atomische
+historische contra-JournalEntry plus alle append-only settlementreversals; B3-003
+permission-scoped Webflow plus echte MySQL-concurrency; B3-004 review, regressie en
+development acceptance. De original blijft immutable en status `Posted`; list/detail
+toont `Teruggedraaid` afgeleid. De correctie vereist een expliciete postingdatum,
+verplichte reason en actor/tijd, gebruikt exact de historische Journal/LedgerAccounts,
+raakt geen TaxPosting of OpenItemMatch en ondersteunt geen partial/importreversal.
+Vóór acceptance wordt voor
 `dev-admin@financecore.local` expliciet gecontroleerd: required/effective permission,
-canonical role/assignment zonder duplicate, navigation/actie, Bank Journal, Bank
+de aparte least-privilege `BANKING_REVERSAL_OPERATOR`-role/assignment zonder duplicate,
+navigation/actie, Bank Journal, Bank
 LedgerAccount, AdministrationBankAccount, BankingPostingConfiguration-readiness en een
 concrete Posted Payment-fixture. Dit is developmentbeleid en geen automatische
 productie-role assignment.
+
+B3-001 levert inmiddels de onafhankelijke Reverse-permission en least-privilege role
+zonder auto-assignment, de tenant-safe immutable reversal- en settlementlinkages en de
+typed historical source/readinesscontracten. Allocation → Applied Settlement en
+BankTransaction → posting → JournalEntry/lines zijn exact traceerbaar; inactive
+historical Journal/accounts, latere settlements en matches blijven geldige state. Er
+zijn nog geen contra-entry of settlementreversals gemaakt. Daarmee is B3-002 voor de
+atomische full reversal zonder predecessor gedeblokkeerd.
+
+B3-002 levert nu die atomische full reversal: exact gespiegeld historical contra-journal
+via PostingEngine, append-only settlementreversals en volledige Banking-linkage/audit in
+één rollbackveilige transaction. Originals blijven Posted en immutable; TaxPosting,
+OpenItemMatch en unrelated cashfacts blijven onaangeraakt. Sequential en concurrent
+double reversal plus payment-/creditmatchraces zijn MySQL-geserialiseerd. Het typed
+Success-readmodel en de bestaande readiness-reader deblokkeren B3-003 voor uitsluitend
+de permission-scoped Webflow.
+
+B3-003 levert nu die Webflow onder Bank → Betalingen: tenant-scoped list/detail tonen
+afgeleid `Teruggedraaid`, beide JournalEntries, settlementreversals en resulterende open
+bedragen. View en Reverse blijven onafhankelijk; een read-only confirmation verzamelt
+expliciete postingdatum/reason en uitsluitend POST roept het B3-002-command aan. Web
+voegt geen locks of accountingsemantiek toe. De productflow en MySQL-concurrency-
+regressies zijn gereed voor B3-004; manual acceptance vereist eerst de expliciete
+development-assignment van `BANKING_REVERSAL_OPERATOR`.
 
 De eerdere post-PC-prioriteit verandert door nieuwe acceptance-evidence: Payment
 Reversal is nu de directe correctnessprioriteit; daarna volgen **Accounting Periods &

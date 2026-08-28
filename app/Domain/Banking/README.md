@@ -37,7 +37,52 @@ allocation, één postinglinkage en PostedBy/PostedAt. Finalize reserveert geen 
 echte MySQL-locking voorkomt oversettlement en ondersteunt partial, multi-OpenItem en
 meerdere betalingen over tijd. OpenItemMatch blijft onaangepast.
 
-Bankimport, reconciliation, PSD2, FX en reversal blijven buiten scope.
+Bankimport, reconciliation, PSD2 en FX blijven buiten scope.
+
+B3 definieert een Bank Payment Reversal als één atomische, volledige correctie van een
+`Posted` handmatige BankTransaction. De original, haar status `Posted`, Payment,
+allocations, posting, JournalEntry/lines en Applied Settlements blijven immutable;
+`Teruggedraaid` is een readmodelafleiding uit een unieke tenant-scoped
+BankTransactionReversal-linkage. De command vereist een expliciete ReversalPostingDate,
+verplichte begrensde reason en bewaart ReversedBy/ReversedAt uit de Application clock.
+
+De contra-JournalEntry spiegelt iedere concrete originele line op exact dezelfde
+historische Journal en LedgerAccountIds, ook indien later inactive of renamed. Actuele
+BankingPostingConfiguration wordt niet geherinterpreteerd en er ontstaat geen
+TaxPosting. Iedere allocation-settlement krijgt exact één full-amount append-only
+Reversal plus Banking-owned batchtrace. Andere settlements en OpenItemMatches blijven
+staan; openAmount wordt uit de complete historie afgeleid. Een aparte
+`BANKING.PAYMENTS_REVERSE`/`BANKING_REVERSAL_OPERATOR`-grens voorkomt dat Manage of Post
+impliciet correctierecht geeft. Partial reversal, importreversal en period locks blijven
+deferred.
+
+B3-001 realiseert deze foundation met stable typed authorization, zonder automatische
+membershipassignment, plus immutable `BankTransactionReversal`- en
+`BankTransactionSettlementReversalLink`-facts. Additieve composite same-tenant FKs en
+uniques borgen exact één transactionreversal en één linkage per allocation/original/
+reversal settlement. De framework-onafhankelijke source-reader volgt uitsluitend
+BankTransaction → Payment/allocations → posting → historical JournalEntry/lines en de
+unieke allocation-settlementtrace. Eligibility is typed; andere settlements, matches,
+current open balance en inactive historical masterdata blokkeren niet. B3-001 zelf
+maakt geen financiële facts; de atomische command blijft exclusief B3-002.
+
+B3-002 levert `ReverseBankTransaction` als één outer transaction. De command spiegelt
+iedere original JournalEntryLine via PostingEngine op exact de historical Journal en
+LedgerAccountIds, maakt daarna per allocation een OpenItem-owned full-amount settlement-
+reversal, persisteert het immutable reversalrecord en sluit af met alle Banking-links.
+Originals en status `Posted` blijven onaangeraakt; TaxPostings, nieuwe OpenItems en
+OpenItemMatch-mutaties ontstaan niet. Sorted OpenItemlocks, fresh history en begrensde
+MySQL-deadlockretry maken double reversal, nieuwe payments en creditmatching
+serialiseerbaar. Het Success-readmodel maakt B3-003 zonder Weblogica in Application
+mogelijk.
+
+B3-003 voegt uitsluitend de permission-scoped Webflow toe. List/detail tonen afgeleid
+`Teruggedraaid`, original/contra-Journal, settlementreversals en resulterende open
+bedragen uit typed Application-readmodels. De read-only confirmation vereist View +
+Reverse; alleen POST met exact Reverse muteert via `ReverseBankTransaction` en accepteert
+een expliciete postingdatum en verplichte reason. Presentation voegt geen accounting,
+eligibility, lock- of balanslogica toe. De canonical reversalrole blijft een expliciete
+development-acceptanceassignment en wordt niet automatisch toegewezen.
 
 B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
 scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag

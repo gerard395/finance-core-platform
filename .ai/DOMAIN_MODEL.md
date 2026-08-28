@@ -705,6 +705,63 @@ geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en 
 afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
 linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.
 
+### Bank Payment Reversal
+
+Een B3 Bank Payment Reversal corrigeert exact één `Posted` handmatige BankTransaction
+volledig en atomisch. De original en al haar Payment-, allocation-, posting-, Journal-
+en Applied Settlement-facts blijven immutable en haar status blijft `Posted`;
+`Teruggedraaid` is uitsluitend afgeleid uit de unieke tenant-scoped
+BankTransactionReversal-linkage. Eén command vereist een expliciete
+ReversalPostingDate, verplichte begrensde immutable reason en authoritative
+ReversedBy/ReversedAt. Een tweede coherente poging is `AlreadyReversed`; incomplete of
+partieel vooraf gereversede sourcefacts zonder linkage zijn `FinancialStateInvalid`.
+
+De ene contra-JournalEntry spiegelt iedere originele line debit/credit op exact de
+historische Journal en LedgerAccountIds. Rename/inactive verandert die identity niet;
+actuele BankingPostingConfiguration wordt niet gebruikt. Omdat de bankposting geen
+fiscale bron is, ontstaat geen TaxPosting. Iedere originele allocation-identiteit leidt
+naar precies haar Applied Settlement; per fact ontstaat één full-amount append-only
+Reversal. Een Banking-owned reversal-settlementlinkage verbindt reversalbatch,
+allocation, OpenItem en beide settlementidentities.
+
+OpenItemMatches en unrelated settlements blijven onaangetast. Daardoor kan een
+settlementreversal een source Receivable/Payable heropenen terwijl een latere Sales- of
+PurchaseCredit-match historische documenttruth blijft. Open amount blijft zonder clamp
+afgeleid uit alle gedateerde facts. De outer transaction gebruikt de B2/PC-resourceorde
+en lexicografisch gesorteerde unieke OpenItemIds, zodat reversal, nieuwe payments en
+creditmatching serialiseerbaar blijven. `BANKING.PAYMENTS_REVERSE` hoort uitsluitend bij
+de aparte least-privilege `BANKING_REVERSAL_OPERATOR`; Web en JavaScript leiden nooit
+authorization of financiële eligibility af.
+
+B3-001 maakt de authorization- en persistencebasis concreet. De aparte canonical role
+bevat exact View + Reverse en wordt nooit automatisch aan een membership toegewezen.
+BankTransactionReversal en de per-allocation settlementlinkage zijn immutable typed
+facts met composite same-tenant RESTRICT-relaties en uniqueness op iedere exclusieve
+source/reversalclaim. Een Application source-reader levert B3-002 de volledige
+historische JournalEntry/linegraph en de unieke `payment_allocation_id`-settlementroute,
+zonder active-masterdata- of current-balancefilter. Typed eligibility onderscheidt
+Eligible, NotPosted, AlreadyReversed, FinancialStateInvalid en NotFound. De foundation
+creëert nog geen JournalEntry of settlementreversal en muteert `Posted` niet.
+
+B3-002 gebruikt deze graph in één atomische Application-command. PostingEngine maakt
+een line-for-line debit/creditmirror op de historical Journal en accounts; vervolgens
+voegt ieder locked OpenItem exact één full-amount Reversal toe. Reversalrecord en
+settlementlinkages worden pas geschreven wanneer hun JournalEntry-/settlementtargets
+bestaan, binnen dezelfde transaction. Matches blijven staan en openAmount blijft een
+afleiding van alle facts. Sequential/concurrent duplicate, payment- en creditmatchraces
+zijn onder sorted OpenItemlocks serialiseerbaar; de gedeelde transaction boundary
+herprobeert een door MySQL vastgestelde deadlock begrensd. Success exposeert uitsluitend
+typed references, settlementcount en resulterende Money-balances voor de latere Weblaag.
+
+B3-003 ontsluit dit contract onder Bank → Betalingen. List/detail tonen
+tenant-scoped readiness en leiden `Teruggedraaid` uitsluitend af uit een coherente
+reversallinkage; de original blijft `Posted`. Een View + Reverse confirmation accepteert
+alleen expliciete ReversalPostingDate en reason, waarna een Reverse-only POST exact
+`ReverseBankTransaction` aanroept. Presentation toont original/contra-Journal,
+settlementreversals en door het Application-readmodel geleverde actuele OpenItem-
+bedragen zonder financiële herberekening of Weblocks. Development acceptance vereist
+nog de expliciete `BANKING_REVERSAL_OPERATOR`-membershipassignment.
+
 ## 12. Purchase Credits – duurzame documentlaag
 
 PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,

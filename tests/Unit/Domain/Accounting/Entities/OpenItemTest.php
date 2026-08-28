@@ -309,6 +309,45 @@ final class OpenItemTest extends TestCase
         self::assertSame('80', $item->openAmount()->amount());
     }
 
+    public function test_same_date_replacement_is_ordered_by_causality_for_adversarial_and_opposite_id_orders(): void
+    {
+        foreach ([[900, 100], [100, 900]] as [$reversalSuffix, $replacementSuffix]) {
+            $item = $this->createOpenItem('100');
+            $originalId = $this->settlementId(500);
+            $item->applySettlement($originalId, $this->date('2026-01-15'), $this->money('100'), $this->journalEntryId(1));
+            $item->reverseSettlement($this->settlementId($reversalSuffix), $this->date('2026-02-01'), $originalId, $this->journalEntryId(2));
+
+            $item->applySettlement($this->settlementId($replacementSuffix), $this->date('2026-02-01'), $this->money('100'), $this->journalEntryId(3));
+
+            self::assertSame('0', $item->openAmount()->amount());
+            self::assertSame('0', $item->openAmountAt($this->date('2026-02-01'))->amount());
+        }
+    }
+
+    public function test_same_date_original_is_ordered_before_its_reversal_even_when_reversal_id_is_lower(): void
+    {
+        $applied = $this->settlement(900, '2026-01-15', '100');
+        $reversal = $this->settlement(100, '2026-01-15', '100', OpenItemSettlementType::Reversal, $applied->id());
+
+        $item = $this->reconstitute([$reversal, $applied]);
+
+        self::assertSame([$applied, $reversal], $item->settlements());
+        self::assertSame('100', $item->openAmount()->amount());
+    }
+
+    public function test_multiple_same_date_reversal_chains_are_contiguous_and_uuid_independent(): void
+    {
+        $appliedA = $this->settlement(900, '2026-01-15', '50');
+        $reversalA = $this->settlement(100, '2026-01-15', '50', OpenItemSettlementType::Reversal, $appliedA->id());
+        $appliedB = $this->settlement(800, '2026-01-15', '50');
+        $reversalB = $this->settlement(200, '2026-01-15', '50', OpenItemSettlementType::Reversal, $appliedB->id());
+
+        $item = $this->reconstitute([$reversalA, $appliedA, $reversalB, $appliedB]);
+
+        self::assertSame([$appliedB, $reversalB, $appliedA, $reversalA], $item->settlements());
+        self::assertSame('100', $item->openAmount()->amount());
+    }
+
     public function test_reconstitution_rejects_duplicate_identity_currency_and_date_corruption(): void
     {
         $settlement = $this->settlement(1, '2026-01-15', '10');

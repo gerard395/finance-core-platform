@@ -11,7 +11,7 @@ use App\Domain\Banking\ValueObjects\BankTransactionId;
 
 final readonly class GetBankTransactionWebDetail
 {
-    public function __construct(private BankTransactionRepository $transactions, private AdministrationBankAccountRepository $banks, private RelationReadRepository $relations, private OpenItemReadRepository $openItems, private GetBankTransactionPostingDetail $postings) {}
+    public function __construct(private BankTransactionRepository $transactions, private AdministrationBankAccountRepository $banks, private RelationReadRepository $relations, private OpenItemReadRepository $openItems, private GetBankTransactionPostingDetail $postings, private GetBankTransactionReversalReadiness $reversals) {}
 
     public function execute(AdministrationId $administrationId, BankTransactionId $id): ?BankTransactionWebDetail
     {
@@ -33,6 +33,11 @@ final readonly class GetBankTransactionWebDetail
             $items[$item->id()->toString()] = $item;
         }
 
-        return new BankTransactionWebDetail($transaction, $bank, $relation, $items, $this->postings->execute($administrationId, $id));
+        $reversal = $this->reversals->execute($administrationId, $id);
+        if ($reversal === null) {
+            return null;
+        }
+
+        return new BankTransactionWebDetail($transaction, $bank, $relation, $items, $this->postings->execute($administrationId, $id), $reversal);
     }
 }

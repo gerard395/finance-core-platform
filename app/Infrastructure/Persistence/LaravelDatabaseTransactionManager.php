@@ -12,6 +12,6 @@ final class LaravelDatabaseTransactionManager implements TransactionManager
 {
     public function run(Closure $operation): mixed
     {
-        return DB::transaction($operation);
+        return DB::transaction($operation, 3);
     }
 }

@@ -27,9 +27,10 @@ final class BankingAuthorizationProvisionerTest extends TestCase
 
     public function test_contract_is_exact_idempotent_and_does_not_assign_memberships(): void
     {
-        self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE', 'BANKING.PAYMENTS_POST'], array_column(BankingPermission::cases(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE', 'BANKING.PAYMENTS_POST', 'BANKING.PAYMENTS_REVERSE'], array_column(BankingPermission::cases(), 'value'));
         self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE'], array_column(BankingRole::Manager->permissions(), 'value'));
         self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_POST'], array_column(BankingRole::Poster->permissions(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_REVERSE'], array_column(BankingRole::ReversalOperator->permissions(), 'value'));
 
         $provisioner = $this->app->make(BankingAuthorizationProvisioner::class);
         $provisioner->provision();
@@ -37,9 +38,9 @@ final class BankingAuthorizationProvisionerTest extends TestCase
         $provisioner->provision();
 
         self::assertSame($before, [PermissionRecord::all()->toArray(), RoleRecord::all()->toArray(), RolePermissionRecord::all()->toArray()]);
-        self::assertSame(3, PermissionRecord::query()->count());
-        self::assertSame(2, RoleRecord::query()->count());
-        self::assertSame(4, RolePermissionRecord::query()->where('active', true)->count());
+        self::assertSame(4, PermissionRecord::query()->count());
+        self::assertSame(3, RoleRecord::query()->count());
+        self::assertSame(6, RolePermissionRecord::query()->where('active', true)->count());
         self::assertSame(0, AdministrationMembershipRoleRecord::query()->count());
     }
 
@@ -68,6 +69,7 @@ final class BankingAuthorizationProvisionerTest extends TestCase
         self::assertContains(BankingPermission::View->id()->toString(), $ids);
         self::assertContains(BankingPermission::ManagePayments->id()->toString(), $ids);
         self::assertNotContains(BankingPermission::PostPayments->id()->toString(), $ids);
+        self::assertNotContains(BankingPermission::ReversePayments->id()->toString(), $ids);
         self::assertNotContains(SalesPermission::ManageOrders->id()->toString(), $ids);
         self::assertSame([], $reader->effectivePermissionIds($user, $this->admin(2), $at));
         DB::table('administration_membership_roles')->where('id', 'b2500000-0000-4000-8000-000000000003')->update(['active' => false]);
@@ -75,6 +77,14 @@ final class BankingAuthorizationProvisionerTest extends TestCase
         DB::table('administration_membership_roles')->where('id', 'b2500000-0000-4000-8000-000000000003')->update(['active' => true]);
         DB::table('administration_memberships')->where('id', 'b2500000-0000-4000-8000-000000000002')->update(['active' => false]);
         self::assertSame([], $reader->effectivePermissionIds($user, $this->admin(1), $at));
+
+        DB::table('administration_memberships')->where('id', 'b2500000-0000-4000-8000-000000000002')->update(['active' => true]);
+        DB::table('administration_membership_roles')->where('id', 'b2500000-0000-4000-8000-000000000003')->update(['role_id' => BankingRole::ReversalOperator->id()->toString()]);
+        $ids = array_map(static fn ($id): string => $id->toString(), $reader->effectivePermissionIds($user, $this->admin(1), $at));
+        self::assertContains(BankingPermission::View->id()->toString(), $ids);
+        self::assertContains(BankingPermission::ReversePayments->id()->toString(), $ids);
+        self::assertNotContains(BankingPermission::ManagePayments->id()->toString(), $ids);
+        self::assertNotContains(BankingPermission::PostPayments->id()->toString(), $ids);
     }
 
     private function admin(int $n): AdministrationId

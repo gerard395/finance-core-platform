@@ -373,13 +373,62 @@ final class OpenItem
      */
     private static function ordered(array $settlements): array
     {
-        usort($settlements, static function (OpenItemSettlement $left, OpenItemSettlement $right): int {
-            $dateOrder = $left->effectiveDate()->value() <=> $right->effectiveDate()->value();
+        $byDate = [];
+        foreach ($settlements as $settlement) {
+            $byDate[$settlement->effectiveDate()->value()->format('Y-m-d')][] = $settlement;
+        }
+        ksort($byDate);
 
-            return $dateOrder !== 0 ? $dateOrder : strcmp($left->id()->toString(), $right->id()->toString());
-        });
+        $ordered = [];
+        $knownApplied = [];
+        foreach ($byDate as $sameDate) {
+            $applied = [];
+            $appliedIds = [];
+            $reversals = [];
+            foreach ($sameDate as $settlement) {
+                if ($settlement->type() === OpenItemSettlementType::Applied) {
+                    $applied[] = $settlement;
+                    $appliedIds[$settlement->id()->toString()] = true;
+                } else {
+                    $reversals[] = $settlement;
+                }
+            }
 
-        return $settlements;
+            usort($reversals, self::compareSettlementIdentity(...));
+            foreach ($reversals as $reversal) {
+                $originalId = $reversal->reversedSettlementId()?->toString();
+                if ($originalId !== null && isset($knownApplied[$originalId])) {
+                    $ordered[] = $reversal;
+                }
+            }
+
+            usort($applied, self::compareSettlementIdentity(...));
+            foreach ($applied as $original) {
+                $originalId = $original->id()->toString();
+                $ordered[] = $original;
+                $knownApplied[$originalId] = true;
+
+                foreach ($reversals as $reversal) {
+                    if ($reversal->reversedSettlementId()?->toString() === $originalId) {
+                        $ordered[] = $reversal;
+                    }
+                }
+            }
+
+            foreach ($reversals as $reversal) {
+                $originalId = $reversal->reversedSettlementId()?->toString();
+                if ($originalId === null || (! isset($knownApplied[$originalId]) && ! isset($appliedIds[$originalId]))) {
+                    $ordered[] = $reversal;
+                }
+            }
+        }
+
+        return $ordered;
+    }
+
+    private static function compareSettlementIdentity(OpenItemSettlement $left, OpenItemSettlement $right): int
+    {
+        return strcmp($left->id()->toString(), $right->id()->toString());
     }
 
     /** @param list<OpenItemMatch> $matches @return list<OpenItemMatch> */

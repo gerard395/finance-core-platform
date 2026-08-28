@@ -12,5 +12,5 @@ use App\Domain\Relations\Entities\Relation;
 final readonly class BankTransactionWebDetail
 {
     /** @param array<string, OpenItem> $openItems */
-    public function __construct(public BankTransaction $transaction, public AdministrationBankAccount $bankAccount, public Relation $relation, public array $openItems, public ?BankTransactionPostingDetail $posting) {}
+    public function __construct(public BankTransaction $transaction, public AdministrationBankAccount $bankAccount, public Relation $relation, public array $openItems, public ?BankTransactionPostingDetail $posting, public BankTransactionReversalReadiness $reversal) {}
 }

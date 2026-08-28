@@ -13,12 +13,14 @@ enum BankingRole: string
 {
     case Manager = 'BANKING_MANAGER';
     case Poster = 'BANKING_POSTER';
+    case ReversalOperator = 'BANKING_REVERSAL_OPERATOR';
 
     public function id(): RoleId
     {
         return new RoleId(new Uuid(match ($this) {
             self::Manager => 'b2020000-0000-4000-8000-000000000001',
             self::Poster => 'b2020000-0000-4000-8000-000000000002',
+            self::ReversalOperator => 'b2020000-0000-4000-8000-000000000003',
         }));
     }
 
@@ -32,6 +34,7 @@ enum BankingRole: string
         return new RoleName(match ($this) {
             self::Manager => 'Banking Manager',
             self::Poster => 'Banking Poster',
+            self::ReversalOperator => 'Banking Reversal Operator',
         });
     }
 
@@ -41,6 +44,7 @@ enum BankingRole: string
         return match ($this) {
             self::Manager => [BankingPermission::View, BankingPermission::ManagePayments],
             self::Poster => [BankingPermission::View, BankingPermission::PostPayments],
+            self::ReversalOperator => [BankingPermission::View, BankingPermission::ReversePayments],
         };
     }
 }

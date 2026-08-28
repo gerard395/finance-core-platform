@@ -136,7 +136,7 @@ final class BankPaymentController extends Controller
 
     private function viewData(ActiveAdministrationContext $context): array
     {
-        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canManage' => $this->permissions->allows($context->permissionIds, BankingPermission::ManagePayments->id()), 'canPost' => $this->permissions->allows($context->permissionIds, BankingPermission::PostPayments->id()), 'canUpdateSettings' => $this->permissions->allows($context->permissionIds, AdministrationPermission::UpdateSettings->id()), 'moneyFormatter' => $this->money];
+        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canManage' => $this->permissions->allows($context->permissionIds, BankingPermission::ManagePayments->id()), 'canPost' => $this->permissions->allows($context->permissionIds, BankingPermission::PostPayments->id()), 'canReverse' => $this->permissions->allows($context->permissionIds, BankingPermission::ReversePayments->id()), 'canUpdateSettings' => $this->permissions->allows($context->permissionIds, AdministrationPermission::UpdateSettings->id()), 'moneyFormatter' => $this->money];
     }
 
     private function context(Request $request): ActiveAdministrationContext

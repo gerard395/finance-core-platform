@@ -80,6 +80,7 @@ final readonly class BankingAuthorizationProvisioner
         $id = new RolePermissionId(new Uuid(match ($role) {
             BankingRole::Manager => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000001' : 'b2030000-0000-4000-8000-000000000002',
             BankingRole::Poster => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000003' : 'b2030000-0000-4000-8000-000000000004',
+            BankingRole::ReversalOperator => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000005' : 'b2030000-0000-4000-8000-000000000006',
         }));
         if (RolePermissionRecord::query()->find($id->toString()) !== null) {
             throw new LogicException('Stable Banking role-permission identity belongs to another assignment.');
