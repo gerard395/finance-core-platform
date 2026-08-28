@@ -652,6 +652,46 @@ permission-scoped PurchaseCredit Webflow. PC-004 heeft de afsluitende review en 
 regressie groen afgerond; de PC-batch is merge-ready. Partial credits, refunds en de
 overige expliciet uitgestelde capabilities blijven deferred.
 
+PROJECT-GAP-005 bevestigt PC als **complete, gemergede en handmatig geaccepteerde**
+domestic PurchaseCredit-flow. De acceptance `TEST-INK-002 → BET-TEST-INK-002 →
+TEST-CREDIT-001` bewijst dat een volledig betaalde PurchaseInvoice open EUR 0 blijft,
+dat de historische EUR 121 cashsettlement intact blijft en dat de later geposte EUR 121
+PurchaseCredit zonder zero-match als open `Payable/Debit` supplier credit balance
+resteert.
+
+Eén kleine regressiefix gaat vooraf aan de volgende batch: de PurchaseCredit-
+successmelding moet via het bestaande postingreadmodel onderscheid maken tussen
+volledig gematcht, gedeeltelijk gematcht en EUR 0 gematcht. De huidige generieke tekst
+is bij EUR 0 misleidende financiële presentatie. Deze fix wijzigt geen accountingtruth.
+
+De exact volgende hoofdproductbatch is **B3 – Bank Payment Reversal**. B2 kan immutable
+BankTransactions, JournalEntries en Applied Settlements posten, maar heeft geen veilige
+productflow om een foutieve handmatige cashboeking te corrigeren. B3 voegt daarom exact
+één volledige, append-only reversal per Posted manual BankTransaction toe: een exact
+gespiegelde contra-JournalEntry via PostingEngine, Reversal Settlements voor alle
+originele allocations, immutable one-to-one linkage, actor/reason/tijd, onafhankelijke
+authorization, tenantlocks, Webflow en concurrentie-/rollbacktests. Partial reversal,
+mutatie van originals, refund als nieuwe bankmovement, import, FX en period management
+blijven buiten B3.
+
+Definitieve B3-split: B3-000 contractalignment; B3-001 authorization/persistence;
+B3-002 atomische JournalEntry-reversal; B3-003 settlement reversals/concurrency;
+B3-004 Webflow; B3-005 review en development acceptance. Vóór acceptance wordt voor
+`dev-admin@financecore.local` expliciet gecontroleerd: required/effective permission,
+canonical role/assignment zonder duplicate, navigation/actie, Bank Journal, Bank
+LedgerAccount, AdministrationBankAccount, BankingPostingConfiguration-readiness en een
+concrete Posted Payment-fixture. Dit is developmentbeleid en geen automatische
+productie-role assignment.
+
+De eerdere post-PC-prioriteit verandert door nieuwe acceptance-evidence: Payment
+Reversal is nu de directe correctnessprioriteit; daarna volgen **Accounting Periods &
+Posting Locks**, vervolgens de **International Purchase VAT predecessor**, daarna
+**Bank Import & Reconciliation**. Incoming purchase documents, Purchase Orders,
+Reporting Web, opening balance/migration en operations hardening blijven expliciete
+follow-ups volgens productionbehoefte. VAT/ICP reporting blijft geparkeerd totdat
+international/reverse-charge/import/deductibility, complete correcties, fiscale
+perioden/locks, rounding/reconciliation en EUR-conversie duurzaam zijn opgelost.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
