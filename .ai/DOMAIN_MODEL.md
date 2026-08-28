@@ -718,3 +718,8 @@ historische net/VAT/AP/journal-reversal, een `Payable/Debit` zonder vervaldatum 
 duurzame source-line claims plus posting linkage. Actuele purchase-configuratie wordt
 niet geraadpleegd. Match en settlement blijven buiten PC-002; het postingreadmodel
 levert PC-003 alle identiteiten om actuele open saldi onder locks te herlezen.
+
+PC-003 neemt matching op in dezelfde postingtransactie. Onder gesorteerde OpenItem-locks
+is het bedrag `min(bron open, credit open)`; cashsettlements blijven immutable en een
+overschot blijft als Payable/Debit leverancierscredit open. De permission-onafhankelijke
+Webflow selecteert uitsluitend volledige regels van een tenant-owned Posted EUR-bron.

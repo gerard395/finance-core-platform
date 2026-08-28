@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Application\Purchasing;
 
 use App\Application\Accounting\JournalEntryStore;
+use App\Application\Accounting\OpenItemMatchAppendResult;
+use App\Application\Accounting\OpenItemMatchIdentityGenerator;
+use App\Application\Accounting\OpenItemMatchRepository;
 use App\Application\Accounting\OpenItemStore;
 use App\Application\Fiscal\TaxPostingReadRepository;
 use App\Application\Fiscal\TaxPostingStore;
@@ -12,6 +15,7 @@ use App\Application\Shared\TransactionManager;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Enums\OpenItemSide;
 use App\Domain\Accounting\Enums\OpenItemType;
+use App\Domain\Accounting\Services\OpenItemMatchingPolicy;
 use App\Domain\Accounting\ValueObjects\JournalEntryReference;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -21,11 +25,12 @@ use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceId;
+use App\Domain\Shared\Finance\Money;
 use Throwable;
 
 final readonly class PostPurchaseCreditInvoice
 {
-    public function __construct(private TransactionManager $transactions, private PurchaseCreditInvoiceRepository $credits, private PurchaseInvoiceRepository $invoices, private PurchaseCreditHistoricalPostingReader $history, private PurchaseCreditPostingRepository $postings, private TaxPostingReadRepository $taxReads, private PostPurchaseCreditInvoiceWithTax $fiscal, private JournalEntryStore $journals, private TaxPostingStore $taxStore, private OpenItemStore $openItems, private PurchaseCreditIdentityGenerator $ids, private PurchaseCreditClock $clock) {}
+    public function __construct(private TransactionManager $transactions, private PurchaseCreditInvoiceRepository $credits, private PurchaseInvoiceRepository $invoices, private PurchaseCreditHistoricalPostingReader $history, private PurchaseCreditPostingRepository $postings, private TaxPostingReadRepository $taxReads, private PostPurchaseCreditInvoiceWithTax $fiscal, private JournalEntryStore $journals, private TaxPostingStore $taxStore, private OpenItemStore $openItems, private OpenItemMatchRepository $matches, private OpenItemMatchIdentityGenerator $matchIds, private OpenItemMatchingPolicy $matchingPolicy, private PurchaseCreditIdentityGenerator $ids, private PurchaseCreditClock $clock) {}
 
     public function execute(AdministrationId $admin, PurchaseCreditInvoiceId $id, PostingDate $postingDate, UserId $actor): PostPurchaseCreditInvoiceResult
     {
@@ -90,6 +95,22 @@ final readonly class PostPurchaseCreditInvoice
                     $this->taxStore->append($tax);
                 }
                 $this->openItems->append($open);
+                $pair = $this->matches->findLockedPair($admin, $open->id(), $historical->sourcePayable->id());
+                if ($pair === null) {
+                    throw new \RuntimeException('Purchase credit matching OpenItems are unavailable.');
+                }
+                $sourceOpen = $pair->credit->openAmountAt($postingDate);
+                $creditOpen = $pair->debit->openAmountAt($postingDate);
+                $matched = Money::zero($credit->currency());
+                if (! $sourceOpen->isZero() && ! $creditOpen->isZero()) {
+                    $matched = $sourceOpen->subtract($creditOpen)->isPositive() ? $creditOpen : $sourceOpen;
+                    $match = $this->matchingPolicy->create($this->matchIds->next(), $pair->debit, $pair->credit, $matched, $postingDate, $entry->id());
+                    if ($this->matches->appendMatch($match) !== OpenItemMatchAppendResult::Appended) {
+                        throw new \RuntimeException('Purchase credit automatic match persistence failed.');
+                    }
+                }
+                $sourceRemaining = $sourceOpen->subtract($matched);
+                $creditRemaining = $creditOpen->subtract($matched);
                 if (! $this->postings->append(new PurchaseCreditPosting($this->ids->postingId(), $admin, $id, $entry->id(), $open->id(), $postingDate, $now))) {
                     throw new \RuntimeException('Purchase credit posting linkage conflict.');
                 }
@@ -98,7 +119,7 @@ final readonly class PostPurchaseCreditInvoice
                     throw new \RuntimeException('Purchase credit status persistence failed.');
                 }
 
-                return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::Success, $entry->id(), $open->id(), array_map(fn ($t) => $t->id(), $result->taxPostings()));
+                return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::Success, $entry->id(), $open->id(), array_map(fn ($t) => $t->id(), $result->taxPostings()), $historical->sourcePayable->id(), $matched, $sourceRemaining, $creditRemaining);
             });
         } catch (SourceLineClaimConflict) {
             return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::SourceLineAlreadyCredited);

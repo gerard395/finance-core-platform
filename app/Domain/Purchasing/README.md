@@ -99,3 +99,9 @@ gesnapshotte Expense/Asset-account, de originele Input-VAT-line en het AP-contro
 account van het bron-open-item. Het positieve Payable/Debit heeft geen due date. PC-002
 maakt nog geen match of settlement; automatische matching uit het eindcontract volgt
 in PC-003.
+
+PC-003 matcht nu binnen dezelfde Post-transactie uitsluitend de concrete source
+Payable/Credit tegen de nieuwe Payable/Debit. Het bedrag is de kleinste actuele open
+waarde onder gesorteerde OpenItem-locks. Bestaande betalingen blijven settlements;
+een creditoverschot blijft open leverancierscredit. De Webflow biedt tenant-scoped
+bronselectie, volledige-regelcheckboxen en onafhankelijk geautoriseerde lifecycleacties.

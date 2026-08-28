@@ -15,6 +15,9 @@ use App\Http\Controllers\Banking\BankPaymentLifecycleController;
 use App\Http\Controllers\Banking\BankPaymentPostingController;
 use App\Http\Controllers\BankingSettingsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Purchasing\PurchaseCreditController;
+use App\Http\Controllers\Purchasing\PurchaseCreditLifecycleController;
+use App\Http\Controllers\Purchasing\PurchaseCreditPostingController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceController;
 use App\Http\Controllers\Purchasing\PurchaseInvoiceLifecycleController;
 use App\Http\Controllers\Purchasing\PurchaseInvoicePostingController;
@@ -82,6 +85,16 @@ Route::put('/purchasing/invoices/{invoice}', [PurchaseInvoiceController::class, 
 Route::post('/purchasing/invoices/{invoice}/cancel', [PurchaseInvoiceLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageInvoiceDrafts)])->name('purchasing.invoices.cancel');
 Route::post('/purchasing/invoices/{invoice}/finalize', [PurchaseInvoiceLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::FinalizeInvoices)])->name('purchasing.invoices.finalize');
 Route::post('/purchasing/invoices/{invoice}/post', PurchaseInvoicePostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::PostInvoices)])->name('purchasing.invoices.post');
+
+Route::get('/purchasing/credits', [PurchaseCreditController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::View)])->name('purchasing.credits.index');
+Route::get('/purchasing/credits/create', [PurchaseCreditController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageCreditDrafts)])->name('purchasing.credits.create');
+Route::post('/purchasing/credits', [PurchaseCreditController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageCreditDrafts)])->name('purchasing.credits.store');
+Route::get('/purchasing/credits/{credit}', [PurchaseCreditController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::View)])->name('purchasing.credits.show');
+Route::get('/purchasing/credits/{credit}/edit', [PurchaseCreditController::class, 'edit'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageCreditDrafts)])->name('purchasing.credits.edit');
+Route::put('/purchasing/credits/{credit}', [PurchaseCreditController::class, 'update'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageCreditDrafts)])->name('purchasing.credits.update');
+Route::post('/purchasing/credits/{credit}/cancel', [PurchaseCreditLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::ManageCreditDrafts)])->name('purchasing.credits.cancel');
+Route::post('/purchasing/credits/{credit}/finalize', [PurchaseCreditLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::FinalizeCredits)])->name('purchasing.credits.finalize');
+Route::post('/purchasing/credits/{credit}/post', PurchaseCreditPostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsurePurchasingPermission::using(PurchasingPermission::PostCredits)])->name('purchasing.credits.post');
 
 Route::get('/banking/payments', [BankPaymentController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.payments.index');
 Route::get('/banking/payments/create', [BankPaymentController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ManagePayments)])->name('banking.payments.create');

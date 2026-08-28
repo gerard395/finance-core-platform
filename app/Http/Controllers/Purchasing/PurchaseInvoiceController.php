@@ -161,7 +161,7 @@ final class PurchaseInvoiceController extends Controller
 
     private function viewData(ActiveAdministrationContext $context): array
     {
-        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canManageDrafts' => $this->can($context, PurchasingPermission::ManageInvoiceDrafts), 'canFinalize' => $this->can($context, PurchasingPermission::FinalizeInvoices), 'canPost' => $this->can($context, PurchasingPermission::PostInvoices), 'canUpdateSettings' => $this->permissions->allows($context->permissionIds, AdministrationPermission::UpdateSettings->id()), 'moneyFormatter' => $this->money];
+        return ['domainUser' => $context->user, 'administrationContext' => $context, 'canManageDrafts' => $this->can($context, PurchasingPermission::ManageInvoiceDrafts), 'canFinalize' => $this->can($context, PurchasingPermission::FinalizeInvoices), 'canPost' => $this->can($context, PurchasingPermission::PostInvoices), 'canManageCreditDrafts' => $this->can($context, PurchasingPermission::ManageCreditDrafts), 'canUpdateSettings' => $this->permissions->allows($context->permissionIds, AdministrationPermission::UpdateSettings->id()), 'moneyFormatter' => $this->money];
     }
 
     private function context(Request $request): ActiveAdministrationContext

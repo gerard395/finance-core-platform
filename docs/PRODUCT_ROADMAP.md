@@ -647,7 +647,9 @@ PC-001 levert nu authorization, tenant-safe aggregate/persistence en de
 Draft/Finalize/Cancel Application-laag zonder financiële side effects. PC-002 levert
 de transactionele historische journal/net/VAT/AP-reversal, posted audit, unieke
 bronregelclaims, een Payable/Debit zonder due date en het PC-003-postingreadmodel.
-Automatische matching blijft in PC-003.
+PC-003 levert de automatische, payment-race-safe source matching en de volledige
+permission-scoped PurchaseCredit Webflow. PC-004 blijft de afsluitende review- en
+regressiegrens; partial credits en refunds blijven deferred.
 
 ## Releases
 

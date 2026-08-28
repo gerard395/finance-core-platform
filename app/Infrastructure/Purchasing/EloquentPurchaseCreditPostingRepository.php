@@ -63,7 +63,29 @@ final class EloquentPurchaseCreditPostingRepository implements PurchaseCreditPos
         $lineCount = DB::table('purchase_credit_invoice_lines')->where('administration_id', $admin->toString())->where('purchase_credit_invoice_id', $id->toString())->count();
         $claimCount = DB::table('purchase_credit_source_line_claims')->where('administration_id', $admin->toString())->where('purchase_credit_invoice_id', $id->toString())->count();
 
-        return new PurchaseCreditPostingReadModel($id, new PostingDate(new DateTimeImmutable($row->posting_date)), new JournalEntryId(new Uuid($row->journal_entry_id)), new OpenItemId(new Uuid($row->open_item_id)), new Money($row->original_amount, new Currency($row->currency)), new PurchaseInvoiceId(new Uuid($row->source_purchase_invoice_id)), new OpenItemId(new Uuid($row->source_payable_open_item_id)), $taxIds, $lineCount > 0 && $lineCount === $claimCount);
+        $currency = new Currency($row->currency);
+        $matched = Money::zero($currency);
+        foreach (DB::table('open_item_matches')->where('administration_id', $admin->toString())->where('debit_open_item_id', $row->open_item_id)->where('credit_open_item_id', $row->source_payable_open_item_id)->get(['amount']) as $match) {
+            $matched = $matched->add(new Money($match->amount, $currency));
+        }
+
+        return new PurchaseCreditPostingReadModel($id, new PostingDate(new DateTimeImmutable($row->posting_date)), new JournalEntryId(new Uuid($row->journal_entry_id)), new OpenItemId(new Uuid($row->open_item_id)), new Money($row->original_amount, $currency), new PurchaseInvoiceId(new Uuid($row->source_purchase_invoice_id)), new OpenItemId(new Uuid($row->source_payable_open_item_id)), $taxIds, $lineCount > 0 && $lineCount === $claimCount, $matched, $this->openAmount($admin, $row->source_payable_open_item_id), $this->openAmount($admin, $row->open_item_id));
+    }
+
+    private function openAmount(AdministrationId $admin, string $openItemId): Money
+    {
+        $item = DB::table('open_items')->where('administration_id', $admin->toString())->where('id', $openItemId)->first(['original_amount', 'currency']);
+        $currency = new Currency($item->currency);
+        $open = new Money($item->original_amount, $currency);
+        foreach (DB::table('open_item_settlements')->where('administration_id', $admin->toString())->where('open_item_id', $openItemId)->get(['amount', 'type']) as $settlement) {
+            $amount = new Money($settlement->amount, $currency);
+            $open = $settlement->type === 'applied' ? $open->subtract($amount) : $open->add($amount);
+        }
+        foreach (DB::table('open_item_matches')->where('administration_id', $admin->toString())->where(fn ($query) => $query->where('debit_open_item_id', $openItemId)->orWhere('credit_open_item_id', $openItemId))->get(['amount']) as $match) {
+            $open = $open->subtract(new Money($match->amount, $currency));
+        }
+
+        return $open;
     }
 
     public function append(PurchaseCreditPosting $p): bool
