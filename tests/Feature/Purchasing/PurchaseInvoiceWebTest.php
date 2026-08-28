@@ -162,6 +162,63 @@ final class PurchaseInvoiceWebTest extends TestCase
         }
     }
 
+    public function test_purchase_credit_post_feedback_describes_full_partial_and_zero_matching(): void
+    {
+        $this->assignAll();
+        $this->login();
+
+        $cases = [
+            ['FULL', null, 'Creditnota is geboekt en volledig met de bronfactuur verrekend. Automatisch verrekend: EUR 121,00.'],
+            ['PARTIAL', '40', 'Creditnota is geboekt en gedeeltelijk met de bronfactuur verrekend. Automatisch verrekend: EUR 81,00. Leverancierscreditsaldo: EUR 40,00.'],
+            ['PAID', '121', 'Creditnota is geboekt. Er is geen bedrag automatisch met de bronfactuur verrekend. Leverancierscreditsaldo: EUR 121,00.'],
+        ];
+
+        foreach ($cases as $index => [$suffix, $settledAmount, $expectedMessage]) {
+            $this->post('/purchasing/invoices', $this->payload('SUP-'.$suffix));
+            $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'SUP-'.$suffix)->first();
+            self::assertNotNull($invoice);
+            $this->post('/purchasing/invoices/'.$invoice->id.'/finalize');
+            $this->post('/purchasing/invoices/'.$invoice->id.'/post', ['posting_date' => '2026-08-25']);
+
+            $sourceOpenItemId = DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoice->id)->value('open_item_id');
+            $sourceJournalEntryId = DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoice->id)->value('journal_entry_id');
+            if ($settledAmount !== null) {
+                DB::table('open_item_settlements')->insert([
+                    'id' => sprintf('94000000-0000-4000-9000-%012d', $index + 1),
+                    'administration_id' => self::ADMIN,
+                    'open_item_id' => $sourceOpenItemId,
+                    'payment_allocation_id' => null,
+                    'effective_date' => '2026-08-25',
+                    'amount' => $settledAmount,
+                    'currency' => 'EUR',
+                    'source_journal_entry_id' => $sourceJournalEntryId,
+                    'type' => 'applied',
+                    'reversed_settlement_id' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            $sourceLineId = DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('id');
+            $this->post('/purchasing/credits', [
+                'source_invoice_id' => $invoice->id,
+                'supplier_credit_invoice_number' => 'CR-'.$suffix,
+                'supplier_credit_date' => '2026-08-23',
+                'received_date' => '2026-08-24',
+                'source_line_ids' => [$sourceLineId],
+            ]);
+            $credit = DB::table('purchase_credit_invoices')->where('supplier_credit_invoice_number', 'CR-'.$suffix)->first();
+            self::assertNotNull($credit);
+            $this->post('/purchasing/credits/'.$credit->id.'/finalize');
+            $response = $this->post('/purchasing/credits/'.$credit->id.'/post', ['posting_date' => '2026-08-25']);
+
+            $response->assertRedirect('/purchasing/credits/'.$credit->id)->assertSessionHas('status', $expectedMessage);
+            if ($suffix === 'PAID') {
+                $response->assertSessionMissing('status', 'Creditnota is geboekt en automatisch met de bronfactuur verrekend.');
+            }
+        }
+    }
+
     private function fixtures(): void
     {
         $user = new UserId(new Uuid(self::USER));
