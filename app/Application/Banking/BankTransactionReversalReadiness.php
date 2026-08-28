@@ -27,6 +27,7 @@ final readonly class BankTransactionReversalReadiness
         public ?JournalEntryId $originalJournalEntryId,
         public int $allocationCount,
         public int $settlementCount,
+        public int $reversedSettlementCount,
         public ?BankTransactionReversalId $reversalId,
         public ?BankTransactionReversal $reversal,
     ) {}

@@ -13,6 +13,7 @@ use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Banking\BankPaymentController;
 use App\Http\Controllers\Banking\BankPaymentLifecycleController;
 use App\Http\Controllers\Banking\BankPaymentPostingController;
+use App\Http\Controllers\Banking\BankPaymentReversalController;
 use App\Http\Controllers\BankingSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Purchasing\PurchaseCreditController;
@@ -105,6 +106,8 @@ Route::put('/banking/payments/{payment}', [BankPaymentController::class, 'update
 Route::post('/banking/payments/{payment}/cancel', [BankPaymentLifecycleController::class, 'cancel'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ManagePayments)])->name('banking.payments.cancel');
 Route::post('/banking/payments/{payment}/finalize', [BankPaymentLifecycleController::class, 'finalize'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ManagePayments)])->name('banking.payments.finalize');
 Route::post('/banking/payments/{payment}/post', BankPaymentPostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::PostPayments)])->name('banking.payments.post');
+Route::get('/banking/payments/{payment}/reverse', [BankPaymentReversalController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View), EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.payments.reverse.create');
+Route::post('/banking/payments/{payment}/reverse', [BankPaymentReversalController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.payments.reverse.store');
 
 Route::get('/settings/administration', [AdministrationSettingsController::class, 'edit'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])

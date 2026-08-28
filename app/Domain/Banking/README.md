@@ -76,6 +76,14 @@ MySQL-deadlockretry maken double reversal, nieuwe payments en creditmatching
 serialiseerbaar. Het Success-readmodel maakt B3-003 zonder Weblogica in Application
 mogelijk.
 
+B3-003 voegt uitsluitend de permission-scoped Webflow toe. List/detail tonen afgeleid
+`Teruggedraaid`, original/contra-Journal, settlementreversals en resulterende open
+bedragen uit typed Application-readmodels. De read-only confirmation vereist View +
+Reverse; alleen POST met exact Reverse muteert via `ReverseBankTransaction` en accepteert
+een expliciete postingdatum en verplichte reason. Presentation voegt geen accounting,
+eligibility, lock- of balanslogica toe. De canonical reversalrole blijft een expliciete
+development-acceptanceassignment en wordt niet automatisch toegewezen.
+
 B2-004 maakt de bestaande contracten productmatig beschikbaar onder de permission-
 scoped sectie Bank → Betalingen. View, Manage en Post blijven onafhankelijk. De Weblaag
 levert alleen gevalideerde input en toont Application-readmodels; lifecycle, eligibility,

@@ -9,7 +9,7 @@ use App\Domain\Banking\ValueObjects\BankTransactionId;
 
 final readonly class GetBankTransactionReversalReadiness
 {
-    public function __construct(private BankTransactionReversalSourceReader $sources, private AssessBankTransactionReversalEligibility $eligibility) {}
+    public function __construct(private BankTransactionReversalSourceReader $sources, private AssessBankTransactionReversalEligibility $eligibility, private BankTransactionSettlementReversalLinkRepository $settlementLinks) {}
 
     public function execute(AdministrationId $administrationId, BankTransactionId $bankTransactionId): ?BankTransactionReversalReadiness
     {
@@ -18,6 +18,10 @@ final readonly class GetBankTransactionReversalReadiness
             return null;
         }
         $transaction = $source->transaction;
+
+        $reversedSettlementCount = $source->reversal === null
+            ? 0
+            : count($this->settlementLinks->findByReversal($administrationId, $source->reversal->id));
 
         return new BankTransactionReversalReadiness(
             $this->eligibility->forSource($source),
@@ -30,6 +34,7 @@ final readonly class GetBankTransactionReversalReadiness
             $source->posting?->journalEntryId,
             count($transaction->payment()->allocations()),
             count($source->settlements),
+            $reversedSettlementCount,
             $source->reversal?->id,
             $source->reversal,
         );

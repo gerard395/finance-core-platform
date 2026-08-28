@@ -753,6 +753,15 @@ zijn onder sorted OpenItemlocks serialiseerbaar; de gedeelde transaction boundar
 herprobeert een door MySQL vastgestelde deadlock begrensd. Success exposeert uitsluitend
 typed references, settlementcount en resulterende Money-balances voor de latere Weblaag.
 
+B3-003 ontsluit dit contract onder Bank → Betalingen. List/detail tonen
+tenant-scoped readiness en leiden `Teruggedraaid` uitsluitend af uit een coherente
+reversallinkage; de original blijft `Posted`. Een View + Reverse confirmation accepteert
+alleen expliciete ReversalPostingDate en reason, waarna een Reverse-only POST exact
+`ReverseBankTransaction` aanroept. Presentation toont original/contra-Journal,
+settlementreversals en door het Application-readmodel geleverde actuele OpenItem-
+bedragen zonder financiële herberekening of Weblocks. Development acceptance vereist
+nog de expliciete `BANKING_REVERSAL_OPERATOR`-membershipassignment.
+
 ## 12. Purchase Credits – duurzame documentlaag
 
 PC-001 maakt `PurchaseCreditInvoice` duurzaam met exact één Posted source invoice,

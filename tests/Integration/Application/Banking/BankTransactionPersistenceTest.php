@@ -462,23 +462,34 @@ final class BankTransactionPersistenceTest extends TestCase
 
     public function test_real_mysql_reversal_and_new_payment_are_serializable(): void
     {
-        DB::table('open_items')->where('id', $this->item(1))->update(['original_amount' => '100']);
         $this->configure(self::A);
-        [, $paymentA] = $this->createFinalized(self::A, '100', 92, 1, 'RACE-REV-A');
-        [, $paymentB] = $this->createFinalized(self::A, '100', 93, 1, 'RACE-POST-B');
-        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
-        $results = $this->runConcurrentBankOperations(
-            fn (): string => 'reverse:'.$this->reverse()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Concurrent payment correction'), $this->user())->status->name,
-            fn (): string => 'payment:'.$this->postBankTransaction()->execute($this->admin(self::A), $paymentB, new PostingDate(new DateTimeImmutable('2026-08-28')), $this->user())->name,
-        );
-        self::assertContains('reverse:Success', $results);
-        self::assertTrue(in_array('payment:Success', $results, true) || in_array('payment:AllocationExceedsOpenBalance', $results, true), implode(', ', $results));
-        self::assertSame(1, DB::table('bank_transaction_reversals')->count());
-        self::assertSame(1, DB::table('open_item_settlements')->where('type', 'reversal')->count());
-        $open = $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item(1))))?->openAmount();
-        self::assertNotNull($open);
-        self::assertFalse($open->isNegative());
-        self::assertFalse($open->subtract(new Money('100', new Currency('EUR')))->isPositive());
+        for ($iteration = 0; $iteration < 3; $iteration++) {
+            $item = 10 + $iteration;
+            $this->openItem(self::A, $item, 'receivable', 'debit', '100');
+            [, $paymentA] = $this->createFinalized(self::A, '100', 100 + ($iteration * 2), $item, 'RACE-REV-A-'.$iteration);
+            [, $paymentB] = $this->createFinalized(self::A, '100', 101 + ($iteration * 2), $item, 'RACE-POST-B-'.$iteration);
+            self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+            $results = $this->runConcurrentBankOperations(
+                fn (): string => 'reverse:'.$this->reverse()->execute($this->admin(self::A), $paymentA, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Concurrent payment correction'), $this->user())->status->name,
+                fn (): string => 'payment:'.$this->postBankTransaction()->execute($this->admin(self::A), $paymentB, new PostingDate(new DateTimeImmutable('2026-08-28')), $this->user())->name,
+            );
+            self::assertContains('reverse:Success', $results);
+            self::assertNotContains('payment:PostingFailure', $results);
+            self::assertTrue(in_array('payment:Success', $results, true) || in_array('payment:AllocationExceedsOpenBalance', $results, true), implode(', ', $results));
+
+            $reversalId = DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $paymentA->toString())->value('id');
+            self::assertNotNull($reversalId);
+            self::assertSame(1, DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $paymentA->toString())->count());
+            self::assertSame(1, DB::table('bank_transaction_settlement_reversal_links')->where('bank_transaction_reversal_id', $reversalId)->count());
+            self::assertLessThanOrEqual(1, DB::table('bank_transaction_postings')->where('bank_transaction_id', $paymentB->toString())->count());
+            self::assertSame(0, DB::table('open_item_settlements')->where('open_item_id', $this->item($item))->select('payment_allocation_id', 'type')->groupBy('payment_allocation_id', 'type')->havingRaw('COUNT(*) > 1')->count());
+            self::assertSame(0, DB::table('bank_transaction_settlement_reversal_links as l')->leftJoin('bank_transaction_reversals as r', 'r.id', '=', 'l.bank_transaction_reversal_id')->where('l.bank_transaction_reversal_id', $reversalId)->whereNull('r.id')->count());
+
+            $open = $this->openItems()->findForAdministration($this->admin(self::A), new OpenItemId(new Uuid($this->item($item))))?->openAmount();
+            self::assertNotNull($open);
+            self::assertFalse($open->isNegative());
+            self::assertFalse($open->subtract(new Money('100', new Currency('EUR')))->isPositive());
+        }
         $this->cleanupCommittedFixtures();
     }
 

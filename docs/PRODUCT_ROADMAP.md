@@ -706,6 +706,14 @@ double reversal plus payment-/creditmatchraces zijn MySQL-geserialiseerd. Het ty
 Success-readmodel en de bestaande readiness-reader deblokkeren B3-003 voor uitsluitend
 de permission-scoped Webflow.
 
+B3-003 levert nu die Webflow onder Bank → Betalingen: tenant-scoped list/detail tonen
+afgeleid `Teruggedraaid`, beide JournalEntries, settlementreversals en resulterende open
+bedragen. View en Reverse blijven onafhankelijk; een read-only confirmation verzamelt
+expliciete postingdatum/reason en uitsluitend POST roept het B3-002-command aan. Web
+voegt geen locks of accountingsemantiek toe. De productflow en MySQL-concurrency-
+regressies zijn gereed voor B3-004; manual acceptance vereist eerst de expliciete
+development-assignment van `BANKING_REVERSAL_OPERATOR`.
+
 De eerdere post-PC-prioriteit verandert door nieuwe acceptance-evidence: Payment
 Reversal is nu de directe correctnessprioriteit; daarna volgen **Accounting Periods &
 Posting Locks**, vervolgens de **International Purchase VAT predecessor**, daarna
