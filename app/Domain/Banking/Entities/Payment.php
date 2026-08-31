@@ -73,6 +73,6 @@ final class Payment
             $total = $total->add($allocation->amount());
         }
 
-return $total;
+        return $total;
     }
 }
