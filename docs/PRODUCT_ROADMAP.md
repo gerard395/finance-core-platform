@@ -723,6 +723,42 @@ follow-ups volgens productionbehoefte. VAT/ICP reporting blijft geparkeerd totda
 international/reverse-charge/import/deductibility, complete correcties, fiscale
 perioden/locks, rounding/reconciliation en EUR-conversie duurzaam zijn opgelost.
 
+PROJECT-GAP-006 bevestigt na de gemergede B3-implementatie, handmatige B3-acceptance en
+de same-date settlement-orderingcorrectnessfix de eerdere follow-upvolgorde. B3 heeft
+de concrete bankreversalgap gesloten; de breedste resterende correctness- en
+production-safetygap is nu dat alle bestaande posting- en reversalflows een
+`PostingDate` zonder duurzame BookYear/AccountingPeriod of centrale lockguard kunnen
+verwerken.
+
+De exact volgende hoofdproductbatch is daarom **AP – Accounting Periods & Posting
+Locks**. V1 modelleert Administration-owned BookYears met dekkende AccountingPeriods en
+alleen `Open`/`Closed`; `SoftClosed` wordt niet zonder bewezen uitzonderingsworkflow
+ingevoerd. Een expliciete, audited reopen met verplichte reden zet Closed terug naar
+Open. De authoritative guard gebruikt de uiteindelijke Accounting `PostingDate` en
+geldt voor SalesInvoice Post, SalesCredit Post, PurchaseInvoice Post, PurchaseCredit
+Post, BankTransaction Post en BankTransaction Reversal. Toekomstige manual journals en
+opening balances gebruiken dezelfde grens.
+
+Accounting locks en Fiscal locks blijven afzonderlijk. `FiscalReportingDate`, fiscale
+perioden, returnfinalisatie en suppletiebeleid worden niet stilzwijgend in
+AccountingPeriod opgenomen. AP V1 levert uitsluitend accounting posting locks.
+
+Definitieve voorgestelde split: AP-000 contractalignment; AP-001 authorization en
+persistence; AP-002 transactionele PostingDate-lock enforcement over alle bestaande
+mutationpaden; AP-003 permission-scoped periodmanagement-Webflow; AP-004 review,
+development readiness en regressie. Development acceptance vereist expliciete
+permissions/canonical roles voor `dev-admin@financecore.local`, BookYear-/period-
+masterdata en een open → close → blocked post → andere open period → reopen → allowed
+post-scenario met zichtbare audit. Er is geen production auto-assignment of impliciete
+destructieve year rollover.
+
+Na AP volgt de **International Purchase VAT predecessor**, daarna **Bank Import &
+Reconciliation**. Opening Balance/Migration en Backup/Restore hardening blijven
+production-critical follow-ups volgens de concrete go-liveplanning; Backup/Restore is
+een afzonderlijke operations gate. VAT/ICP reporting blijft geparkeerd totdat
+international/multi-leg Purchase VAT, deductibility, fiscale perioden/locks, complete
+correcties, rounding/reconciliation en EUR-conversie duurzaam zijn opgelost.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
