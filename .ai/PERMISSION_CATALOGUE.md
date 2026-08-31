@@ -89,13 +89,23 @@ creditpermission-IDs zijn `3a85b19c-8196-47bb-90e2-94c4aa72c101`,
 
 ## Accounting
 
-| Permission Name | Korte beschrijving |
+| Permission Code / Name | Korte beschrijving |
 | --- | --- |
 | View Ledger | Grootboekrekeningen, journaals en boekingen raadplegen. |
 | Manage Chart of Accounts | Het rekeningschema beheren. |
 | Create Journal Entry | Een journaalpost opstellen. |
 | Post Journal Entry | Een journaalpost definitief boeken. |
-| Manage Accounting Periods | Boekingsperioden openen en sluiten. |
+| `ACCOUNTING.PERIODS_VIEW` | BookYears, AccountingPeriods, actuele status, readiness en immutable statushistorie raadplegen. |
+| `ACCOUNTING.PERIODS_MANAGE` | Expliciete BookYear-/periodsetup, planvalidatie, labels en uitsluitend lege setupcorrecties beheren; geeft geen Close/Reopen-recht. |
+| `ACCOUNTING.PERIODS_CLOSE` | Een Open AccountingPeriod met verplichte reden sluiten; geeft geen Manage- of Reopen-recht. |
+| `ACCOUNTING.PERIODS_REOPEN` | Een Closed AccountingPeriod met verplichte reden heropenen; high-impact en onafhankelijk van Manage/Close/Post. |
+
+AP-000 ontwerpt de canonical role `ACCOUNTING_PERIOD_MANAGER` met uitsluitend Period
+View + Manage + Close en de afzonderlijke `ACCOUNTING_PERIOD_REOPENER` met uitsluitend
+Period View + Reopen. AP-001 bepaalt stabiele IDs en implementeert definitions/idempotente
+role-permissionlinks. Er is geen permissionhiërarchie, role-name authorization of
+automatische production-membershipassignment. `dev-admin@financecore.local` krijgt pas
+voor development acceptance een expliciet gecontroleerde assignment zonder duplicates.
 
 ## Tax
 

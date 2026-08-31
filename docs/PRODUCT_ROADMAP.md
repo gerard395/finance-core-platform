@@ -759,6 +759,32 @@ een afzonderlijke operations gate. VAT/ICP reporting blijft geparkeerd totdat
 international/multi-leg Purchase VAT, deductibility, fiscale perioden/locks, complete
 correcties, rounding/reconciliation en EUR-conversie duurzaam zijn opgelost.
 
+AP-000 heeft de periode- en lockcontracten definitief uitgelijnd. `BookYear` is de
+Administration-owned Accounting-root met immutable code/start/eind; BookYears
+overlappen niet, maar mogen gaps hebben waarin posting fail-closed `NoPeriod` oplevert.
+BookYear bezit custom `AccountingPeriod`-children die samen het hele jaar zonder gaps of
+overlap dekken. Perioden hebben in V1 exact `Open`/`Closed`; `SoftClosed` en een aparte
+BookYear-close zijn deferred. Close en Reopen vereisen reason/actor/authoritative tijd,
+bewaren current status plus append-only history en muteren geen financiële facts.
+
+De AP-002-guard gebruikt uitsluitend de PostingDate die werkelijk naar PostingEngine
+gaat. SalesInvoice en SalesCredit leiden die momenteel af uit hun immutable documentdatum;
+PurchaseInvoice, PurchaseCredit, BankTransaction Post en BankTransaction Reversal
+ontvangen haar expliciet. Iedere duurzame flow checkt en shared-lockt exact één period
+binnen dezelfde outer financial transaction. Close gebruikt een exclusive lock op
+dezelfde row: posting vóór close is geldig, close vóór posting levert typed Closed met
+nul writes. NoPeriod en ambiguity/integrity failure zijn eveneens fail-closed. Web of
+preflight is nooit authoritative.
+
+Bestaande JournalEntries worden niet herschreven of automatisch aan perioden gekoppeld.
+AP-001 levert additive persistence, expliciete volledige BookYear-/periodsetup,
+readiness over bestaande PostingDates, de vier onafhankelijke Period-permissions en
+least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 levert
+enforcement, AP-003 de management-Webflow en AP-004 review plus expliciete dev-admin
+readiness/manual open-close-reopenacceptance. Er is geen afzonderlijke historische-data
+predecessor; AP-001 is unblocked. Accounting PostingDate-locks blijven strikt gescheiden
+van toekomstige FiscalReportingDate/VAT-filinglocks.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
