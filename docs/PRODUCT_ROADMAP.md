@@ -788,17 +788,28 @@ Grootboek → Perioden: tenant-safe list/create, label-only edit, expliciete cus
 periodsetup, authoritative readiness, POST-only Close/Reopen en ordered audit history.
 Create is insert-only, zodat een duplicate tenant-code geen bestaand BookYear-label meer
 kan overschrijven en typed IntegrityFailure oplevert. Er is geen automatische generatie
-of bootstrap. AP-004 verzorgt review plus expliciete dev-admin readiness/manual
-open-close-reopenacceptance. Er is geen afzonderlijke historische-data-predecessor;
-AP-004 is productmatig unblocked. Development acceptance vereist wel eerst expliciete
-canonical role assignments voor dev-admin en BookYear-/periodsetup via Web; momenteel
-zijn de canonical AP-rollen expliciet toegewezen. AP-003R voegt vóór de eerste
+of bootstrap. AP-004 heeft de gezamenlijke model-, authorization-, six-flow-, concurrency-,
+Web/security- en regressiereview groen afgerond. De handmatige developmentacceptance is
+PASS: BookYear 2026 bevat twaalf dekkende maandperioden; augustus doorliep audited Open →
+Closed → Open; een gesloten augustusposting werd zonder financiële writes geweigerd, een
+septemberposting was succesvol en na Reopen was een augustusposting succesvol. Beide
+geslaagde testobjects hebben exact één JournalEntry, TaxPosting en Payable/OpenItem van
+bruto EUR 12,10. Database-integriteit en volledige validatie zijn groen; AP is
+merge-ready. Er is geen afzonderlijke historische-data-predecessor. De canonical
+AP-rollen zijn voor manual acceptance uitsluitend als developmentdata expliciet
+toegewezen. AP-003R voegt vóór de eerste
 Close/history een atomic, permission-scoped replacement van een Open setupplan toe,
 zodat een foutieve jaarperiod na validatie expliciet door maandperioden kan worden
 vervangen zonder financiële facts te wijzigen. De handmatige replacement blijft een
 acceptancestap en gebeurt niet automatisch. Er wordt geen
 perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt
 gescheiden van toekomstige FiscalReportingDate/VAT-filinglocks.
+
+Na AP blijft de aanbevolen volgende productstap de **International Purchase VAT
+predecessor**, gevolgd door **Bank Import & Reconciliation**. `SoftClosed`, zelfstandige
+BookYear-close, fiscale/VAT filing locks, arbitrary JournalEntry period UI en opening-
+balance/year-rolloverautomatisering blijven expliciet deferred; VAT/ICP reporting blijft
+geparkeerd.
 
 ## Releases
 

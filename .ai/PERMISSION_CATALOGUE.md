@@ -108,10 +108,10 @@ Period View + Reopen. De vier permission-IDs lopen stabiel van
 role-permissionlinks zijn idempotent en collision-safe. Er is geen permissionhiërarchie, role-name authorization of
 automatische production-membershipassignment. AP-003 handhaaft iedere permission op de
 eigen Webroutes en gebruikt uitsluitend effective permission-IDs; navigatie gebruikt
-View en nooit een role-name. Read-only vastgesteld dat `dev-admin@financecore.local`
-nog geen van beide canonical AP-rollen en geen effectieve AP-permission heeft. Voor
-development acceptance is dus een expliciet gecontroleerde assignment zonder duplicates
-vereist; AP-003 voert die niet automatisch uit.
+View en nooit een role-name. Voor manual acceptance zijn beide canonical rollen expliciet
+en uitsluitend in de developmentdatabase aan de actieve membership van
+`dev-admin@financecore.local` toegewezen. Dit is developmentdata, geen seeder- of
+production auto-assignment; AP-003 voert assignments nooit automatisch uit.
 
 ## Tax
 

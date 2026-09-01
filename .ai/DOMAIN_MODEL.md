@@ -328,6 +328,9 @@ AP-003R staat vóór de eerste Close/history een atomische vervanging van uitslu
 Open periodplan toe. Een expected-plan fingerprint, BookYear/periodrow-locks, volledige
 coveragevalidatie en historische PostingDate-dekking voorkomen stale of gedeeltelijke
 replacement. Closed/history-bearing periods en alle financiële facts blijven immutable.
+AP-004 heeft model, authorization, zes-flow enforcement, concurrency, Web/security en
+manual acceptance gezamenlijk groen beoordeeld. De AP-capability is merge-ready; de
+expliciet deferred scope blijft buiten V1.
 
 ## 5. Fiscal
 

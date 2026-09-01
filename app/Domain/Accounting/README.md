@@ -2,7 +2,7 @@
 
 ## Doel
 
-Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Core Platform. Naast grootboek en boekingen beheert Accounting `OpenItem` en diens append-only settlementhistorie.
+Accounting vormt de frameworkonafhankelijke boekhoudkundige kern van Finance Core Platform. Naast grootboek en boekingen beheert Accounting `OpenItem` en diens append-only settlementhistorie, plus Administration-owned `BookYear`- en `AccountingPeriod`-setup voor transactionele PostingDate-locks.
 
 ## Verantwoordelijkheden
 
@@ -17,6 +17,15 @@ Nieuwe `JournalEntry`-businessstate ontstaat via de bestaande constructor en lif
 Nieuwe `OpenItem`-businessstate ontstaat via de constructor; nieuwe settlementfeiten uitsluitend via `applySettlement()` en `reverseSettlement()`. `OpenItem::reconstitute()` herstelt daarentegen bestaande typed basisstate en volledige settlementhistorie in één side-effectvrije stap. Zij sorteert en valideert de auditfeiten zonder commands te replayen; open bedrag en status blijven uitsluitend afleidingen van originalAmount en historie.
 
 `openAmountAt()` en `statusAt()` zijn de enige bron voor historische openstand en status. Reporting leest deze API's en reconstrueert geen settlementlogica.
+
+`BookYear` bezit custom `AccountingPeriod`-children. Code en grenzen van het BookYear en
+de periodranges zijn immutable; alleen labels wijzigen expliciet. Een compleet periodplan
+dekt het hele BookYear zonder gaps of overlap. Perioden hebben uitsluitend `Open` en
+`Closed`; Close/Reopen vereist reason, actor en authoritative timestamp en bewaart
+append-only history. `AccountingPeriodPostingGuard` controleert binnen de outer financial
+transaction uitsluitend AdministrationId + werkelijke PostingDate. Closed, NoPeriod en
+IntegrityFailure falen vóór financiële writes. FiscalReportingDate en VAT-filinglocks
+vallen buiten dit accountingcontract.
 
 ## Invarianten
 
@@ -40,6 +49,10 @@ Nieuwe `OpenItem`-businessstate ontstaat via de constructor; nieuwe settlementfe
 - Een Applied settlement mag de chronologische openstand niet negatief maken.
 - Een Reversal draait één bestaand Applied settlement eenmaal en volledig terug; het oorspronkelijke feit blijft ongewijzigd.
 - Settlementhistorie is deterministisch geordend op effectiveDate en daarna settlement-ID.
+- BookYears overlappen niet binnen één Administration; gaps tussen BookYears zijn toegestaan.
+- Een compleet AccountingPeriod-plan dekt exact het BookYear zonder gaps of overlap.
+- Close en Reopen muteren current status en appenden audit atomair; financiële feiten blijven immutable.
+- Een posting vereist exact één Open AccountingPeriod voor de werkelijke PostingDate.
 
 ## Geen opgeslagen saldo
 
