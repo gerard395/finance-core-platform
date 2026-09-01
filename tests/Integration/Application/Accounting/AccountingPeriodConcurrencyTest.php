@@ -6,6 +6,7 @@ namespace Tests\Integration\Application\Accounting;
 
 use App\Application\Accounting\CreateAccountingPeriod;
 use App\Application\Accounting\CreateBookYear;
+use App\Application\Accounting\UpdateBookYearLabel;
 use App\Domain\Accounting\Entities\AccountingPeriod;
 use App\Domain\Accounting\Entities\BookYear;
 use App\Domain\Accounting\ValueObjects\AccountingPeriodId;
@@ -70,6 +71,38 @@ final class AccountingPeriodConcurrencyTest extends TestCase
         self::assertSame(['IntegrityFailure', 'Success'], $results);
         self::assertSame(1, DB::table('accounting_periods')->where('administration_id', self::A)->where('book_year_id', $yearId->toString())->count());
         self::assertSame(0, $this->durableOverlapPairs('accounting_periods', $yearId->toString()));
+        $this->restoreTestTransaction();
+    }
+
+    public function test_real_mysql_serializes_duplicate_tenant_code_without_overwriting_the_winner(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required for the AP concurrency test.');
+        }
+        DB::commit();
+        $results = $this->race('ap-code-race-', function (int $index): string {
+            $id = sprintf('ab250000-0000-4000-8000-%012d', $index + 1);
+            $year = new BookYear(
+                new BookYearId(new Uuid($id)),
+                $this->admin(),
+                'DUPLICATE-CODE',
+                'Winner '.$index,
+                new DateTimeImmutable($index === 0 ? '2026-01-01' : '2027-01-01'),
+                new DateTimeImmutable($index === 0 ? '2026-12-31' : '2027-12-31'),
+            );
+
+            return $this->app->make(CreateBookYear::class)->execute($year)->name;
+        });
+
+        sort($results);
+        self::assertSame(['IntegrityFailure', 'Success'], $results);
+        $stored = DB::table('book_years')->where('administration_id', self::A)->where('code', 'DUPLICATE-CODE')->sole();
+        self::assertContains($stored->label, ['Winner 0', 'Winner 1']);
+        self::assertSame(1, DB::table('book_years')->where('administration_id', self::A)->where('code', 'DUPLICATE-CODE')->count());
+
+        $status = $this->app->make(UpdateBookYearLabel::class)->execute($this->admin(), new BookYearId(new Uuid($stored->id)), 'Expliciet gewijzigd');
+        self::assertSame('Success', $status->name);
+        self::assertSame('Expliciet gewijzigd', DB::table('book_years')->where('id', $stored->id)->value('label'));
         $this->restoreTestTransaction();
     }
 

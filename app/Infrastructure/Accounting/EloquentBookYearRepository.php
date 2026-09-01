@@ -54,7 +54,10 @@ final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRep
             $this->lockAdministration($y->administrationId());
             if ($this->overlaps($y->administrationId(), $y->startDate(), $y->endDate(), $y->id())) {
                 return false;
-            }DB::table('book_years')->upsert([['id' => $y->id()->toString(), 'administration_id' => $y->administrationId()->toString(), 'code' => $y->code(), 'label' => $y->label(), 'start_date' => $y->startDate(), 'end_date' => $y->endDate(), 'created_at' => $now, 'updated_at' => $now]], ['id'], ['label', 'updated_at']);
+            }$created = DB::table('book_years')->insertOrIgnore(['id' => $y->id()->toString(), 'administration_id' => $y->administrationId()->toString(), 'code' => $y->code(), 'label' => $y->label(), 'start_date' => $y->startDate(), 'end_date' => $y->endDate(), 'created_at' => $now, 'updated_at' => $now]);
+            if ($created !== 1) {
+                return false;
+            }
             foreach ($y->periods() as $p) {
                 DB::table('accounting_periods')->insert(['id' => $p->id()->toString(), 'administration_id' => $y->administrationId()->toString(), 'book_year_id' => $y->id()->toString(), 'code' => $p->code(), 'label' => $p->label(), 'start_date' => $p->startDate(), 'end_date' => $p->endDate(), 'status' => $p->status()->value, 'created_at' => $now, 'updated_at' => $now]);
             }

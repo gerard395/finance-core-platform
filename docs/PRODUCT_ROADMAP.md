@@ -783,13 +783,18 @@ readiness over bestaande PostingDates, de vier onafhankelijke Period-permissions
 least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 is
 afgerond met één centrale typed guard en shared periodrow-lock enforcement in SalesInvoice,
 SalesCredit, PurchaseInvoice, PurchaseCredit, BankTransaction Post en BankTransaction
-Reversal. AP-003 levert de management-Webflow en AP-004 review plus expliciete dev-admin
-readiness/manual open-close-reopenacceptance. Er is geen afzonderlijke historische-data
-predecessor; AP-002 is technisch unblocked door typed tenant-safe PostingDate-lookup en
-shared/exclusive lockcontracten. AP-003 is technisch unblocked. Development acceptance
-vereist eerst expliciete BookYear-/periodsetup;
-er wordt geen perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt gescheiden
-van toekomstige FiscalReportingDate/VAT-filinglocks.
+Reversal. AP-003 is afgerond met de permission-scoped management-Webflow onder Beheer →
+Grootboek → Perioden: tenant-safe list/create, label-only edit, expliciete custom
+periodsetup, authoritative readiness, POST-only Close/Reopen en ordered audit history.
+Create is insert-only, zodat een duplicate tenant-code geen bestaand BookYear-label meer
+kan overschrijven en typed IntegrityFailure oplevert. Er is geen automatische generatie
+of bootstrap. AP-004 verzorgt review plus expliciete dev-admin readiness/manual
+open-close-reopenacceptance. Er is geen afzonderlijke historische-data-predecessor;
+AP-004 is productmatig unblocked. Development acceptance vereist wel eerst expliciete
+canonical role assignments voor dev-admin en BookYear-/periodsetup via Web; momenteel
+zijn alle vier AP-permissions niet effectief en is masterdata `0/0`. Er wordt geen
+perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt
+gescheiden van toekomstige FiscalReportingDate/VAT-filinglocks.
 
 ## Releases
 

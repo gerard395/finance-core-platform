@@ -106,8 +106,12 @@ en `ACCOUNTING_PERIOD_REOPENER` (`a9020000-0000-4000-8000-000000000002`) met uit
 Period View + Reopen. De vier permission-IDs lopen stabiel van
 `a9010000-0000-4000-8000-000000000001` tot en met `...0004`; definitions en
 role-permissionlinks zijn idempotent en collision-safe. Er is geen permissionhiërarchie, role-name authorization of
-automatische production-membershipassignment. `dev-admin@financecore.local` krijgt pas
-voor development acceptance een expliciet gecontroleerde assignment zonder duplicates.
+automatische production-membershipassignment. AP-003 handhaaft iedere permission op de
+eigen Webroutes en gebruikt uitsluitend effective permission-IDs; navigatie gebruikt
+View en nooit een role-name. Read-only vastgesteld dat `dev-admin@financecore.local`
+nog geen van beide canonical AP-rollen en geen effectieve AP-permission heeft. Voor
+development acceptance is dus een expliciet gecontroleerde assignment zonder duplicates
+vereist; AP-003 voert die niet automatisch uit.
 
 ## Tax
 
