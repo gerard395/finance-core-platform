@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Accounting;
 
 use App\Application\Accounting\AccountingPeriodHistoryEntry;
+use App\Application\Accounting\AccountingPeriodHistoryOrderer;
 use App\Application\Accounting\AccountingPeriodHistoryReadModel;
 use App\Application\Accounting\AccountingPeriodHistoryReadRepository;
 use App\Application\Accounting\AccountingPeriodLockMode;
@@ -26,6 +27,8 @@ use Illuminate\Support\Str;
 
 final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRepository, AccountingPeriodLookupRepository, BookYearRepository
 {
+    public function __construct(private AccountingPeriodHistoryOrderer $historyOrderer) {}
+
     public function updateLabel(AdministrationId $a, BookYearId $id, string $label): bool
     {
         return DB::table('book_years')->where('administration_id', $a->toString())->where('id', $id->toString())->update(['label' => $label, 'updated_at' => now()]) === 1;
@@ -135,14 +138,15 @@ final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRep
         if ($period === null) {
             return null;
         }
+        $currentStatus = AccountingPeriodStatus::from($period->status);
         $history = DB::table('accounting_period_status_history')->where('administration_id', $administrationId->toString())
-            ->where('accounting_period_id', $id->toString())->orderBy('occurred_at')->orderBy('id')->get()
+            ->where('accounting_period_id', $id->toString())->orderBy('occurred_at')->get()
             ->map(fn ($row): AccountingPeriodHistoryEntry => new AccountingPeriodHistoryEntry(
                 AccountingPeriodStatus::from($row->from_status), AccountingPeriodStatus::from($row->to_status), $row->reason,
                 new UserId(new Uuid($row->actor_id)), new DateTimeImmutable($row->occurred_at),
             ))->all();
 
-        return new AccountingPeriodHistoryReadModel($id, AccountingPeriodStatus::from($period->status), $history);
+        return new AccountingPeriodHistoryReadModel($id, $currentStatus, $this->historyOrderer->order($history, $currentStatus));
     }
 
     public function historicalPostingDates(AdministrationId $a): array

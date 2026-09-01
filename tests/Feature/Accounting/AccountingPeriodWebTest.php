@@ -113,8 +113,9 @@ final class AccountingPeriodWebTest extends TestCase
             ->assertSeeText('Boekingen met een boekingsdatum in deze periode zijn daarna weer toegestaan.');
 
         $this->post("/settings/accounting-periods/{$year->id}/periods/{$period->id}/reopen", ['reason' => 'Correctie akkoord'])->assertRedirect();
+        DB::table('accounting_period_status_history')->update(['occurred_at' => '2026-09-01 10:00:00']);
         $this->get('/settings/accounting-periods/'.$year->id)->assertOk()
-            ->assertSeeText('Open → Closed')->assertSeeText('Closed → Open');
+            ->assertSeeTextInOrder(['Open → Closed', 'Closed → Open']);
         self::assertSame(2, DB::table('accounting_period_status_history')->count());
 
         $this->get('/settings/accounting-periods/not-a-uuid')->assertNotFound();
