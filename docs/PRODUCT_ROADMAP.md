@@ -777,12 +777,15 @@ nul writes. NoPeriod en ambiguity/integrity failure zijn eveneens fail-closed. W
 preflight is nooit authoritative.
 
 Bestaande JournalEntries worden niet herschreven of automatisch aan perioden gekoppeld.
-AP-001 levert additive persistence, expliciete volledige BookYear-/periodsetup,
+AP-001 is afgerond met migration `000057`, additive tenant-safe persistence, expliciete
+BookYear-/periodsetup,
 readiness over bestaande PostingDates, de vier onafhankelijke Period-permissions en
 least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 levert
 enforcement, AP-003 de management-Webflow en AP-004 review plus expliciete dev-admin
 readiness/manual open-close-reopenacceptance. Er is geen afzonderlijke historische-data
-predecessor; AP-001 is unblocked. Accounting PostingDate-locks blijven strikt gescheiden
+predecessor; AP-002 is technisch unblocked door typed tenant-safe PostingDate-lookup en
+shared/exclusive lockcontracten. Development acceptance vereist later expliciete setup;
+er wordt geen perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt gescheiden
 van toekomstige FiscalReportingDate/VAT-filinglocks.
 
 ## Releases

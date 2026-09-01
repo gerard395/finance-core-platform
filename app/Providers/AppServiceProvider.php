@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use App\Application\Accounting\AccountingMasterDataIdentityGenerator;
+use App\Application\Accounting\AccountingPeriodHistoryReadRepository;
+use App\Application\Accounting\AccountingPeriodLookupRepository;
+use App\Application\Accounting\BookYearRepository;
 use App\Application\Accounting\JournalEntryReadRepository;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\JournalReadRepository;
@@ -166,6 +169,7 @@ use App\Domain\Accounting\Services\PostingValidation;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
+use App\Infrastructure\Accounting\EloquentBookYearRepository;
 use App\Infrastructure\Accounting\LaravelAccountingMasterDataIdentityGenerator;
 use App\Infrastructure\Accounting\LaravelOpenItemMatchIdentityGenerator;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
@@ -470,6 +474,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(AuthAccountStore::class, EloquentAuthAccountStore::class);
         $this->app->bind(PasswordHasher::class, LaravelPasswordHasher::class);
         $this->app->bind(TransactionManager::class, LaravelDatabaseTransactionManager::class);
+        $this->app->bind(BookYearRepository::class, EloquentBookYearRepository::class);
+        $this->app->bind(AccountingPeriodHistoryReadRepository::class, EloquentBookYearRepository::class);
+        $this->app->bind(AccountingPeriodLookupRepository::class, EloquentBookYearRepository::class);
         $this->app->bind(DevelopmentAccountingMasterDataProvisioner::class, DemoAccountingProvisioner::class);
     }
 

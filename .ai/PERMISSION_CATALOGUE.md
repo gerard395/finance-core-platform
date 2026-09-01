@@ -100,10 +100,12 @@ creditpermission-IDs zijn `3a85b19c-8196-47bb-90e2-94c4aa72c101`,
 | `ACCOUNTING.PERIODS_CLOSE` | Een Open AccountingPeriod met verplichte reden sluiten; geeft geen Manage- of Reopen-recht. |
 | `ACCOUNTING.PERIODS_REOPEN` | Een Closed AccountingPeriod met verplichte reden heropenen; high-impact en onafhankelijk van Manage/Close/Post. |
 
-AP-000 ontwerpt de canonical role `ACCOUNTING_PERIOD_MANAGER` met uitsluitend Period
-View + Manage + Close en de afzonderlijke `ACCOUNTING_PERIOD_REOPENER` met uitsluitend
-Period View + Reopen. AP-001 bepaalt stabiele IDs en implementeert definitions/idempotente
-role-permissionlinks. Er is geen permissionhiërarchie, role-name authorization of
+AP-001 implementeert de canonical role `ACCOUNTING_PERIOD_MANAGER`
+(`a9020000-0000-4000-8000-000000000001`) met uitsluitend Period View + Manage + Close
+en `ACCOUNTING_PERIOD_REOPENER` (`a9020000-0000-4000-8000-000000000002`) met uitsluitend
+Period View + Reopen. De vier permission-IDs lopen stabiel van
+`a9010000-0000-4000-8000-000000000001` tot en met `...0004`; definitions en
+role-permissionlinks zijn idempotent en collision-safe. Er is geen permissionhiërarchie, role-name authorization of
 automatische production-membershipassignment. `dev-admin@financecore.local` krijgt pas
 voor development acceptance een expliciet gecontroleerde assignment zonder duplicates.
 
