@@ -6,12 +6,14 @@ namespace App\Http\Controllers;
 
 use App\Application\Accounting\AccountingPeriodHistoryReadRepository;
 use App\Application\Accounting\AccountingPeriodMutationStatus;
+use App\Application\Accounting\AccountingPeriodPlanReplacementStatus;
 use App\Application\Accounting\BookYearRepository;
 use App\Application\Accounting\CloseAccountingPeriod;
 use App\Application\Accounting\CreateAccountingPeriod;
 use App\Application\Accounting\CreateBookYear;
 use App\Application\Accounting\GetAccountingPeriodReadiness;
 use App\Application\Accounting\ReopenAccountingPeriod;
+use App\Application\Accounting\ReplaceAccountingPeriodPlan;
 use App\Application\Accounting\UpdateBookYearLabel;
 use App\Application\Identity\PermissionAuthorizer;
 use App\Domain\Accounting\Entities\AccountingPeriod;
@@ -21,6 +23,7 @@ use App\Domain\Accounting\ValueObjects\BookYearId;
 use App\Domain\Identity\Definitions\AccountingPeriodPermission;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Administration\ActiveAdministrationContext;
+use App\Http\Requests\Accounting\ReplaceAccountingPeriodPlanRequest;
 use App\Http\Requests\Accounting\StoreAccountingPeriodRequest;
 use App\Http\Requests\Accounting\StoreBookYearRequest;
 use App\Http\Requests\Accounting\TransitionAccountingPeriodRequest;
@@ -44,6 +47,7 @@ final readonly class AccountingPeriodController
         private CreateAccountingPeriod $createPeriod,
         private CloseAccountingPeriod $closePeriod,
         private ReopenAccountingPeriod $reopenPeriod,
+        private ReplaceAccountingPeriodPlan $replacePlan,
         private PermissionAuthorizer $permissions,
     ) {}
 
@@ -99,6 +103,8 @@ final readonly class AccountingPeriodController
             'canManage' => $this->can($context, AccountingPeriodPermission::Manage),
             'canClose' => $this->can($context, AccountingPeriodPermission::Close),
             'canReopen' => $this->can($context, AccountingPeriodPermission::Reopen),
+            'canReconfigure' => $this->can($context, AccountingPeriodPermission::Manage)
+                && $this->replacePlan->eligibility($context->administration->id(), $year->id()) === AccountingPeriodPlanReplacementStatus::Success,
         ]);
     }
 
@@ -147,6 +153,32 @@ final readonly class AccountingPeriodController
     public function reopen(TransitionAccountingPeriodRequest $request, string $bookYear, string $period): RedirectResponse
     {
         return $this->transition($request, $bookYear, $period, true);
+    }
+
+    public function replacePlan(ReplaceAccountingPeriodPlanRequest $request, string $bookYear): RedirectResponse
+    {
+        $context = $this->context($request);
+        $id = $this->bookYearId($bookYear);
+        $status = $this->replacePlan->withMonthlyPeriods($context->administration->id(), $id, $request->validated()['expected_period_ids']);
+
+        if ($status === AccountingPeriodPlanReplacementStatus::Success) {
+            return redirect()->route('settings.accounting-periods.show', $id->toString())->with('status', 'Periodenindeling vervangen door maandperioden.');
+        }
+        if ($status === AccountingPeriodPlanReplacementStatus::NotFound) {
+            abort(404);
+        }
+
+        $message = match ($status) {
+            AccountingPeriodPlanReplacementStatus::PeriodClosed => 'Een gesloten periode kan niet opnieuw worden ingericht.',
+            AccountingPeriodPlanReplacementStatus::HistoryExists => 'Een periodenindeling met audithistorie kan niet worden vervangen.',
+            AccountingPeriodPlanReplacementStatus::IncompleteCoverage => 'De vervangende perioden dekken het boekjaar niet volledig.',
+            AccountingPeriodPlanReplacementStatus::Overlap => 'De vervangende perioden overlappen.',
+            AccountingPeriodPlanReplacementStatus::HistoricalPostingDateUncovered => 'Een historische boekingsdatum wordt niet gedekt.',
+            AccountingPeriodPlanReplacementStatus::IntegrityFailure => 'De periodenindeling is intussen gewijzigd of kon niet veilig worden vervangen.',
+            AccountingPeriodPlanReplacementStatus::Success, AccountingPeriodPlanReplacementStatus::NotFound => throw new \LogicException,
+        };
+
+        return back()->withErrors(['period_plan' => $message]);
     }
 
     private function transition(TransitionAccountingPeriodRequest $request, string $bookYear, string $period, bool $reopen): RedirectResponse

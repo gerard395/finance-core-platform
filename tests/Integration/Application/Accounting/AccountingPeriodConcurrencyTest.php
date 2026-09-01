@@ -6,6 +6,7 @@ namespace Tests\Integration\Application\Accounting;
 
 use App\Application\Accounting\CreateAccountingPeriod;
 use App\Application\Accounting\CreateBookYear;
+use App\Application\Accounting\ReplaceAccountingPeriodPlan;
 use App\Application\Accounting\UpdateBookYearLabel;
 use App\Domain\Accounting\Entities\AccountingPeriod;
 use App\Domain\Accounting\Entities\BookYear;
@@ -103,6 +104,27 @@ final class AccountingPeriodConcurrencyTest extends TestCase
         $status = $this->app->make(UpdateBookYearLabel::class)->execute($this->admin(), new BookYearId(new Uuid($stored->id)), 'Expliciet gewijzigd');
         self::assertSame('Success', $status->name);
         self::assertSame('Expliciet gewijzigd', DB::table('book_years')->where('id', $stored->id)->value('label'));
+        $this->restoreTestTransaction();
+    }
+
+    public function test_real_mysql_allows_only_one_replacement_for_the_same_expected_plan(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required for the AP concurrency test.');
+        }
+        $yearId = new BookYearId(new Uuid('ab230000-0000-4000-8000-000000000020'));
+        $oldPeriodId = new AccountingPeriodId(new Uuid('ab240000-0000-4000-8000-000000000020'));
+        $year = new BookYear($yearId, $this->admin(), 'REPLACE', 'Replace', new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-12-31'), [new AccountingPeriod($oldPeriodId, $this->admin(), $yearId, '2026', '2026', new DateTimeImmutable('2026-01-01'), new DateTimeImmutable('2026-12-31'))]);
+        self::assertSame('Success', $this->app->make(CreateBookYear::class)->execute($year)->name);
+        DB::commit();
+        $results = $this->race('ap-replace-race-', fn (): string => $this->app->make(ReplaceAccountingPeriodPlan::class)->withMonthlyPeriods($this->admin(), $yearId, [$oldPeriodId->toString()])->name);
+
+        sort($results);
+        self::assertSame(['IntegrityFailure', 'Success'], $results);
+        $periods = DB::table('accounting_periods')->where('book_year_id', $yearId->toString())->orderBy('start_date')->get();
+        self::assertCount(12, $periods);
+        self::assertSame('2026-01-01', $periods->first()->start_date);
+        self::assertSame('2026-12-31', $periods->last()->end_date);
         $this->restoreTestTransaction();
     }
 

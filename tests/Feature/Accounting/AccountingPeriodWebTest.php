@@ -126,6 +126,30 @@ final class AccountingPeriodWebTest extends TestCase
         self::assertSame(1, DB::table('book_years')->count());
     }
 
+    public function test_manager_can_explicitly_replace_an_eligible_plan_with_months(): void
+    {
+        $this->post('/settings/accounting-periods', ['code' => '2026', 'label' => '2026', 'start_date' => '2026-01-01', 'end_date' => '2026-12-31'])->assertRedirect();
+        $year = DB::table('book_years')->sole();
+        $this->post('/settings/accounting-periods/'.$year->id.'/periods', ['code' => '2026', 'label' => '2026', 'start_date' => '2026-01-01', 'end_date' => '2026-12-31'])->assertRedirect();
+        $oldPeriod = DB::table('accounting_periods')->sole();
+
+        $this->get('/settings/accounting-periods/'.$year->id)->assertOk()
+            ->assertSeeText('Periodenindeling opnieuw inrichten')
+            ->assertSeeText('Financiële boekingen worden niet gewijzigd')
+            ->assertSeeText('12 maandperioden genereren');
+        $this->get('/settings/accounting-periods/'.$year->id.'/periods/replace-with-months')->assertStatus(405);
+        $this->post('/settings/accounting-periods/'.$year->id.'/periods/replace-with-months', [
+            'expected_period_ids' => [$oldPeriod->id],
+            'administration_id' => self::ADMIN_B,
+        ])->assertRedirect('/settings/accounting-periods/'.$year->id);
+
+        $periods = DB::table('accounting_periods')->where('book_year_id', $year->id)->orderBy('start_date')->get();
+        self::assertCount(12, $periods);
+        self::assertSame(self::ADMIN_A, $periods->first()->administration_id);
+        self::assertSame('2026-01-01', $periods->first()->start_date);
+        self::assertSame('2026-12-31', $periods->last()->end_date);
+    }
+
     private function administration(string $id, string $code): Administration
     {
         return new Administration(new AdministrationId(new Uuid($id)), new AdministrationCode($code), new AdministrationName($code), null, new Currency('EUR'), AdministrationStatus::Active);

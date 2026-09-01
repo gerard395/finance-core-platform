@@ -74,7 +74,7 @@ final class AccountingPeriodWebAuthorizationTest extends TestCase
     {
         return [
             'view' => [AccountingPeriodPermission::View, ['index', 'show']],
-            'manage' => [AccountingPeriodPermission::Manage, ['create', 'store', 'edit', 'update', 'setup']],
+            'manage' => [AccountingPeriodPermission::Manage, ['create', 'store', 'edit', 'update', 'setup', 'replace']],
             'close' => [AccountingPeriodPermission::Close, ['close']],
             'reopen' => [AccountingPeriodPermission::Reopen, ['reopen']],
         ];
@@ -111,6 +111,7 @@ final class AccountingPeriodWebAuthorizationTest extends TestCase
             'edit' => ['get', '/settings/accounting-periods/'.self::YEAR.'/edit', []],
             'update' => ['put', '/settings/accounting-periods/'.self::YEAR, []],
             'setup' => ['post', '/settings/accounting-periods/'.self::YEAR.'/periods', []],
+            'replace' => ['post', '/settings/accounting-periods/'.self::YEAR.'/periods/replace-with-months', []],
             'close' => ['post', '/settings/accounting-periods/'.self::YEAR.'/periods/'.self::PERIOD.'/close', []],
             'reopen' => ['post', '/settings/accounting-periods/'.self::YEAR.'/periods/'.self::PERIOD.'/reopen', []],
         ];

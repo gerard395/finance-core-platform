@@ -184,6 +184,9 @@ Route::put('/settings/accounting-periods/{bookYear}', [AccountingPeriodControlle
 Route::post('/settings/accounting-periods/{bookYear}/periods', [AccountingPeriodController::class, 'storePeriod'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
     ->name('settings.accounting-periods.periods.store');
+Route::post('/settings/accounting-periods/{bookYear}/periods/replace-with-months', [AccountingPeriodController::class, 'replacePlan'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.periods.replace');
 Route::post('/settings/accounting-periods/{bookYear}/periods/{period}/close', [AccountingPeriodController::class, 'close'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Close)])
     ->name('settings.accounting-periods.periods.close');

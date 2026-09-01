@@ -25,6 +25,12 @@ interface BookYearRepository
 
     public function savePeriod(AccountingPeriod $period): bool;
 
+    /**
+     * @param  list<string>  $expectedPeriodIds
+     * @param  list<AccountingPeriod>  $replacement
+     */
+    public function replacePeriodPlan(AdministrationId $a, BookYearId $id, array $expectedPeriodIds, array $replacement): bool;
+
     public function overlaps(AdministrationId $a, DateTimeImmutable $start, DateTimeImmutable $end, ?BookYearId $except = null): bool;
 
     public function lockAdministration(AdministrationId $a): void;

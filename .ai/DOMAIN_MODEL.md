@@ -324,6 +324,11 @@ Close/Reopen en ordered history. Create is insert-only; duplicate tenant-code mu
 geen bestaand BookYear en labelwijziging loopt uitsluitend via `UpdateBookYearLabel`.
 Er is geen automatische setup/bootstrap. AP-004 verzorgt review en manual acceptance.
 
+AP-003R staat vóór de eerste Close/history een atomische vervanging van uitsluitend het
+Open periodplan toe. Een expected-plan fingerprint, BookYear/periodrow-locks, volledige
+coveragevalidatie en historische PostingDate-dekking voorkomen stale of gedeeltelijke
+replacement. Closed/history-bearing periods en alle financiële facts blijven immutable.
+
 ## 5. Fiscal
 
 | Naam | Doel | Korte beschrijving |

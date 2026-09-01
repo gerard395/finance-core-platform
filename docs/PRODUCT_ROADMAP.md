@@ -792,7 +792,11 @@ of bootstrap. AP-004 verzorgt review plus expliciete dev-admin readiness/manual
 open-close-reopenacceptance. Er is geen afzonderlijke historische-data-predecessor;
 AP-004 is productmatig unblocked. Development acceptance vereist wel eerst expliciete
 canonical role assignments voor dev-admin en BookYear-/periodsetup via Web; momenteel
-zijn alle vier AP-permissions niet effectief en is masterdata `0/0`. Er wordt geen
+zijn de canonical AP-rollen expliciet toegewezen. AP-003R voegt vóór de eerste
+Close/history een atomic, permission-scoped replacement van een Open setupplan toe,
+zodat een foutieve jaarperiod na validatie expliciet door maandperioden kan worden
+vervangen zonder financiële facts te wijzigen. De handmatige replacement blijft een
+acceptancestap en gebeurt niet automatisch. Er wordt geen
 perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt
 gescheiden van toekomstige FiscalReportingDate/VAT-filinglocks.
 

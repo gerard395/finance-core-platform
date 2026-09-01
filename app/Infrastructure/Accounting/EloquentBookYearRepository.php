@@ -74,7 +74,11 @@ final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRep
         }$r = $q->first();
         if (! $r) {
             return null;
-        }$ps = DB::table('accounting_periods')->where('administration_id', $a->toString())->where('book_year_id', $id->toString())->orderBy('start_date')->get()->map(fn ($p) => new AccountingPeriod(new AccountingPeriodId(new Uuid($p->id)), $a, $id, $p->code, $p->label, new DateTimeImmutable($p->start_date), new DateTimeImmutable($p->end_date), AccountingPeriodStatus::from($p->status)))->all();
+        }$periodQuery = DB::table('accounting_periods')->where('administration_id', $a->toString())->where('book_year_id', $id->toString())->orderBy('start_date');
+        if ($lock) {
+            $periodQuery->lockForUpdate();
+        }
+        $ps = $periodQuery->get()->map(fn ($p) => new AccountingPeriod(new AccountingPeriodId(new Uuid($p->id)), $a, $id, $p->code, $p->label, new DateTimeImmutable($p->start_date), new DateTimeImmutable($p->end_date), AccountingPeriodStatus::from($p->status)))->all();
 
         return new BookYear($id, $a, $r->code, $r->label, new DateTimeImmutable($r->start_date), new DateTimeImmutable($r->end_date), $ps);
     }
@@ -100,6 +104,29 @@ final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRep
             'start_date' => $period->startDate(), 'end_date' => $period->endDate(), 'status' => $period->status()->value,
             'created_at' => now(), 'updated_at' => now(),
         ]) === 1;
+    }
+
+    public function replacePeriodPlan(AdministrationId $a, BookYearId $id, array $expectedPeriodIds, array $replacement): bool
+    {
+        $currentIds = DB::table('accounting_periods')->where('administration_id', $a->toString())->where('book_year_id', $id->toString())->lockForUpdate()->pluck('id')->sort()->values()->all();
+        sort($expectedPeriodIds);
+        if ($currentIds !== $expectedPeriodIds) {
+            return false;
+        }
+        $deleted = DB::table('accounting_periods')->where('administration_id', $a->toString())->where('book_year_id', $id->toString())->whereIn('id', $expectedPeriodIds)->delete();
+        if ($deleted !== count($expectedPeriodIds)) {
+            return false;
+        }
+        $now = now();
+        foreach ($replacement as $period) {
+            DB::table('accounting_periods')->insert([
+                'id' => $period->id()->toString(), 'administration_id' => $a->toString(), 'book_year_id' => $id->toString(),
+                'code' => $period->code(), 'label' => $period->label(), 'start_date' => $period->startDate(),
+                'end_date' => $period->endDate(), 'status' => $period->status()->value, 'created_at' => $now, 'updated_at' => $now,
+            ]);
+        }
+
+        return true;
     }
 
     public function get(AdministrationId $administrationId, AccountingPeriodId $id): ?AccountingPeriodHistoryReadModel
