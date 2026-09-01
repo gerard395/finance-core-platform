@@ -59,11 +59,16 @@ final class BankPaymentReversalController extends Controller
             ReverseBankTransactionStatus::AlreadyReversed => ['status', 'Deze bankbetaling is al teruggedraaid.'],
             ReverseBankTransactionStatus::NotPosted => ['error', 'Alleen een geboekte bankbetaling kan worden teruggedraaid.'],
             ReverseBankTransactionStatus::FinancialStateInvalid => ['error', 'De financiële status is gewijzigd of niet consistent. Controleer de betaling opnieuw.'],
+            ReverseBankTransactionStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze terugboeking is gesloten.'],
+            ReverseBankTransactionStatus::NoAccountingPeriod => ['error', 'Voor de terugboekingsdatum is geen boekingsperiode ingericht.'],
+            ReverseBankTransactionStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             ReverseBankTransactionStatus::PostingFailure => ['error', 'De bankbetaling kon niet worden teruggedraaid. Probeer het later opnieuw.'],
             ReverseBankTransactionStatus::NotFound => throw new InvalidArgumentException('Handled above.'),
         };
 
-        return $this->redirect($context, $id)->with($key, $message);
+        $response = $this->redirect($context, $id)->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('reversal_posting_date')) : $response;
     }
 
     private function eligibilityMessage(BankTransactionReversalEligibilityStatus $status): string

@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Identity\Definitions\AccountingPeriodPermission;
 use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\BankingPermission;
 use App\Domain\Identity\Definitions\DeliveryOperationsPermission;
@@ -7,6 +8,7 @@ use App\Domain\Identity\Definitions\PurchasingPermission;
 use App\Domain\Identity\Definitions\RelationsPermission;
 use App\Domain\Identity\Definitions\SalesPermission;
 use App\Http\Controllers\AccountingMasterDataController;
+use App\Http\Controllers\AccountingPeriodController;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
@@ -48,6 +50,7 @@ use App\Http\Controllers\Sales\SalesInvoiceController;
 use App\Http\Controllers\Sales\SalesInvoiceLifecycleController;
 use App\Http\Controllers\Sales\SalesInvoiceLineController;
 use App\Http\Controllers\Sales\SalesInvoicePostingController;
+use App\Http\Middleware\EnsureAccountingPeriodPermission;
 use App\Http\Middleware\EnsureAdministrationPermission;
 use App\Http\Middleware\EnsureBankingPermission;
 use App\Http\Middleware\EnsureDeliveryOperationsPermission;
@@ -159,6 +162,37 @@ Route::middleware(['auth', 'domain.active', 'administration.active', EnsureAdmin
     Route::post('/settings/ledger-accounts/{account}/activate', [AccountingMasterDataController::class, 'activateAccount'])->name('settings.ledger-accounts.activate');
     Route::post('/settings/ledger-accounts/{account}/deactivate', [AccountingMasterDataController::class, 'deactivateAccount'])->name('settings.ledger-accounts.deactivate');
 });
+
+Route::get('/settings/accounting-periods', [AccountingPeriodController::class, 'index'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::View)])
+    ->name('settings.accounting-periods.index');
+Route::get('/settings/accounting-periods/create', [AccountingPeriodController::class, 'create'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.create');
+Route::post('/settings/accounting-periods', [AccountingPeriodController::class, 'store'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.store');
+Route::get('/settings/accounting-periods/{bookYear}', [AccountingPeriodController::class, 'show'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::View)])
+    ->name('settings.accounting-periods.show');
+Route::get('/settings/accounting-periods/{bookYear}/edit', [AccountingPeriodController::class, 'edit'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.edit');
+Route::put('/settings/accounting-periods/{bookYear}', [AccountingPeriodController::class, 'update'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.update');
+Route::post('/settings/accounting-periods/{bookYear}/periods', [AccountingPeriodController::class, 'storePeriod'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.periods.store');
+Route::post('/settings/accounting-periods/{bookYear}/periods/replace-with-months', [AccountingPeriodController::class, 'replacePlan'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Manage)])
+    ->name('settings.accounting-periods.periods.replace');
+Route::post('/settings/accounting-periods/{bookYear}/periods/{period}/close', [AccountingPeriodController::class, 'close'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Close)])
+    ->name('settings.accounting-periods.periods.close');
+Route::post('/settings/accounting-periods/{bookYear}/periods/{period}/reopen', [AccountingPeriodController::class, 'reopen'])
+    ->middleware(['auth', 'domain.active', 'administration.active', EnsureAccountingPeriodPermission::using(AccountingPeriodPermission::Reopen)])
+    ->name('settings.accounting-periods.periods.reopen');
 
 Route::get('/relations', RelationIndexController::class)
     ->middleware([

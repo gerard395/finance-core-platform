@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Purchasing;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemMatchAppendResult;
 use App\Application\Accounting\OpenItemMatchIdentityGenerator;
@@ -30,7 +32,7 @@ use Throwable;
 
 final readonly class PostPurchaseCreditInvoice
 {
-    public function __construct(private TransactionManager $transactions, private PurchaseCreditInvoiceRepository $credits, private PurchaseInvoiceRepository $invoices, private PurchaseCreditHistoricalPostingReader $history, private PurchaseCreditPostingRepository $postings, private TaxPostingReadRepository $taxReads, private PostPurchaseCreditInvoiceWithTax $fiscal, private JournalEntryStore $journals, private TaxPostingStore $taxStore, private OpenItemStore $openItems, private OpenItemMatchRepository $matches, private OpenItemMatchIdentityGenerator $matchIds, private OpenItemMatchingPolicy $matchingPolicy, private PurchaseCreditIdentityGenerator $ids, private PurchaseCreditClock $clock) {}
+    public function __construct(private TransactionManager $transactions, private PurchaseCreditInvoiceRepository $credits, private PurchaseInvoiceRepository $invoices, private PurchaseCreditHistoricalPostingReader $history, private PurchaseCreditPostingRepository $postings, private TaxPostingReadRepository $taxReads, private PostPurchaseCreditInvoiceWithTax $fiscal, private JournalEntryStore $journals, private TaxPostingStore $taxStore, private OpenItemStore $openItems, private OpenItemMatchRepository $matches, private OpenItemMatchIdentityGenerator $matchIds, private OpenItemMatchingPolicy $matchingPolicy, private PurchaseCreditIdentityGenerator $ids, private PurchaseCreditClock $clock, private AccountingPeriodPostingGuard $periodGuard) {}
 
     public function execute(AdministrationId $admin, PurchaseCreditInvoiceId $id, PostingDate $postingDate, UserId $actor): PostPurchaseCreditInvoiceResult
     {
@@ -58,6 +60,15 @@ final readonly class PostPurchaseCreditInvoice
                 $historical = $this->history->readLocked($admin, $credit);
                 if ($historical === null) {
                     return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::FinancialStateInvalid);
+                }
+                $period = $this->periodGuard->lockForPosting($admin, $postingDate);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return new PostPurchaseCreditInvoiceResult(match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => PostPurchaseCreditInvoiceStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => PostPurchaseCreditInvoiceStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => PostPurchaseCreditInvoiceStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    });
                 }
                 $originals = $this->taxReads->findOriginalsForSource($admin, TaxSourceDocumentType::PurchaseInvoice, new TaxSourceDocumentId($sourceId->uuid()));
                 $byId = [];

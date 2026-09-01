@@ -98,6 +98,7 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
     {
         parent::setUp();
         $this->fixtures();
+        $this->createOpenAccountingPeriodFixture(self::A);
         $this->app->instance(PurchaseCreditClock::class, new class implements PurchaseCreditClock
         {
             public function now(): DateTimeImmutable
@@ -191,6 +192,22 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         self::assertSame('121', $result->matchedAmount?->amount());
         self::assertSame('0', $result->sourceRemainingAmount?->amount());
         self::assertSame('0', $result->creditRemainingAmount?->amount());
+    }
+
+    public function test_purchase_credit_period_denials_are_typed_and_side_effect_free(): void
+    {
+        $created = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('PCR-PERIOD'), $this->actor());
+        self::assertSame(PurchaseCreditMutationResult::Success, $created->status);
+        self::assertSame(PurchaseCreditMutationResult::Success, $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $created->id, $this->actor()));
+        $post = $this->app->make(PostPurchaseCreditInvoice::class);
+        $date = new PostingDate(new DateTimeImmutable('2026-08-27'));
+        $before = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(PostPurchaseCreditInvoiceStatus::PeriodClosed, $post->execute($this->admin(), $created->id, $date, $this->actor())->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(PostPurchaseCreditInvoiceStatus::NoAccountingPeriod, $post->execute($this->admin(), $created->id, $date, $this->actor())->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
     }
 
     public function test_partially_paid_source_matches_only_current_open_amount(): void
@@ -454,6 +471,8 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         DB::table('ledger_accounts')->where('administration_id', self::A)->delete();
         DB::table('suppliers')->where('administration_id', self::A)->delete();
         DB::table('relations')->where('administration_id', self::A)->delete();
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        DB::table('book_years')->where('administration_id', self::A)->delete();
         DB::table('domain_users')->where('id', self::USER)->delete();
         DB::table('administrations')->where('id', self::A)->delete();
     }

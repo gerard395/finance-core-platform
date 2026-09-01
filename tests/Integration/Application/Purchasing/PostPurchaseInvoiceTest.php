@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Application\Purchasing;
 
+use App\Application\Accounting\CloseAccountingPeriod;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemStore;
+use App\Application\Accounting\ReopenAccountingPeriod;
 use App\Application\Fiscal\TaxPostingStore;
 use App\Application\Purchasing\CancelPurchaseInvoice;
 use App\Application\Purchasing\CreatePurchaseInvoice;
@@ -20,6 +22,7 @@ use App\Application\Purchasing\PurchaseInvoicePostingRepository;
 use App\Application\Purchasing\PurchaseInvoiceRepository;
 use App\Domain\Accounting\Entities\JournalEntry;
 use App\Domain\Accounting\Entities\OpenItem;
+use App\Domain\Accounting\ValueObjects\AccountingPeriodId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -78,6 +81,7 @@ final class PostPurchaseInvoiceTest extends TestCase
     {
         parent::setUp();
         $this->fixtures();
+        $this->createOpenAccountingPeriodFixture(self::ADMIN);
     }
 
     public function test_posts_multiple_accounts_positive_and_zero_tax_to_exact_journal_tax_and_payable_facts(): void
@@ -111,6 +115,59 @@ final class PostPurchaseInvoiceTest extends TestCase
         self::assertSame('posted', DB::table('purchase_invoices')->where('id', $invoiceId)->value('status'));
         self::assertSame(0, DB::table('open_item_settlements')->count());
         self::assertSame(0, DB::table('open_item_matches')->count());
+    }
+
+    public function test_period_denials_are_typed_and_leave_purchase_financial_facts_unchanged(): void
+    {
+        $invoiceId = $this->finalized('PERIOD-DENY');
+        $before = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::ADMIN)->update(['status' => 'closed']);
+        self::assertSame(PostPurchaseInvoiceStatus::PeriodClosed, $this->postInvoice($invoiceId)->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::ADMIN)->delete();
+        self::assertSame(PostPurchaseInvoiceStatus::NoAccountingPeriod, $this->postInvoice($invoiceId)->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()]);
+    }
+
+    public function test_real_mysql_close_vs_post_is_serializable(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $invoiceId = $this->finalized('CLOSE-RACE');
+        $periodId = $this->periodId();
+        DB::commit();
+        $results = $this->race(
+            fn (): string => 'close:'.$this->app->make(CloseAccountingPeriod::class)->execute($this->admin(), $periodId, 'close race', $this->actor(), new DateTimeImmutable('2026-08-25 12:00:00'))->name,
+            fn (): string => 'post:'.$this->postInvoice($invoiceId)->status->name,
+        );
+        self::assertContains('close:Success', $results);
+        self::assertTrue(in_array('post:Success', $results, true) || in_array('post:PeriodClosed', $results, true));
+        self::assertSame('closed', DB::table('accounting_periods')->where('id', $periodId->toString())->value('status'));
+        self::assertSame(in_array('post:Success', $results, true) ? 1 : 0, DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoiceId)->count());
+        $this->cleanup();
+        DB::beginTransaction();
+    }
+
+    public function test_real_mysql_reopen_vs_post_has_no_stale_status_bypass(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $invoiceId = $this->finalized('REOPEN-RACE');
+        $periodId = $this->periodId();
+        DB::table('accounting_periods')->where('id', $periodId->toString())->update(['status' => 'closed']);
+        DB::commit();
+        $results = $this->race(
+            fn (): string => 'reopen:'.$this->app->make(ReopenAccountingPeriod::class)->execute($this->admin(), $periodId, 'reopen race', $this->actor(), new DateTimeImmutable('2026-08-25 12:00:00'))->name,
+            fn (): string => 'post:'.$this->postInvoice($invoiceId)->status->name,
+        );
+        self::assertContains('reopen:Success', $results);
+        self::assertTrue(in_array('post:Success', $results, true) || in_array('post:PeriodClosed', $results, true));
+        self::assertSame('open', DB::table('accounting_periods')->where('id', $periodId->toString())->value('status'));
+        self::assertSame(in_array('post:Success', $results, true) ? 1 : 0, DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoiceId)->count());
+        $this->cleanup();
+        DB::beginTransaction();
     }
 
     public function test_configuration_and_lifecycle_failures_leave_document_and_financial_state_unchanged(): void
@@ -272,6 +329,47 @@ final class PostPurchaseInvoiceTest extends TestCase
         return new AdministrationId(new Uuid(self::ADMIN));
     }
 
+    private function actor(): UserId
+    {
+        return new UserId(new Uuid(self::USER));
+    }
+
+    private function periodId(): AccountingPeriodId
+    {
+        return new AccountingPeriodId(new Uuid((string) DB::table('accounting_periods')->where('administration_id', self::ADMIN)->value('id')));
+    }
+
+    /** @return list<string> */
+    private function race(callable $left, callable $right): array
+    {
+        $files = [tempnam(sys_get_temp_dir(), 'ap-post-race-'), tempnam(sys_get_temp_dir(), 'ap-post-race-')];
+        $children = [];
+        foreach ([$left, $right] as $index => $operation) {
+            $pid = pcntl_fork();
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    file_put_contents($files[$index], $operation());
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($files[$index], 'error:'.$exception->getMessage());
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        foreach ($files as $file) {
+            unlink($file);
+        }
+
+        return $results;
+    }
+
     private function fixtures(): void
     {
         $now = now();
@@ -292,9 +390,12 @@ final class PostPurchaseInvoiceTest extends TestCase
 
     private function cleanup(): void
     {
+        DB::table('accounting_period_status_history')->where('administration_id', self::ADMIN)->delete();
         foreach (['purchase_invoice_postings', 'open_items', 'tax_postings', 'journal_entry_lines', 'journal_entries', 'purchase_invoice_lines', 'purchase_invoices', 'purchase_posting_configurations', 'tax_codes', 'journals', 'ledger_accounts', 'suppliers', 'relations'] as $table) {
             DB::table($table)->where('administration_id', self::ADMIN)->delete();
         }
+        DB::table('accounting_periods')->where('administration_id', self::ADMIN)->delete();
+        DB::table('book_years')->where('administration_id', self::ADMIN)->delete();
         DB::table('domain_users')->where('id', self::USER)->delete();
         DB::table('administrations')->where('id', self::ADMIN)->delete();
     }

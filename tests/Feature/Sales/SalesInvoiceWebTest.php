@@ -92,6 +92,8 @@ final class SalesInvoiceWebTest extends TestCase
     {
         parent::setUp();
         $this->provision();
+        $this->createOpenAccountingPeriodFixture(self::ADMIN_A);
+        $this->createOpenAccountingPeriodFixture(self::ADMIN_B);
     }
 
     public function test_authorization_navigation_empty_states_and_no_paid_route(): void

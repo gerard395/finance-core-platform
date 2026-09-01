@@ -11,5 +11,8 @@ enum ReverseBankTransactionStatus
     case NotPosted;
     case AlreadyReversed;
     case FinancialStateInvalid;
+    case PeriodClosed;
+    case NoAccountingPeriod;
+    case PeriodIntegrityFailure;
     case PostingFailure;
 }

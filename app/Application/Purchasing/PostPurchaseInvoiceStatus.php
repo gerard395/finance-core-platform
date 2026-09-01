@@ -13,5 +13,8 @@ enum PostPurchaseInvoiceStatus
     case ConfigurationMissing;
     case ConfigurationInvalid;
     case FiscalStateInvalid;
+    case PeriodClosed;
+    case NoAccountingPeriod;
+    case PeriodIntegrityFailure;
     case PostingFailure;
 }

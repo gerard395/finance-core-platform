@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Integration\Application\Sales;
 
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemStore;
 use App\Application\Fiscal\TaxPostingStore;
@@ -52,6 +53,8 @@ final class PostSalesInvoiceTest extends TestCase
         parent::setUp();
         $this->seedTenant(self::A, 1);
         $this->seedTenant(self::B, 2);
+        $this->createOpenAccountingPeriodFixture(self::A);
+        $this->createOpenAccountingPeriodFixture(self::B);
     }
 
     public function test_finalized_invoice_posts_all_financial_truth_from_configuration_and_snapshots(): void
@@ -104,6 +107,18 @@ final class PostSalesInvoiceTest extends TestCase
         self::assertSame($entry->getAttribute('id'), $linkage->getAttribute('journal_entry_id'));
         self::assertSame($openItem->getAttribute('id'), $linkage->getAttribute('open_item_id'));
         self::assertSame(0, DB::table('orders')->count());
+    }
+
+    public function test_period_closed_and_no_period_are_typed_without_financial_writes(): void
+    {
+        $this->seedInvoice(self::A, 1, 91, 'finalized', [['100', '21']]);
+        $before = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(PostSalesInvoiceStatus::PeriodClosed, $this->postInvoice(self::A, 91)->status());
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(PostSalesInvoiceStatus::NoAccountingPeriod, $this->postInvoice(self::A, 91)->status());
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count()]);
     }
 
     public function test_zero_tax_preserves_audit_truth_without_vat_journal_line(): void
@@ -319,6 +334,7 @@ final class PostSalesInvoiceTest extends TestCase
             $this->app->make(SalesInvoicePostingIdentityGenerator::class),
             $this->app->make(SalesInvoicePostingClock::class),
             $this->app->make(SalesInvoiceReadinessChecker::class),
+            $this->app->make(AccountingPeriodPostingGuard::class),
         );
     }
 
@@ -398,6 +414,8 @@ final class PostSalesInvoiceTest extends TestCase
         DB::table('journals')->whereIn('administration_id', $administrations)->delete();
         DB::table('customers')->whereIn('administration_id', $administrations)->delete();
         DB::table('relations')->whereIn('administration_id', $administrations)->delete();
+        DB::table('accounting_periods')->whereIn('administration_id', $administrations)->delete();
+        DB::table('book_years')->whereIn('administration_id', $administrations)->delete();
         DB::table('administrations')->whereIn('id', $administrations)->delete();
     }
 

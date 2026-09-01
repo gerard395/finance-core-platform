@@ -57,6 +57,7 @@ final class PurchaseInvoiceWebTest extends TestCase
     {
         parent::setUp();
         $this->fixtures();
+        $this->createOpenAccountingPeriodFixture(self::ADMIN);
     }
 
     public function test_end_to_end_web_flow_escapes_snapshots_ignores_tenant_spoof_and_is_idempotent(): void
@@ -120,6 +121,34 @@ final class PurchaseInvoiceWebTest extends TestCase
         $this->post('/purchasing/invoices/not-a-uuid/post', ['posting_date' => '2026-08-25'])->assertNotFound();
     }
 
+    public function test_period_lock_denial_preserves_the_submitted_posting_date_without_financial_side_effects(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->post('/purchasing/invoices', $this->payload('AP-LOCK-TEST-001'));
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'AP-LOCK-TEST-001')->first();
+        self::assertNotNull($invoice);
+        $this->post('/purchasing/invoices/'.$invoice->id.'/finalize');
+        DB::table('accounting_periods')->update(['status' => 'closed']);
+
+        $response = $this->post('/purchasing/invoices/'.$invoice->id.'/post', ['posting_date' => '2026-08-28']);
+
+        $response
+            ->assertRedirect('/purchasing/invoices/'.$invoice->id)
+            ->assertSessionHas('error', 'De boekingsperiode voor deze inkoopfactuur is gesloten.')
+            ->assertSessionHasInput('posting_date', '2026-08-28');
+        self::assertSame('finalized', DB::table('purchase_invoices')->where('id', $invoice->id)->value('status'));
+        self::assertSame(0, DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoice->id)->count());
+        self::assertSame(0, DB::table('journal_entries')->count());
+        self::assertSame(0, DB::table('tax_postings')->count());
+        self::assertSame(0, DB::table('open_items')->count());
+
+        $this->get('/purchasing/invoices/'.$invoice->id)
+            ->assertOk()
+            ->assertSee('value="2026-08-28"', false)
+            ->assertDontSee('value="'.now()->format('Y-m-d').'"', false);
+    }
+
     public function test_permissions_are_independent_and_runtime_membership_revocation_is_effective(): void
     {
         $this->login();
@@ -160,6 +189,37 @@ final class PurchaseInvoiceWebTest extends TestCase
                 $code === $permission->value ? $response->assertStatus($allowed) : $response->assertForbidden();
             }
         }
+    }
+
+    public function test_purchase_credit_period_lock_denial_preserves_the_submitted_posting_date(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->post('/purchasing/invoices', $this->payload('CREDIT-LOCK-SOURCE'));
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'CREDIT-LOCK-SOURCE')->first();
+        self::assertNotNull($invoice);
+        $this->post('/purchasing/invoices/'.$invoice->id.'/finalize');
+        $this->post('/purchasing/invoices/'.$invoice->id.'/post', ['posting_date' => '2026-08-25']);
+        $sourceLineId = DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('id');
+        $this->post('/purchasing/credits', [
+            'source_invoice_id' => $invoice->id,
+            'supplier_credit_invoice_number' => 'CREDIT-LOCK',
+            'supplier_credit_date' => '2026-08-26',
+            'received_date' => '2026-08-27',
+            'source_line_ids' => [$sourceLineId],
+        ]);
+        $credit = DB::table('purchase_credit_invoices')->where('supplier_credit_invoice_number', 'CREDIT-LOCK')->first();
+        self::assertNotNull($credit);
+        $this->post('/purchasing/credits/'.$credit->id.'/finalize');
+        DB::table('accounting_periods')->update(['status' => 'closed']);
+
+        $response = $this->post('/purchasing/credits/'.$credit->id.'/post', ['posting_date' => '2026-08-28']);
+
+        $response
+            ->assertRedirect('/purchasing/credits/'.$credit->id)
+            ->assertSessionHas('error', 'De boekingsperiode voor deze creditnota is gesloten.')
+            ->assertSessionHasInput('posting_date', '2026-08-28');
+        $this->get('/purchasing/credits/'.$credit->id)->assertOk()->assertSee('value="2026-08-28"', false);
     }
 
     public function test_purchase_credit_post_feedback_describes_full_partial_and_zero_matching(): void

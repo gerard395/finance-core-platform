@@ -50,6 +50,9 @@ final class SalesCreditInvoicePostingController extends Controller
             PostSalesCreditInvoiceStatus::SourceFinancialStateInvalid => ['error', 'De oorspronkelijke factuur kan financieel niet veilig worden gecrediteerd.'],
             PostSalesCreditInvoiceStatus::FinancialStateInconsistent => ['error', 'De financiële status van deze creditfactuur is niet consistent. Controle is vereist.'],
             PostSalesCreditInvoiceStatus::InvalidState => ['error', 'Deze creditfactuur kan in de huidige status niet worden geboekt.'],
+            PostSalesCreditInvoiceStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze creditfactuur is gesloten.'],
+            PostSalesCreditInvoiceStatus::NoAccountingPeriod => ['error', 'Voor de boekingsdatum is geen boekingsperiode ingericht.'],
+            PostSalesCreditInvoiceStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             PostSalesCreditInvoiceStatus::PostingFailure => ['error', 'De creditfactuur kon niet worden geboekt. Probeer het later opnieuw.'],
             PostSalesCreditInvoiceStatus::NotFound => throw new InvalidArgumentException('NotFound is handled before result mapping.'),
         };

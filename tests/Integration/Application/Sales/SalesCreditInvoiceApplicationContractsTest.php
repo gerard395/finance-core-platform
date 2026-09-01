@@ -59,6 +59,8 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         $this->app->instance(SalesCreditInvoiceIdentityGenerator::class, new FixedCreditIdentity);
         $this->seedTenant(self::A, 1);
         $this->seedTenant(self::B, 2);
+        $this->createOpenAccountingPeriodFixture(self::A);
+        $this->createOpenAccountingPeriodFixture(self::B);
     }
 
     public function test_create_derives_full_credit_truth_and_roundtrips_snapshots_and_reads(): void
@@ -166,6 +168,20 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         self::assertSame(PostSalesCreditInvoiceStatus::AlreadyPosted, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId())->status());
         self::assertSame($counts, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
         self::assertSame(PostSalesCreditInvoiceStatus::NotFound, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::B), $this->creditId())->status());
+    }
+
+    public function test_credit_post_period_denials_are_typed_and_side_effect_free(): void
+    {
+        $source = $this->postedSource(self::A, 1, 91);
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->create(self::A, $source)->status());
+        self::assertSame(SalesCreditInvoiceWriteResult::Success, $this->app->make(FinalizeSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId()));
+        $before = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(PostSalesCreditInvoiceStatus::PeriodClosed, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId())->status());
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(PostSalesCreditInvoiceStatus::NoAccountingPeriod, $this->app->make(PostSalesCreditInvoice::class)->execute($this->admin(self::A), $this->creditId())->status());
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
     }
 
     public function test_credit_matches_only_partial_source_balance_and_leaves_receivable_credit_remainder(): void
@@ -377,6 +393,8 @@ final class SalesCreditInvoiceApplicationContractsTest extends TestCase
         foreach (['sales_invoice_postings', 'open_items', 'journal_entry_lines', 'journal_entries', 'sales_credit_invoice_lines', 'sales_credit_invoices', 'sales_invoice_lines', 'sales_invoices', 'sales_number_sequences', 'sales_posting_configurations', 'tax_codes', 'ledger_accounts', 'journals', 'customers', 'relations'] as $table) {
             DB::table($table)->whereIn('administration_id', $administrations)->delete();
         }
+        DB::table('accounting_periods')->whereIn('administration_id', $administrations)->delete();
+        DB::table('book_years')->whereIn('administration_id', $administrations)->delete();
         DB::table('administrations')->whereIn('id', $administrations)->delete();
     }
 

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Banking;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Shared\TransactionManager;
@@ -25,7 +27,7 @@ use Throwable;
 
 final readonly class PostBankTransaction
 {
-    public function __construct(private TransactionManager $transactions, private BankTransactionRepository $transactionsRepo, private BankTransactionPostingRepository $linkages, private BankingPostingConfigurationReader $configurations, private BankingOpenItemLocker $openItems, private JournalEntryStore $entries, private OpenItemSettlementStore $settlements, private BankPostingIdentityGenerator $ids, private BankTransactionClock $clock) {}
+    public function __construct(private TransactionManager $transactions, private BankTransactionRepository $transactionsRepo, private BankTransactionPostingRepository $linkages, private BankingPostingConfigurationReader $configurations, private BankingOpenItemLocker $openItems, private JournalEntryStore $entries, private OpenItemSettlementStore $settlements, private BankPostingIdentityGenerator $ids, private BankTransactionClock $clock, private AccountingPeriodPostingGuard $periodGuard) {}
 
     public function execute(AdministrationId $admin, BankTransactionId $id, PostingDate $date, UserId $actor): PostBankTransactionStatus
     {
@@ -41,6 +43,14 @@ final readonly class PostBankTransaction
                     return PostBankTransactionStatus::FinancialStateInvalid;
                 }if ($tx->status() !== BankTransactionStatus::Finalized) {
                     return PostBankTransactionStatus::InvalidState;
+                }$period = $this->periodGuard->lockForPosting($admin, $date);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => PostBankTransactionStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => PostBankTransactionStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => PostBankTransactionStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    };
                 }$config = $this->configurations->read($admin, $tx->bankAccountId());
                 if ($config->status === BankingPostingConfigurationReadStatus::Missing) {
                     return PostBankTransactionStatus::ConfigurationMissing;

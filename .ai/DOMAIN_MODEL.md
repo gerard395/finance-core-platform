@@ -232,8 +232,8 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | Journal | Boekingen naar aard groeperen | Een dagboek voor een herkenbare categorie financiële gebeurtenissen. |
 | JournalEntry | Een boekhoudkundige gebeurtenis vastleggen | Een gebalanceerde boeking met een datum, omschrijving en status. |
 | JournalEntryLine | Eén boekingsregel representeren | Een debet- of creditbedrag binnen een journaalpost. |
-| FiscalYear | Een financieel verslagjaar afbakenen | De periode waarover de financiële administratie formeel rapporteert. |
-| AccountingPeriod | Een boekingsperiode beheersen | Een afgebakend tijdvak met een eigen open- of geslotenstatus. |
+| BookYear | Een accountingjaar afbakenen | Een Administration-owned expliciete inclusieve datumrange met tenant-unieke code. |
+| AccountingPeriod | Een boekingsperiode beheersen | Een BookYear-owned afgebakend tijdvak met actuele Open/Closed-status en append-only statushistorie. |
 | OpenItem | Een nog te vereffenen bedrag bewaken | Een financieel bedrag dat nog geheel of gedeeltelijk openstaat. |
 
 ### Accounting Capability
@@ -244,6 +244,7 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 | --- | --- | --- |
 | LedgerAccount | — | De classificatie van boekingsregels binnen het grootboek beheren. |
 | Journal | — | Journaalposten naar de aard van hun financiële gebeurtenis groeperen. |
+| BookYear | AccountingPeriod, PeriodStatusHistory | Boekjaargrenzen, volledige periodedekking en audited Close/Reopen beheren. |
 | JournalEntry | JournalEntryLine | Een gebalanceerde financiële mutatie en haar debet- en creditregels beheren. |
 | OpenItem | OpenItemSettlement | Een uit een geposte verkoop- of inkoopboeking ontstaan openstaand bedrag en de append-only vereffeninghistorie beheren. |
 
@@ -264,6 +265,10 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 
 `PostingRequest` en `PostingResult` vormen de bestaande frameworkonafhankelijke input- en outputcontracten van PostingEngine.
 
+`AccountingPeriodPostingGuard` is de frameworkonafhankelijke Application-port die
+binnen een financiële transaction voor AdministrationId + PostingDate exact `Open`,
+`Closed`, `NoPeriod` of `IntegrityFailure` oplevert en de gevonden periode shared-lockt.
+
 #### Businessregels
 
 - Iedere JournalEntry bevat minimaal twee JournalEntryLines.
@@ -276,6 +281,21 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - OpenItem bewaart immutable Applied- en Reversal-settlementfeiten; append-only OpenItemMatch-facts verbinden same-tenant, same-Relation, same-Currency OpenItems van hetzelfde type en tegengestelde zijde. Open bedrag en status worden uit originalAmount plus deze gedateerde historie afgeleid en nooit los gemuteerd.
 - Betalingen sluiten OpenItems via Application-orchestratie pas nadat de veroorzakende financiële boeking succesvol is gepost.
 - Grootboeksaldi worden berekend uit geposte JournalEntries en niet afzonderlijk opgeslagen.
+- BookYears zijn Administration-owned, hebben immutable inclusieve start/eindgrenzen en
+  overlappen niet binnen één Administration. Gaps tussen BookYears zijn toegestaan,
+  maar iedere PostingDate in zo'n gap levert `NoPeriod`.
+- AccountingPeriods zijn children van exact één same-Administration BookYear. Hun
+  immutable custom dateranges overlappen niet en dekken gezamenlijk het hele BookYear
+  zonder gaps; maandperioden en kalenderjaren zijn niet verplicht.
+- AccountingPeriod V1 heeft uitsluitend `Open` en `Closed`; `SoftClosed` bestaat niet.
+  Close en Reopen vereisen een reason/actor/authoritative tijd en appenden immutable
+  PeriodStatusHistory. Reopen zet Closed terug naar Open zonder eerdere audit te wissen.
+- BookYear heeft in V1 geen zelfstandige close-action of durable status. Een volledig
+  gesloten jaar is alleen een afleiding uit alle Closed periods.
+- Iedere nieuwe PostingRequest-datum moet exact één Open AccountingPeriod vinden.
+  Closed, NoPeriod en IntegrityFailure schrijven geen financiële feiten.
+- De guard gebruikt uitsluitend Accounting PostingDate. FiscalReportingDate, TaxPeriod
+  en VAT/ICP filing locks zijn afzonderlijke toekomstige Fiscal-contracten.
 
 #### Domain Events
 
@@ -291,9 +311,26 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - Geen Aggregate maakt zelf JournalEntries.
 - Facturen, betalingen en banktransacties leveren `PostingRequest`-objecten aan.
 - De `PostingEngine` is de enige component die JournalEntries mag aanmaken.
+- Iedere duurzame PostingEngine-caller voert de periodguard binnen dezelfde outer
+  transaction uit en houdt de shared period lock tot commit; Web/preflight is nooit
+  authoritative. Close/Reopen gebruiken een exclusive lock op dezelfde periodrow.
 - Accounting bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Completed for first domain iteration.
+**Capabilitystatus:** Posting foundation completed; AP-001 authorization/persistence,
+AP-002 transactionele PostingDate-lock enforcement over alle zes duurzame postingflows
+en AP-003 permission-scoped management-Web zijn completed. AP-003 gebruikt uitsluitend
+de bestaande Application-contracten voor expliciete custom periodsetup, readiness,
+Close/Reopen en ordered history. Create is insert-only; duplicate tenant-code muteert
+geen bestaand BookYear en labelwijziging loopt uitsluitend via `UpdateBookYearLabel`.
+Er is geen automatische setup/bootstrap. AP-004 verzorgt review en manual acceptance.
+
+AP-003R staat vóór de eerste Close/history een atomische vervanging van uitsluitend het
+Open periodplan toe. Een expected-plan fingerprint, BookYear/periodrow-locks, volledige
+coveragevalidatie en historische PostingDate-dekking voorkomen stale of gedeeltelijke
+replacement. Closed/history-bearing periods en alle financiële facts blijven immutable.
+AP-004 heeft model, authorization, zes-flow enforcement, concurrency, Web/security en
+manual acceptance gezamenlijk groen beoordeeld. De AP-capability is merge-ready; de
+expliciet deferred scope blijft buiten V1.
 
 ## 5. Fiscal
 

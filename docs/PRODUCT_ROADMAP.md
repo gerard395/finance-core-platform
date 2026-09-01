@@ -759,6 +759,58 @@ een afzonderlijke operations gate. VAT/ICP reporting blijft geparkeerd totdat
 international/multi-leg Purchase VAT, deductibility, fiscale perioden/locks, complete
 correcties, rounding/reconciliation en EUR-conversie duurzaam zijn opgelost.
 
+AP-000 heeft de periode- en lockcontracten definitief uitgelijnd. `BookYear` is de
+Administration-owned Accounting-root met immutable code/start/eind; BookYears
+overlappen niet, maar mogen gaps hebben waarin posting fail-closed `NoPeriod` oplevert.
+BookYear bezit custom `AccountingPeriod`-children die samen het hele jaar zonder gaps of
+overlap dekken. Perioden hebben in V1 exact `Open`/`Closed`; `SoftClosed` en een aparte
+BookYear-close zijn deferred. Close en Reopen vereisen reason/actor/authoritative tijd,
+bewaren current status plus append-only history en muteren geen financiële facts.
+
+De AP-002-guard gebruikt uitsluitend de PostingDate die werkelijk naar PostingEngine
+gaat. SalesInvoice en SalesCredit leiden die momenteel af uit hun immutable documentdatum;
+PurchaseInvoice, PurchaseCredit, BankTransaction Post en BankTransaction Reversal
+ontvangen haar expliciet. Iedere duurzame flow checkt en shared-lockt exact één period
+binnen dezelfde outer financial transaction. Close gebruikt een exclusive lock op
+dezelfde row: posting vóór close is geldig, close vóór posting levert typed Closed met
+nul writes. NoPeriod en ambiguity/integrity failure zijn eveneens fail-closed. Web of
+preflight is nooit authoritative.
+
+Bestaande JournalEntries worden niet herschreven of automatisch aan perioden gekoppeld.
+AP-001 is afgerond met migration `000057`, additive tenant-safe persistence, expliciete
+BookYear-/periodsetup,
+readiness over bestaande PostingDates, de vier onafhankelijke Period-permissions en
+least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 is
+afgerond met één centrale typed guard en shared periodrow-lock enforcement in SalesInvoice,
+SalesCredit, PurchaseInvoice, PurchaseCredit, BankTransaction Post en BankTransaction
+Reversal. AP-003 is afgerond met de permission-scoped management-Webflow onder Beheer →
+Grootboek → Perioden: tenant-safe list/create, label-only edit, expliciete custom
+periodsetup, authoritative readiness, POST-only Close/Reopen en ordered audit history.
+Create is insert-only, zodat een duplicate tenant-code geen bestaand BookYear-label meer
+kan overschrijven en typed IntegrityFailure oplevert. Er is geen automatische generatie
+of bootstrap. AP-004 heeft de gezamenlijke model-, authorization-, six-flow-, concurrency-,
+Web/security- en regressiereview groen afgerond. De handmatige developmentacceptance is
+PASS: BookYear 2026 bevat twaalf dekkende maandperioden; augustus doorliep audited Open →
+Closed → Open; een gesloten augustusposting werd zonder financiële writes geweigerd, een
+septemberposting was succesvol en na Reopen was een augustusposting succesvol. Beide
+geslaagde testobjects hebben exact één JournalEntry, TaxPosting en Payable/OpenItem van
+bruto EUR 12,10. Database-integriteit en volledige validatie zijn groen; AP is
+merge-ready. Er is geen afzonderlijke historische-data-predecessor. De canonical
+AP-rollen zijn voor manual acceptance uitsluitend als developmentdata expliciet
+toegewezen. AP-003R voegt vóór de eerste
+Close/history een atomic, permission-scoped replacement van een Open setupplan toe,
+zodat een foutieve jaarperiod na validatie expliciet door maandperioden kan worden
+vervangen zonder financiële facts te wijzigen. De handmatige replacement blijft een
+acceptancestap en gebeurt niet automatisch. Er wordt geen
+perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt
+gescheiden van toekomstige FiscalReportingDate/VAT-filinglocks.
+
+Na AP blijft de aanbevolen volgende productstap de **International Purchase VAT
+predecessor**, gevolgd door **Bank Import & Reconciliation**. `SoftClosed`, zelfstandige
+BookYear-close, fiscale/VAT filing locks, arbitrary JournalEntry period UI en opening-
+balance/year-rolloverautomatisering blijven expliciet deferred; VAT/ICP reporting blijft
+geparkeerd.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

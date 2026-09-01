@@ -72,6 +72,8 @@ final class BankTransactionPersistenceTest extends TestCase
             DB::table('journal_entries')->insert(['id' => $this->entry($id), 'administration_id' => $id, 'journal_id' => $this->journal($id), 'posting_date' => '2026-08-01', 'reference' => 'E'.$code, 'status' => 'posted', 'created_at' => $now, 'updated_at' => $now]);
             DB::table('administration_bank_accounts')->insert(['id' => $this->bank($id)->toString(), 'administration_id' => $id, 'iban' => $id === self::A ? 'NL91ABNA0417164300' : 'NL02ABNA0123456789', 'bic' => null, 'account_holder' => 'Holder', 'label' => 'Main', 'currency' => 'EUR', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
         } $this->openItem(self::A, 1, 'receivable', 'debit', '100');
+        $this->createOpenAccountingPeriodFixture(self::A);
+        $this->createOpenAccountingPeriodFixture(self::B);
         $this->openItem(self::A, 2, 'receivable', 'debit', '50');
         $this->openItem(self::B, 3, 'payable', 'credit', '100');
     }
@@ -134,6 +136,20 @@ final class BankTransactionPersistenceTest extends TestCase
         self::assertSame(0, bccomp('100', (string) $detail?->settlements[0]->settlementAmount->amount(), 4));
         self::assertTrue($detail?->settlements[0]->remainingOpenAmount->isZero());
         self::assertNull($this->app->make(GetBankTransactionPostingDetail::class)->execute($this->admin(self::B), $id));
+    }
+
+    public function test_bank_post_period_denials_are_typed_and_side_effect_free(): void
+    {
+        [, $id] = $this->create()->execute($this->admin(self::A), $this->bank(self::A), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('100', new Currency('EUR')), new BankTransactionReference('PERIOD-POST'), new TransactionDescription('Period'), $this->relation(self::A), $this->user(), [$this->allocation(1, '100')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::A), $id, $this->user()));
+        $this->configure(self::A);
+        $before = [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_postings')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(PostBankTransactionStatus::PeriodClosed, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_postings')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(PostBankTransactionStatus::NoAccountingPeriod, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_postings')->count()]);
     }
 
     public function test_supplier_payment_uses_historical_payable_control_account(): void
@@ -247,6 +263,21 @@ final class BankTransactionPersistenceTest extends TestCase
         self::assertSame(ReverseBankTransactionStatus::AlreadyReversed, $again->status);
         self::assertSame(1, DB::table('bank_transaction_reversals')->count());
         self::assertSame(2, DB::table('open_item_settlements')->where('type', 'reversal')->count());
+    }
+
+    public function test_bank_reversal_uses_reversal_posting_date_and_period_denials_are_side_effect_free(): void
+    {
+        $this->configure(self::A);
+        [, $id] = $this->create()->execute($this->admin(self::A), $this->bank(self::A), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('100', new Currency('EUR')), new BankTransactionReference('PERIOD-REV'), new TransactionDescription('Period reversal'), $this->relation(self::A), $this->user(), [$this->allocation(1, '100')]);
+        self::assertSame(BankTransactionResult::Success, $this->finalize()->execute($this->admin(self::A), $id, $this->user()));
+        self::assertSame(PostBankTransactionStatus::Success, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
+        $before = [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_reversals')->count()];
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(ReverseBankTransactionStatus::PeriodClosed, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('Period closed'), $this->user())->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_reversals')->count()]);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(ReverseBankTransactionStatus::NoAccountingPeriod, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-28')), new BankTransactionReversalReason('No period'), $this->user())->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_reversals')->count()]);
     }
 
     public function test_supplier_payment_and_other_payments_and_matches_remain_independent(): void
@@ -745,6 +776,8 @@ final class BankTransactionPersistenceTest extends TestCase
         DB::table('journals')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('ledger_accounts')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('relations')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('accounting_periods')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('book_years')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('administrations')->whereIn('id', [self::A, self::B])->delete();
         DB::table('domain_users')->where('id', self::USER)->delete();
         DB::beginTransaction();

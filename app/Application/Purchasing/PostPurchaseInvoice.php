@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Purchasing;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemStore;
 use App\Application\Fiscal\TaxPostingStore;
@@ -43,6 +45,7 @@ final readonly class PostPurchaseInvoice
         private OpenItemStore $openItems,
         private PurchaseInvoicePostingIdentityGenerator $identities,
         private PurchaseInvoicePostingClock $clock,
+        private AccountingPeriodPostingGuard $periodGuard,
     ) {}
 
     public function execute(AdministrationId $administrationId, PurchaseInvoiceId $invoiceId, PostingDate $postingDate): PostPurchaseInvoiceResult
@@ -62,6 +65,16 @@ final readonly class PostPurchaseInvoice
                 }
                 if ($invoice->status() !== PurchaseInvoiceStatus::Finalized) {
                     return PostPurchaseInvoiceResult::status(PostPurchaseInvoiceStatus::InvalidState);
+                }
+
+                $period = $this->periodGuard->lockForPosting($administrationId, $postingDate);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return PostPurchaseInvoiceResult::status(match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => PostPurchaseInvoiceStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => PostPurchaseInvoiceStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => PostPurchaseInvoiceStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    });
                 }
 
                 $configurationResult = $this->configurations->read($administrationId);

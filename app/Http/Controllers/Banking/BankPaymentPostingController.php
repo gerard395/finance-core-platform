@@ -38,10 +38,15 @@ final class BankPaymentPostingController extends Controller
             PostBankTransactionStatus::AllocationExceedsOpenBalance => ['error', 'Een van de openstaande posten heeft inmiddels onvoldoende openstaand saldo. Controleer de betaling opnieuw.'],
             PostBankTransactionStatus::InvalidState => ['error', 'Deze bankbetaling kan in de huidige status niet worden geboekt.'],
             PostBankTransactionStatus::FinancialStateInvalid => ['error', 'De financiële gegevens van deze bankbetaling zijn niet consistent.'],
+            PostBankTransactionStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze bankbetaling is gesloten.'],
+            PostBankTransactionStatus::NoAccountingPeriod => ['error', 'Voor de boekingsdatum is geen boekingsperiode ingericht.'],
+            PostBankTransactionStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             default => ['error', 'De bankbetaling kon niet worden geboekt. Probeer het later opnieuw.'],
         };
 
-        return ($this->permissions->allows($context->permissionIds, BankingPermission::View->id()) ? redirect()->route('banking.payments.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+        $response = ($this->permissions->allows($context->permissionIds, BankingPermission::View->id()) ? redirect()->route('banking.payments.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('posting_date')) : $response;
     }
 
     private function id(string $value): BankTransactionId

@@ -89,13 +89,29 @@ creditpermission-IDs zijn `3a85b19c-8196-47bb-90e2-94c4aa72c101`,
 
 ## Accounting
 
-| Permission Name | Korte beschrijving |
+| Permission Code / Name | Korte beschrijving |
 | --- | --- |
 | View Ledger | Grootboekrekeningen, journaals en boekingen raadplegen. |
 | Manage Chart of Accounts | Het rekeningschema beheren. |
 | Create Journal Entry | Een journaalpost opstellen. |
 | Post Journal Entry | Een journaalpost definitief boeken. |
-| Manage Accounting Periods | Boekingsperioden openen en sluiten. |
+| `ACCOUNTING.PERIODS_VIEW` | BookYears, AccountingPeriods, actuele status, readiness en immutable statushistorie raadplegen. |
+| `ACCOUNTING.PERIODS_MANAGE` | Expliciete BookYear-/periodsetup, planvalidatie, labels en uitsluitend lege setupcorrecties beheren; geeft geen Close/Reopen-recht. |
+| `ACCOUNTING.PERIODS_CLOSE` | Een Open AccountingPeriod met verplichte reden sluiten; geeft geen Manage- of Reopen-recht. |
+| `ACCOUNTING.PERIODS_REOPEN` | Een Closed AccountingPeriod met verplichte reden heropenen; high-impact en onafhankelijk van Manage/Close/Post. |
+
+AP-001 implementeert de canonical role `ACCOUNTING_PERIOD_MANAGER`
+(`a9020000-0000-4000-8000-000000000001`) met uitsluitend Period View + Manage + Close
+en `ACCOUNTING_PERIOD_REOPENER` (`a9020000-0000-4000-8000-000000000002`) met uitsluitend
+Period View + Reopen. De vier permission-IDs lopen stabiel van
+`a9010000-0000-4000-8000-000000000001` tot en met `...0004`; definitions en
+role-permissionlinks zijn idempotent en collision-safe. Er is geen permissionhiërarchie, role-name authorization of
+automatische production-membershipassignment. AP-003 handhaaft iedere permission op de
+eigen Webroutes en gebruikt uitsluitend effective permission-IDs; navigatie gebruikt
+View en nooit een role-name. Voor manual acceptance zijn beide canonical rollen expliciet
+en uitsluitend in de developmentdatabase aan de actieve membership van
+`dev-admin@financecore.local` toegewezen. Dit is developmentdata, geen seeder- of
+production auto-assignment; AP-003 voert assignments nooit automatisch uit.
 
 ## Tax
 
