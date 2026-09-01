@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Application\Accounting\AccountingMasterDataIdentityGenerator;
 use App\Application\Accounting\AccountingPeriodHistoryReadRepository;
 use App\Application\Accounting\AccountingPeriodLookupRepository;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\BookYearRepository;
 use App\Application\Accounting\JournalEntryReadRepository;
 use App\Application\Accounting\JournalEntryStore;
@@ -449,6 +450,7 @@ class AppServiceProvider extends ServiceProvider
                 $app->make(OpenItemStore::class),
                 $identities,
                 $app->make(PurchaseInvoicePostingClock::class),
+                $app->make(AccountingPeriodPostingGuard::class),
             );
         });
         $this->app->bind(PostSalesCreditInvoiceWithTax::class, function ($app): PostSalesCreditInvoiceWithTax {

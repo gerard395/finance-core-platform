@@ -143,7 +143,7 @@ final class EloquentBookYearRepository implements AccountingPeriodHistoryReadRep
         }
         $period = $periods->first();
 
-        return AccountingPeriodLookupResult::found(new AccountingPeriodId(new Uuid($period->id)), AccountingPeriodStatus::from($period->status));
+        return AccountingPeriodLookupResult::found(new BookYearId(new Uuid($period->book_year_id)), new AccountingPeriodId(new Uuid($period->id)), AccountingPeriodStatus::from($period->status));
     }
 
     public function transition(AdministrationId $a, AccountingPeriodId $id, string $reason, UserId $actor, DateTimeImmutable $at, bool $reopen = false): PeriodTransitionResult

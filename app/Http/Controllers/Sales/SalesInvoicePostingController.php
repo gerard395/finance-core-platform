@@ -50,6 +50,9 @@ final class SalesInvoicePostingController extends Controller
             PostSalesInvoiceStatus::ConfigurationInvalid => ['error', 'De verkoopboekingsconfiguratie is ongeldig of niet meer beschikbaar.'],
             PostSalesInvoiceStatus::InvalidState => ['error', 'Deze factuur kan in de huidige status niet worden geboekt.'],
             PostSalesInvoiceStatus::FinancialStateInconsistent => ['error', 'De financiële status van deze factuur is niet consistent. Controle is vereist.'],
+            PostSalesInvoiceStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze factuur is gesloten.'],
+            PostSalesInvoiceStatus::NoAccountingPeriod => ['error', 'Voor de boekingsdatum is geen boekingsperiode ingericht.'],
+            PostSalesInvoiceStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             PostSalesInvoiceStatus::PostingFailure => ['error', 'De factuur kon niet worden geboekt. Probeer het later opnieuw.'],
             PostSalesInvoiceStatus::NotFound => throw new InvalidArgumentException('NotFound is handled before result mapping.'),
         };

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Sales;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemStore;
 use App\Application\Fiscal\TaxPostingStore;
@@ -33,6 +35,7 @@ final readonly class PostSalesInvoice
         private SalesInvoicePostingIdentityGenerator $identities,
         private SalesInvoicePostingClock $clock,
         private SalesInvoiceReadinessChecker $readiness,
+        private AccountingPeriodPostingGuard $periodGuard,
     ) {}
 
     public function execute(AdministrationId $administrationId, SalesInvoiceId $invoiceId): PostSalesInvoiceResult
@@ -99,6 +102,15 @@ final readonly class PostSalesInvoice
                 }
 
                 $postingDate = new PostingDate($invoice->invoiceDate());
+                $period = $this->periodGuard->lockForPosting($administrationId, $postingDate);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return PostSalesInvoiceResult::forStatus(match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => PostSalesInvoiceStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => PostSalesInvoiceStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => PostSalesInvoiceStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    });
+                }
                 $debtorLineId = $this->identities->journalEntryLineId();
                 $fiscalResult = $this->fiscalPosting->execute(
                     $invoice,

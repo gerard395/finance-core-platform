@@ -34,6 +34,7 @@ final class DemoAccountingPostingTest extends TestCase
         parent::setUp();
         $now = now();
         DB::table('administrations')->insert(['id' => self::ADMINISTRATION, 'code' => 'DEMOPOST', 'name' => 'Demo posting', 'base_currency' => 'EUR', 'status' => 'active', 'created_at' => $now, 'updated_at' => $now]);
+        $this->createOpenAccountingPeriodFixture(self::ADMINISTRATION);
         DB::table('relations')->insert(['id' => $this->id(20), 'administration_id' => self::ADMINISTRATION, 'code' => 'REL1', 'display_name' => 'Demo customer', 'vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('customers')->insert(['id' => $this->id(30), 'administration_id' => self::ADMINISTRATION, 'relation_id' => $this->id(20), 'customer_number' => 'C000001', 'active' => true, 'created_at' => $now, 'updated_at' => $now]);
         DB::table('tax_codes')->insert([

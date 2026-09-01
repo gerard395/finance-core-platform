@@ -14,5 +14,8 @@ enum PostSalesCreditInvoiceStatus
     case ConfigurationInvalid;
     case SourceFinancialStateInvalid;
     case FinancialStateInconsistent;
+    case PeriodClosed;
+    case NoAccountingPeriod;
+    case PeriodIntegrityFailure;
     case PostingFailure;
 }

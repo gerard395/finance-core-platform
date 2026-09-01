@@ -57,6 +57,7 @@ final class PurchaseInvoiceWebTest extends TestCase
     {
         parent::setUp();
         $this->fixtures();
+        $this->createOpenAccountingPeriodFixture(self::ADMIN);
     }
 
     public function test_end_to_end_web_flow_escapes_snapshots_ignores_tenant_spoof_and_is_idempotent(): void

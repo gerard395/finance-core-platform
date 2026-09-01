@@ -38,6 +38,9 @@ final class PurchaseCreditPostingController extends Controller
             PostPurchaseCreditInvoiceStatus::SourceLineAlreadyCredited => ['error', 'Een geselecteerde bronregel is inmiddels door een andere creditnota gecrediteerd.'],
             PostPurchaseCreditInvoiceStatus::InvalidState => ['error', 'Alleen een gefinaliseerde creditnota kan worden geboekt.'],
             PostPurchaseCreditInvoiceStatus::FinancialStateInvalid => ['error', 'De historische financiële brongegevens zijn niet meer consistent.'],
+            PostPurchaseCreditInvoiceStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze creditnota is gesloten.'],
+            PostPurchaseCreditInvoiceStatus::NoAccountingPeriod => ['error', 'Voor de boekingsdatum is geen boekingsperiode ingericht.'],
+            PostPurchaseCreditInvoiceStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             default => ['error', 'De creditnota kon niet volledig worden geboekt en verrekend. Probeer het later opnieuw.'],
         };
 

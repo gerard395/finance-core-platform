@@ -67,6 +67,8 @@ final class SalesInvoiceApplicationContractsTest extends TestCase
         parent::setUp();
         $this->tenant(self::A, self::CUSTOMER_A, 'A');
         $this->tenant(self::B, self::CUSTOMER_B, 'B');
+        $this->createOpenAccountingPeriodFixture(self::A);
+        $this->createOpenAccountingPeriodFixture(self::B);
         RelationAddressRecord::query()->create(['address_id' => self::ADDRESS_A, 'administration_id' => self::A, 'relation_id' => $this->relation(self::CUSTOMER_A), 'address_type' => 'invoice', 'address_line_1' => 'Invoice street 1', 'address_line_2' => null, 'postal_code' => '1234 AB', 'city' => 'Amsterdam', 'country_code' => 'NL', 'active' => true]);
         $this->tax(self::TAX_ACTIVE, 'VAT21', '21', 'output', 'active');
         $this->tax(self::TAX_INACTIVE, 'VAT09', '9', 'output', 'inactive');

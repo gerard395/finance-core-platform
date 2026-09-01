@@ -780,11 +780,14 @@ Bestaande JournalEntries worden niet herschreven of automatisch aan perioden gek
 AP-001 is afgerond met migration `000057`, additive tenant-safe persistence, expliciete
 BookYear-/periodsetup,
 readiness over bestaande PostingDates, de vier onafhankelijke Period-permissions en
-least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 levert
-enforcement, AP-003 de management-Webflow en AP-004 review plus expliciete dev-admin
+least-privilege manager/reopenerroles zonder production auto-assignment. AP-002 is
+afgerond met één centrale typed guard en shared periodrow-lock enforcement in SalesInvoice,
+SalesCredit, PurchaseInvoice, PurchaseCredit, BankTransaction Post en BankTransaction
+Reversal. AP-003 levert de management-Webflow en AP-004 review plus expliciete dev-admin
 readiness/manual open-close-reopenacceptance. Er is geen afzonderlijke historische-data
 predecessor; AP-002 is technisch unblocked door typed tenant-safe PostingDate-lookup en
-shared/exclusive lockcontracten. Development acceptance vereist later expliciete setup;
+shared/exclusive lockcontracten. AP-003 is technisch unblocked. Development acceptance
+vereist eerst expliciete BookYear-/periodsetup;
 er wordt geen perioddata automatisch gebackfilled. Accounting PostingDate-locks blijven strikt gescheiden
 van toekomstige FiscalReportingDate/VAT-filinglocks.
 

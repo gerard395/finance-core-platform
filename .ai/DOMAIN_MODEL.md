@@ -316,8 +316,9 @@ binnen een financiële transaction voor AdministrationId + PostingDate exact `Op
   authoritative. Close/Reopen gebruiken een exclusive lock op dezelfde periodrow.
 - Accounting bevat geen Laravel-, database- of infrastructuurafhankelijkheden.
 
-**Capabilitystatus:** Posting foundation completed; AP-001 authorization, persistence,
-readiness, history en typed PostingDate-lookup completed. Enforcement volgt in AP-002.
+**Capabilitystatus:** Posting foundation completed; AP-001 authorization/persistence en
+AP-002 transactionele PostingDate-lock enforcement over alle zes duurzame postingflows
+completed. Management-Web en expliciete setup volgen in AP-003.
 
 ## 5. Fiscal
 

@@ -81,6 +81,7 @@ final class BankPaymentWebTest extends TestCase
     {
         parent::setUp();
         $this->fixtures();
+        $this->createOpenAccountingPeriodFixture(self::ADMIN);
     }
 
     public function test_customer_and_supplier_web_flows_are_tenant_safe_escaped_and_idempotent(): void

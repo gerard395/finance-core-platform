@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Banking;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\OpenItemSettlementStore;
 use App\Application\Shared\TransactionManager;
@@ -36,6 +38,7 @@ final readonly class ReverseBankTransaction
         private BankTransactionSettlementReversalLinkRepository $settlementLinks,
         private BankTransactionReversalIdentityGenerator $identities,
         private BankTransactionClock $clock,
+        private AccountingPeriodPostingGuard $periodGuard,
     ) {}
 
     public function execute(
@@ -51,6 +54,16 @@ final readonly class ReverseBankTransaction
                 $status = $source === null ? BankTransactionReversalEligibilityStatus::NotFound : $this->eligibility->forSource($source);
                 if ($status !== BankTransactionReversalEligibilityStatus::Eligible) {
                     return new ReverseBankTransactionResult($this->status($status));
+                }
+
+                $period = $this->periodGuard->lockForPosting($administrationId, $reversalPostingDate);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return new ReverseBankTransactionResult(match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => ReverseBankTransactionStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => ReverseBankTransactionStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => ReverseBankTransactionStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    });
                 }
 
                 $openItemIds = [];

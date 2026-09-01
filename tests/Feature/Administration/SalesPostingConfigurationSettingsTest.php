@@ -57,6 +57,8 @@ final class SalesPostingConfigurationSettingsTest extends TestCase
     {
         parent::setUp();
         $this->identity();
+        $this->createOpenAccountingPeriodFixture(self::A);
+        $this->createOpenAccountingPeriodFixture(self::B);
         $this->login();
     }
 

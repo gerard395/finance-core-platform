@@ -37,6 +37,9 @@ final class PurchaseInvoicePostingController extends Controller
             PostPurchaseInvoiceStatus::ConfigurationInvalid => ['error', 'De inkoopboekingsinstellingen verwijzen naar een inactief of ongeldig dagboek/rekening.'],
             PostPurchaseInvoiceStatus::InvalidState => ['error', 'Deze inkoopfactuur kan in de huidige status niet worden geboekt.'],
             PostPurchaseInvoiceStatus::FiscalStateInvalid => ['error', 'De fiscale gegevens van deze inkoopfactuur worden niet ondersteund.'],
+            PostPurchaseInvoiceStatus::PeriodClosed => ['error', 'De boekingsperiode voor deze inkoopfactuur is gesloten.'],
+            PostPurchaseInvoiceStatus::NoAccountingPeriod => ['error', 'Voor de boekingsdatum is geen boekingsperiode ingericht.'],
+            PostPurchaseInvoiceStatus::PeriodIntegrityFailure => ['error', 'De boekingsperiode is niet eenduidig. Controle is vereist.'],
             default => ['error', 'De inkoopfactuur kon niet worden geboekt. Probeer het later opnieuw.'],
         };
 

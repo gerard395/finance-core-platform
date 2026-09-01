@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace App\Application\Sales;
 
+use App\Application\Accounting\AccountingPeriodPostingDecisionStatus;
+use App\Application\Accounting\AccountingPeriodPostingGuard;
 use App\Application\Accounting\JournalEntryStore;
 use App\Application\Accounting\MatchOpenItems;
 use App\Application\Accounting\MatchOpenItemsStatus;
@@ -41,6 +43,7 @@ final readonly class PostSalesCreditInvoice
         private SalesCreditInvoicePostingRepository $postingRepository,
         private SalesCreditInvoicePostingIdentityGenerator $identities,
         private SalesCreditInvoicePostingClock $clock,
+        private AccountingPeriodPostingGuard $periodGuard,
     ) {}
 
     public function execute(AdministrationId $administrationId, SalesCreditInvoiceId $creditInvoiceId): PostSalesCreditInvoiceResult
@@ -120,6 +123,15 @@ final readonly class PostSalesCreditInvoice
                     );
                 }
                 $postingDate = new PostingDate($credit->creditInvoiceDate());
+                $period = $this->periodGuard->lockForPosting($administrationId, $postingDate);
+                if ($period->status !== AccountingPeriodPostingDecisionStatus::Open) {
+                    return PostSalesCreditInvoiceResult::forStatus(match ($period->status) {
+                        AccountingPeriodPostingDecisionStatus::Closed => PostSalesCreditInvoiceStatus::PeriodClosed,
+                        AccountingPeriodPostingDecisionStatus::NoPeriod => PostSalesCreditInvoiceStatus::NoAccountingPeriod,
+                        AccountingPeriodPostingDecisionStatus::IntegrityFailure => PostSalesCreditInvoiceStatus::PeriodIntegrityFailure,
+                        AccountingPeriodPostingDecisionStatus::Open => throw new \LogicException,
+                    });
+                }
                 $debtorLineId = $this->identities->journalEntryLineId();
                 $fiscalResult = $this->fiscalPosting->execute(
                     $credit, $fiscalLines, $sourceResult->originalTaxPostings(), $configuration->salesJournalId(),
