@@ -811,6 +811,26 @@ BookYear-close, fiscale/VAT filing locks, arbitrary JournalEntry period UI en op
 balance/year-rolloverautomatisering blijven expliciet deferred; VAT/ICP reporting blijft
 geparkeerd.
 
+PROJECT-GAP-007 bevestigt dat de predecessor niet direct een international-taxfeature is,
+maar eerst **IPV-000 – Tax Treatment & Multi-Leg Architecture Alignment**. De huidige
+Purchase-keten is single-leg Input VAT: één line/TaxCode levert één Input TaxPosting en
+suppliergross bevat die tax. EU acquisitions en algemene EU/non-EU B2B-services vereisen
+daarentegen correlated VAT-payable en mogelijk beperkte deductible Input-legs, terwijl
+supplier Payable het factuurbedrag zonder reverse-charge VAT blijft. IPV-000 legt daarom
+TaxCode/treatmentselectie, multi-leg calculation, deductibility en non-deductible cost,
+reportingclassificatie, VAT-payable accountrol, fiscal-datepolicy, complete historische
+PurchaseCredit-reversal en additive legacycompatibiliteit vast.
+
+International Purchase VAT V1 wordt daarna beperkt tot EU-goederen die aantoonbaar in
+Nederland aankomen, general-rule EU B2B-services en general-rule non-EU B2B-services,
+EUR-only. Importgoods/Artikel 23 blijft deferred tot een afzonderlijk customs/import-
+sourcefactscontract; foreign VAT wordt typed geblokkeerd en nooit als Nederlandse Input
+VAT behandeld. Domestic reverse charge gebruikt later dezelfde architectuur maar valt
+buiten deze International V1. Voorgestelde uitvoering: IPV-001 persistence/config/
+calculation, IPV-002 Purchase posting, IPV-003 historical credit reversal/Web en IPV-004
+review/manual acceptance/regressie. VAT-return Web en fiscal filing locks blijven
+geparkeerd.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
