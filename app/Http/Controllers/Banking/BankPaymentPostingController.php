@@ -44,7 +44,9 @@ final class BankPaymentPostingController extends Controller
             default => ['error', 'De bankbetaling kon niet worden geboekt. Probeer het later opnieuw.'],
         };
 
-        return ($this->permissions->allows($context->permissionIds, BankingPermission::View->id()) ? redirect()->route('banking.payments.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+        $response = ($this->permissions->allows($context->permissionIds, BankingPermission::View->id()) ? redirect()->route('banking.payments.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('posting_date')) : $response;
     }
 
     private function id(string $value): BankTransactionId

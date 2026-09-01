@@ -43,7 +43,9 @@ final class PurchaseInvoicePostingController extends Controller
             default => ['error', 'De inkoopfactuur kon niet worden geboekt. Probeer het later opnieuw.'],
         };
 
-        return ($this->permissions->allows($context->permissionIds, PurchasingPermission::View->id()) ? redirect()->route('purchasing.invoices.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+        $response = ($this->permissions->allows($context->permissionIds, PurchasingPermission::View->id()) ? redirect()->route('purchasing.invoices.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('posting_date')) : $response;
     }
 
     private function id(string $value): PurchaseInvoiceId

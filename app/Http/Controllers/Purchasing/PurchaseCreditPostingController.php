@@ -44,7 +44,9 @@ final class PurchaseCreditPostingController extends Controller
             default => ['error', 'De creditnota kon niet volledig worden geboekt en verrekend. Probeer het later opnieuw.'],
         };
 
-        return ($this->permissions->allows($context->permissionIds, PurchasingPermission::View->id()) ? redirect()->route('purchasing.credits.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+        $response = ($this->permissions->allows($context->permissionIds, PurchasingPermission::View->id()) ? redirect()->route('purchasing.credits.show', $id->toString()) : redirect()->route('app'))->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('posting_date')) : $response;
     }
 
     private function successMessage(PostPurchaseCreditInvoiceResult $result): string

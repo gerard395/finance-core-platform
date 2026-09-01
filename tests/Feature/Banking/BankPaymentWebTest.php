@@ -210,7 +210,8 @@ final class BankPaymentWebTest extends TestCase
         $allocationId = DB::table('payment_allocations')->where('payment_id', $paymentId)->value('id');
         DB::table('open_item_settlements')->where('payment_allocation_id', $allocationId)->delete();
         $this->get('/banking/payments/'.$posted)->assertOk()->assertDontSee('Betaling terugdraaien');
-        $this->followingRedirects()->post('/banking/payments/'.$posted.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Inconsistente toestand'])->assertOk()->assertSee('De financiële status is gewijzigd of niet consistent.');
+        $reversalDenial = $this->post('/banking/payments/'.$posted.'/reverse', ['reversal_posting_date' => '2026-08-28', 'reason' => 'Inconsistente toestand']);
+        $reversalDenial->assertRedirect()->assertSessionHas('error', 'De financiële status is gewijzigd of niet consistent. Controleer de betaling opnieuw.')->assertSessionHasInput('reversal_posting_date', '2026-08-28');
 
         $this->post('/banking/payments', $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '10', 'REV-DRAFT'))->assertRedirect();
         $draft = DB::table('bank_transactions')->where('reference', 'REV-DRAFT')->value('id');
@@ -245,7 +246,9 @@ final class BankPaymentWebTest extends TestCase
         $this->post('/banking/payments', $this->payload('customer_receipt', self::CUSTOMER, self::RECEIVABLE, '10', 'NO-CONFIG'));
         $id = DB::table('bank_transactions')->where('reference', 'NO-CONFIG')->value('id');
         $this->post('/banking/payments/'.$id.'/finalize')->assertRedirect();
-        $this->followingRedirects()->post('/banking/payments/'.$id.'/post', ['posting_date' => '2026-08-26'])->assertOk()->assertSee('De bankboekingsinstellingen voor deze bankrekening zijn nog niet ingericht.')->assertSee('Naar Beheer → Instellingen');
+        $response = $this->post('/banking/payments/'.$id.'/post', ['posting_date' => '2026-08-26']);
+        $response->assertRedirect()->assertSessionHas('error', 'De bankboekingsinstellingen voor deze bankrekening zijn nog niet ingericht.')->assertSessionHasInput('posting_date', '2026-08-26');
+        $this->followingRedirects()->get($response->headers->get('Location'))->assertOk()->assertSee('Naar Beheer → Instellingen')->assertSee('value="2026-08-26"', false);
         self::assertSame('finalized', DB::table('bank_transactions')->where('id', $id)->value('status'));
         self::assertSame(0, DB::table('bank_transaction_postings')->where('bank_transaction_id', $id)->count());
     }

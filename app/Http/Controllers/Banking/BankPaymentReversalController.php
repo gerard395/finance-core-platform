@@ -66,7 +66,9 @@ final class BankPaymentReversalController extends Controller
             ReverseBankTransactionStatus::NotFound => throw new InvalidArgumentException('Handled above.'),
         };
 
-        return $this->redirect($context, $id)->with($key, $message);
+        $response = $this->redirect($context, $id)->with($key, $message);
+
+        return $key === 'error' ? $response->withInput($request->only('reversal_posting_date')) : $response;
     }
 
     private function eligibilityMessage(BankTransactionReversalEligibilityStatus $status): string
