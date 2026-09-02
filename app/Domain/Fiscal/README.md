@@ -43,8 +43,9 @@ maximaal acht decimalen en kent de exacte remainder toe aan non-deductible cost.
 New-model TaxPostings bewaren group/role plus volledige immutable treatment- en
 amountsnapshots. Legacy rows zonder deze nullable metadata blijven expliciet herkenbaar
 en leesbaar; er vindt geen historische synthese plaats. Persistence bewaakt tenant-FK's,
-all-or-none metadata en concurrency-safe source/group/role-uniciteit. Purchaseposting,
-creditreversal, TaxCode-provisioning en VAT-returnlogica volgen niet in IPV-001.
+all-or-none metadata en concurrency-safe source/group/role-uniciteit. IPV-002 realiseert
+de groups nu bij PurchaseInvoice Post uit authoritative, bij Finalize bevroren party- en
+treatmenttruth. Creditreversal, TaxCode-provisioning en VAT-returnlogica blijven erbuiten.
 
 ## Invarianten
 

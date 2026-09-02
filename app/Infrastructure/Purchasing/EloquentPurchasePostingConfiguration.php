@@ -25,31 +25,41 @@ final class EloquentPurchasePostingConfiguration implements PurchasePostingConfi
 {
     public function read(AdministrationId $administrationId): PurchasePostingConfigurationReadResult
     {
+        return $this->readConfiguration($administrationId, true);
+    }
+
+    public function readForPosting(AdministrationId $administrationId, bool $requiresInputVat): PurchasePostingConfigurationReadResult
+    {
+        return $this->readConfiguration($administrationId, $requiresInputVat);
+    }
+
+    private function readConfiguration(AdministrationId $administrationId, bool $requiresInputVat): PurchasePostingConfigurationReadResult
+    {
         $record = PurchasePostingConfigurationRecord::query()->find($administrationId->toString());
         if ($record === null) {
             return PurchasePostingConfigurationReadResult::missing();
         }
         $configuration = $this->hydrate($record);
-        $invalid = $this->invalidReferences($configuration);
+        $invalid = $this->invalidReferences($configuration, $requiresInputVat);
 
         return $invalid === [] ? PurchasePostingConfigurationReadResult::success($configuration) : PurchasePostingConfigurationReadResult::invalidReference($configuration, $invalid);
     }
 
     public function save(PurchasePostingConfiguration $configuration): bool
     {
-        if ($this->invalidReferences($configuration) !== []) {
+        if ($this->invalidReferences($configuration, true) !== []) {
             return false;
         }
         PurchasePostingConfigurationRecord::query()->updateOrCreate(
             ['administration_id' => $configuration->administrationId->toString()],
-            ['purchase_journal_id' => $configuration->purchaseJournalId->toString(), 'accounts_payable_ledger_account_id' => $configuration->accountsPayableLedgerAccountId->toString(), 'input_vat_ledger_account_id' => $configuration->inputVatLedgerAccountId->toString()],
+            ['purchase_journal_id' => $configuration->purchaseJournalId->toString(), 'accounts_payable_ledger_account_id' => $configuration->accountsPayableLedgerAccountId->toString(), 'input_vat_ledger_account_id' => $configuration->inputVatLedgerAccountId->toString(), 'vat_payable_ledger_account_id' => $configuration->vatPayableLedgerAccountId?->toString()],
         );
 
         return true;
     }
 
     /** @return list<PurchasePostingConfigurationInvalidReference> */
-    private function invalidReferences(PurchasePostingConfiguration $configuration): array
+    private function invalidReferences(PurchasePostingConfiguration $configuration, bool $requiresInputVat): array
     {
         $admin = $configuration->administrationId->toString();
         $invalid = [];
@@ -59,8 +69,11 @@ final class EloquentPurchasePostingConfiguration implements PurchasePostingConfi
         if (! LedgerAccountRecord::query()->where('administration_id', $admin)->whereKey($configuration->accountsPayableLedgerAccountId->toString())->where('status', LedgerAccountStatus::Active->value)->where('type', LedgerAccountType::Liability->value)->exists()) {
             $invalid[] = PurchasePostingConfigurationInvalidReference::AccountsPayable;
         }
-        if (! LedgerAccountRecord::query()->where('administration_id', $admin)->whereKey($configuration->inputVatLedgerAccountId->toString())->where('status', LedgerAccountStatus::Active->value)->where('type', LedgerAccountType::Asset->value)->exists()) {
+        if ($requiresInputVat && ! LedgerAccountRecord::query()->where('administration_id', $admin)->whereKey($configuration->inputVatLedgerAccountId->toString())->where('status', LedgerAccountStatus::Active->value)->where('type', LedgerAccountType::Asset->value)->exists()) {
             $invalid[] = PurchasePostingConfigurationInvalidReference::InputVat;
+        }
+        if ($configuration->vatPayableLedgerAccountId !== null && ! LedgerAccountRecord::query()->where('administration_id', $admin)->whereKey($configuration->vatPayableLedgerAccountId->toString())->where('status', LedgerAccountStatus::Active->value)->where('type', LedgerAccountType::Liability->value)->exists()) {
+            $invalid[] = PurchasePostingConfigurationInvalidReference::VatPayable;
         }
 
         return $invalid;
@@ -68,6 +81,8 @@ final class EloquentPurchasePostingConfiguration implements PurchasePostingConfi
 
     private function hydrate(PurchasePostingConfigurationRecord $record): PurchasePostingConfiguration
     {
-        return new PurchasePostingConfiguration(new AdministrationId(new Uuid($record->getAttribute('administration_id'))), new JournalId(new Uuid($record->getAttribute('purchase_journal_id'))), new LedgerAccountId(new Uuid($record->getAttribute('accounts_payable_ledger_account_id'))), new LedgerAccountId(new Uuid($record->getAttribute('input_vat_ledger_account_id'))));
+        $vatPayable = $record->getAttribute('vat_payable_ledger_account_id');
+
+        return new PurchasePostingConfiguration(new AdministrationId(new Uuid($record->getAttribute('administration_id'))), new JournalId(new Uuid($record->getAttribute('purchase_journal_id'))), new LedgerAccountId(new Uuid($record->getAttribute('accounts_payable_ledger_account_id'))), new LedgerAccountId(new Uuid($record->getAttribute('input_vat_ledger_account_id'))), $vatPayable === null ? null : new LedgerAccountId(new Uuid($vatPayable)));
     }
 }

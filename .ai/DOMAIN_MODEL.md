@@ -194,17 +194,27 @@ Beide documenten kunnen vanuit Draft of Finalized worden geannuleerd. Statusover
 - P3 PurchaseInvoice gebruikt het verplichte externe supplier invoice number; Administration, Supplier en het case-sensitive canonieke nummer zijn samen uniek. Er bestaat geen interne Purchase-numbersequence.
 - P3 finaliseert met immutable Domain UserId en timestamp. Finalized bevriest supplier/address/date-, line/account-, TaxCode- en bedragtruth maar maakt nog geen financiële feiten.
 - P3 bewaart SupplierInvoiceDate, ReceivedDate, nullable SupplyDate, een afzonderlijke FiscalReportingDate en later de expliciete Accounting PostingDate. Supplier-, VAT/jurisdiction- en documentaddressdata worden immutable gesnapshot; live Relationdata is geen historische waarheid.
-- P3 ondersteunt uitsluitend EUR en volledig aftrekbare domestic Input VAT. Standard/reduced kunnen positieve tax hebben; zero/exempt/outside-scope bewaren zero-tax fiscal truth zonder VAT-journalregel. International/reverse-charge en non-/partial-deductible VAT zijn uitgesloten.
-- Iedere P3 line kiest expliciet een active same-tenant Expense/Asset-account en active same-tenant Input TaxCode. Er is geen first-account-, first-TaxCode- of rateheuristiek.
+- PurchaseInvoice ondersteunt EUR domestic Input VAT en IPV V1: EU-goederen met bewezen
+  aankomst in Nederland plus general-rule EU/non-EU B2B-services. Import/customs,
+  foreign VAT en special-rule services blijven typed unsupported. International
+  deductibility is immutable line-level basis points.
+- Iedere line kiest expliciet een active same-tenant Expense/Asset-account en TaxCode.
+  Application resolveert een international TaxCode naar exact één current tenant-owned
+  definition; er is geen first-account-, first-TaxCode-, country- of rateheuristiek.
 - `PostingEngine` verwerkt alle financiële mutaties.
 - PurchaseInvoice en PurchaseCreditInvoice maken nooit zelf JournalEntries.
-- P3-posting bewaart atomair JournalEntry, Input TaxPostings, één Payable/Credit OpenItem, append-only linkage en Posted-status. Paymentstatus wordt uit OpenItem afgeleid; PurchaseInvoice heeft geen handmatige Paid/PartiallyPaid-status.
+- Purchaseposting bewaart atomair JournalEntry, legacy of grouped multi-leg TaxPostings,
+  één Payable/Credit OpenItem, append-only linkage en Posted-status. Supplier Payable is
+  exact SupplierGross; self-assessed VAT verhoogt die schuld nooit.
 - Na het posten ontstaat via Accounting een OpenItem; Purchasing maakt of beheert settlement/matching niet rechtstreeks.
 - PC V1 definieert PurchaseCreditInvoice als ontvangen leverancierscreditnota tegen exact één same-tenant/same-supplier Posted PurchaseInvoice. Zij selecteert één of meer volledige source PurchaseInvoiceLines uit uitsluitend die invoice; partial line amounts/quantities/tax en source-less credits zijn niet toegestaan.
 - Iedere PurchaseCreditLine heeft duurzame source-line linkage. Een source line kan maximaal eenmaal gepost volledig worden gecrediteerd; een bij Post geappende unieke reversal-claim en de unieke Original→Reversal TaxPosting-link bewaken dit ook onder concurrency zonder Draft/Cancelled-selecties permanent te laten claimen.
 - PurchaseCredit gebruikt de historische supplier/address/account/tax snapshots en de daadwerkelijk geboekte source JournalEntry-/TaxPosting-/Payable-rekeningen. De huidige Supplier, TaxCode of PurchasePostingConfiguration mag reversaltruth niet herinterpreteren.
 - PurchaseCredit-posting maakt een positieve Payable/Debit en matcht die atomisch via OpenItemMatch tot het actuele open source Payable/Credit-bedrag. Bestaande OpenItemSettlements/cash blijven staan; een remainder is een open supplier credit balance.
-- `PurchasePostingConfiguration` is Administration-owned en verwijst met harde tenant-FK's naar exact een active Purchase Journal, active Liability/AP en active Asset/Input VAT. De typed reader kent Missing, Success en exacte InvalidReference; er bestaat geen default Expense-account of heuristische replacement.
+- `PurchasePostingConfiguration` is Administration-owned en verwijst met harde tenant-FK's
+  naar Purchase Journal, Liability/AP, Asset/Input VAT en nullable Liability/VAT payable.
+  Posting valideert alleen accounts die de concrete legs vereisen; 0% deductibility heeft
+  geen Input-VAT-leg. Er bestaat geen client accountselector of heuristische default.
 - De domestic Input-catalogus bevat uitsluitend typed Input standard/reduced/zero/exempt/outside-scope codes en wordt expliciet create-missing-only via Administration-settings beschikbaar gemaakt. TaxCodekeuze blijft later line-owned.
 
 #### Hergebruik

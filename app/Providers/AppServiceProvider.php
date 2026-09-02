@@ -169,6 +169,7 @@ use App\Application\Sales\SalesPostingConfigurationStore;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Accounting\Services\PostingValidation;
+use App\Domain\Fiscal\Services\PurchaseTaxTreatmentCalculation;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
@@ -456,6 +457,7 @@ class AppServiceProvider extends ServiceProvider
                 $identities,
                 $app->make(PurchaseInvoicePostingClock::class),
                 $app->make(AccountingPeriodPostingGuard::class),
+                new PurchaseTaxTreatmentCalculation,
             );
         });
         $this->app->bind(PostSalesCreditInvoiceWithTax::class, function ($app): PostSalesCreditInvoiceWithTax {

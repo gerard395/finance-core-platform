@@ -23,4 +23,9 @@ interface TaxTreatmentDefinitionRepository
         AdministrationId $administrationId,
         TaxCodeId $taxCodeId,
     ): ?TaxTreatmentDefinition;
+
+    public function resolveActiveForTaxCode(
+        AdministrationId $administrationId,
+        TaxCodeId $taxCodeId,
+    ): TaxTreatmentDefinitionSelection;
 }

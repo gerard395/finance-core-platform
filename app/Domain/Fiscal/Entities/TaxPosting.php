@@ -49,7 +49,9 @@ final readonly class TaxPosting
         private IcpClassification $icpClassification = IcpClassification::None,
         private ?TaxPostingLegSnapshot $legSnapshot = null,
     ) {
-        new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
+        if ($legSnapshot === null) {
+            new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
+        }
         if (! $this->taxableBase->currency()->equals($this->taxAmount->currency())) {
             throw new DomainException('Tax posting amounts must use the same currency.');
         }

@@ -20,7 +20,11 @@ interface PurchaseInvoiceMasterDataReader
 
     public function activeLineAccount(AdministrationId $administrationId, LedgerAccountId $id): ?LedgerAccount;
 
+    public function activeLedgerAccount(AdministrationId $administrationId, LedgerAccountId $id): ?LedgerAccount;
+
     public function activeInputTaxCode(AdministrationId $administrationId, TaxCodeId $id): ?TaxCodeSelectionItem;
+
+    public function activeTaxCode(AdministrationId $administrationId, TaxCodeId $id): ?TaxCodeSelectionItem;
 
     /** @return list<PurchaseSupplierSnapshot> */
     public function activeSuppliers(AdministrationId $administrationId): array;

@@ -25,8 +25,10 @@ final readonly class PurchaseTaxSnapshot
         } catch (DomainException $exception) {
             throw new InvalidArgumentException('Purchase line requires a supported domestic Input TaxCode.', previous: $exception);
         }
-        if ($direction !== TaxPostingDirection::Input || ! in_array($treatment, [TaxTreatment::DomesticStandard, TaxTreatment::DomesticReduced, TaxTreatment::ZeroRated, TaxTreatment::Exempt, TaxTreatment::OutsideScope], true)) {
-            throw new InvalidArgumentException('Purchase line requires a supported domestic Input TaxCode.');
+        $domestic = $direction === TaxPostingDirection::Input && in_array($treatment, [TaxTreatment::DomesticStandard, TaxTreatment::DomesticReduced, TaxTreatment::ZeroRated, TaxTreatment::Exempt, TaxTreatment::OutsideScope], true);
+        $internationalSelector = $direction === TaxPostingDirection::Output && in_array($treatment, [TaxTreatment::ReverseChargeEuService, TaxTreatment::IntraCommunityGoods], true);
+        if (! $domestic && ! $internationalSelector) {
+            throw new InvalidArgumentException('Purchase line requires a supported TaxCode selector.');
         }
         if (in_array($treatment, [TaxTreatment::Exempt, TaxTreatment::OutsideScope, TaxTreatment::ZeroRated], true) && $rate->value() !== '0') {
             throw new InvalidArgumentException('Zero, exempt and outside-scope purchase TaxCodes require a zero rate.');

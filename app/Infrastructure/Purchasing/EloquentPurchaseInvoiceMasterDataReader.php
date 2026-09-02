@@ -55,11 +55,29 @@ final readonly class EloquentPurchaseInvoiceMasterDataReader implements Purchase
         return null;
     }
 
+    public function activeLedgerAccount(AdministrationId $admin, LedgerAccountId $id): ?LedgerAccount
+    {
+        foreach ($this->accounts->findForAdministration($admin) as $account) {
+            if ($account->id()->equals($id) && $account->status() === LedgerAccountStatus::Active) {
+                return $account;
+            }
+        }
+
+        return null;
+    }
+
     public function activeInputTaxCode(AdministrationId $admin, TaxCodeId $id): ?TaxCodeSelectionItem
     {
         $item = $this->taxCodes->findByIdForAdministration($admin, $id);
 
         return $item !== null && $item->status()->value === 'active' && $item->direction() === TaxPostingDirection::Input ? $item : null;
+    }
+
+    public function activeTaxCode(AdministrationId $admin, TaxCodeId $id): ?TaxCodeSelectionItem
+    {
+        $item = $this->taxCodes->findByIdForAdministration($admin, $id);
+
+        return $item !== null && $item->status()->value === 'active' ? $item : null;
     }
 
     public function activeSuppliers(AdministrationId $admin): array

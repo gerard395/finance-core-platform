@@ -10,6 +10,7 @@ use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Purchasing\Entities\PurchaseInvoiceLine;
 use App\Domain\Purchasing\ValueObjects\PurchaseAccountSnapshot;
 use App\Domain\Purchasing\ValueObjects\PurchaseTaxSnapshot;
+use App\Domain\Shared\Finance\Money;
 
 final readonly class PurchaseInvoiceAssembler
 {
@@ -31,20 +32,25 @@ final readonly class PurchaseInvoiceAssembler
         $lines = [];
         foreach ($input->lines as $source) {
             $account = $this->masterData->activeLineAccount($admin, $source->ledgerAccountId);
-            $tax = $this->masterData->activeInputTaxCode($admin, $source->taxCodeId);
+            $tax = $source->internationalSourceFacts === null
+                ? $this->masterData->activeInputTaxCode($admin, $source->taxCodeId)
+                : $this->masterData->activeTaxCode($admin, $source->taxCodeId);
             if ($account === null || ! in_array($account->type(), [LedgerAccountType::Expense, LedgerAccountType::Asset], true) || $tax === null) {
                 return null;
             }
-            if (! $source->fullyDeductible && $tax->rate()->value() !== '0') {
+            if ($source->internationalSourceFacts === null && ! $source->fullyDeductible && $tax->rate()->value() !== '0') {
                 return null;
             }
             try {
-                $calculation = $this->taxCalculation->calculate($source->unitPrice->multiply($source->quantity->value()), $tax->toTaxCode());
+                $calculation = $source->internationalSourceFacts === null
+                    ? $this->taxCalculation->calculate($source->unitPrice->multiply($source->quantity->value()), $tax->toTaxCode())
+                    : null;
                 $taxSnapshot = new PurchaseTaxSnapshot($tax->id(), $tax->code(), $tax->name(), $tax->rate(), $tax->direction(), $tax->treatment(), $tax->vatReturnClassification(), $tax->icpClassification());
             } catch (\InvalidArgumentException|\DomainException) {
                 return null;
             }
-            $lines[] = new PurchaseInvoiceLine($this->ids->lineId(), $source->description, $source->quantity, $source->unitPrice, new PurchaseAccountSnapshot($account->id(), $account->code(), $account->name(), $account->type()), $taxSnapshot, $calculation->netAmount(), $calculation->taxAmount(), $calculation->grossAmount());
+            $net = $source->unitPrice->multiply($source->quantity->value());
+            $lines[] = new PurchaseInvoiceLine($this->ids->lineId(), $source->description, $source->quantity, $source->unitPrice, new PurchaseAccountSnapshot($account->id(), $account->code(), $account->name(), $account->type()), $taxSnapshot, $calculation?->netAmount() ?? $net, $calculation?->taxAmount() ?? Money::zero($net->currency()), $calculation?->grossAmount() ?? $net, $source->deductibility, $source->internationalSourceFacts);
         }
 
         return $lines;
