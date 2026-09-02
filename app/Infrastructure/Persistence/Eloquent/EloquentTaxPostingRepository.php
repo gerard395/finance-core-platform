@@ -12,16 +12,24 @@ use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\IcpClassification;
+use App\Domain\Fiscal\Enums\SupplierVatMode;
+use App\Domain\Fiscal\Enums\TaxLegRole;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
+use App\Domain\Fiscal\Enums\TaxReportingClassification;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\TaxTreatmentType;
 use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\DeductibilityBasisPoints;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
+use App\Domain\Fiscal\ValueObjects\TaxPostingLegSnapshot;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Fiscal\ValueObjects\TaxSourceLineId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentDefinitionId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentGroupId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
@@ -30,9 +38,22 @@ use App\Infrastructure\Persistence\Eloquent\Models\JournalEntryRecord;
 use App\Infrastructure\Persistence\Eloquent\Models\TaxPostingRecord;
 use DateTimeImmutable;
 use DomainException;
+use Illuminate\Database\QueryException;
 
 final class EloquentTaxPostingRepository implements TaxPostingReadRepository, TaxPostingStore
 {
+    public function findForTreatmentGroup(AdministrationId $administrationId, TaxTreatmentGroupId $groupId): array
+    {
+        return TaxPostingRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where('tax_treatment_group_id', $groupId->toString())
+            ->orderBy('tax_leg_role')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (TaxPostingRecord $record): TaxPosting => self::hydrate($record))
+            ->all();
+    }
+
     public function hasReversalForOriginalSource(AdministrationId $administrationId, TaxSourceDocumentType $sourceDocumentType, TaxSourceDocumentId $sourceDocumentId): bool
     {
         return TaxPostingRecord::query()
@@ -104,7 +125,8 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             }
         }
 
-        TaxPostingRecord::query()->create([
+        $snapshot = $taxPosting->legSnapshot();
+        $attributes = [
             'id' => $taxPosting->id()->toString(),
             'administration_id' => $taxPosting->administrationId()->toString(),
             'tax_code_id' => $taxPosting->taxCodeId()->toString(),
@@ -125,7 +147,30 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             'treatment' => $taxPosting->treatment()->value,
             'vat_return_classification' => $taxPosting->vatReturnClassification()->value,
             'icp_classification' => $taxPosting->icpClassification()->value,
-        ]);
+            'tax_treatment_definition_id' => $snapshot?->definitionId->toString(),
+            'tax_treatment_definition_version' => $snapshot?->definitionVersion,
+            'tax_treatment_group_id' => $snapshot?->groupId->toString(),
+            'tax_leg_role' => $snapshot?->role->value,
+            'treatment_type' => $snapshot?->treatmentType->value,
+            'tax_jurisdiction' => $snapshot?->jurisdiction,
+            'reporting_classification' => $snapshot?->reportingClassification->value,
+            'deductibility_basis_points' => $snapshot?->deductibility->value(),
+            'assessed_vat' => $snapshot?->assessedVat->amount(),
+            'deductible_vat' => $snapshot?->deductibleVat->amount(),
+            'non_deductible_tax_cost' => $snapshot?->nonDeductibleTaxCost->amount(),
+            'supplier_vat_mode' => $snapshot?->supplierVatMode->value,
+        ];
+
+        try {
+            TaxPostingRecord::query()->create($attributes);
+        } catch (QueryException $exception) {
+            if (($exception->errorInfo[1] ?? null) === 1062
+                && str_contains($exception->getMessage(), 'tp_treatment_group_role_unique')) {
+                throw new DomainException('This tax treatment group already contains the tax leg role for its source.', previous: $exception);
+            }
+
+            throw $exception;
+        }
     }
 
     private function assertAccountingReferences(TaxPosting $taxPosting): void
@@ -163,6 +208,21 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
         $currency = new Currency($record->getAttribute('currency'));
         $taxLineId = $record->getAttribute('tax_journal_entry_line_id');
         $reversedId = $record->getAttribute('reversed_tax_posting_id');
+        $groupId = $record->getAttribute('tax_treatment_group_id');
+        $legSnapshot = $groupId === null ? null : new TaxPostingLegSnapshot(
+            new TaxTreatmentDefinitionId(new Uuid($record->getAttribute('tax_treatment_definition_id'))),
+            (int) $record->getAttribute('tax_treatment_definition_version'),
+            new TaxTreatmentGroupId(new Uuid($groupId)),
+            TaxLegRole::from($record->getAttribute('tax_leg_role')),
+            TaxTreatmentType::from($record->getAttribute('treatment_type')),
+            $record->getAttribute('tax_jurisdiction'),
+            TaxReportingClassification::from($record->getAttribute('reporting_classification')),
+            new DeductibilityBasisPoints((int) $record->getAttribute('deductibility_basis_points')),
+            new Money((string) $record->getAttribute('assessed_vat'), $currency),
+            new Money((string) $record->getAttribute('deductible_vat'), $currency),
+            new Money((string) $record->getAttribute('non_deductible_tax_cost'), $currency),
+            SupplierVatMode::from($record->getAttribute('supplier_vat_mode')),
+        );
 
         return new TaxPosting(
             new TaxPostingId(new Uuid($record->getAttribute('id'))),
@@ -184,6 +244,7 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             TaxTreatment::from($record->getAttribute('treatment')),
             VatReturnClassification::from($record->getAttribute('vat_return_classification')),
             IcpClassification::from($record->getAttribute('icp_classification')),
+            $legSnapshot,
         );
     }
 }

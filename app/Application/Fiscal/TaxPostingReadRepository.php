@@ -9,6 +9,7 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentGroupId;
 
 interface TaxPostingReadRepository
 {
@@ -30,5 +31,11 @@ interface TaxPostingReadRepository
         AdministrationId $administrationId,
         PostingDate $startDate,
         PostingDate $endDate,
+    ): array;
+
+    /** @return list<TaxPosting> */
+    public function findForTreatmentGroup(
+        AdministrationId $administrationId,
+        TaxTreatmentGroupId $groupId,
     ): array;
 }

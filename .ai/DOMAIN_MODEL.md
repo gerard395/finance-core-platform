@@ -342,6 +342,8 @@ expliciet deferred scope blijft buiten V1.
 | TaxCodeName | Een TaxCode benoemen | De immutable leesbare naam van een fiscale classificatie. |
 | TaxCalculation | Fiscale bedragen berekenen | Een frameworkonafhankelijke domain service die met Money een fiscaal bedrag afleidt. |
 | TaxPosting | Een gepost fiscaal feit traceerbaar vastleggen | Een immutable TaxCode/rate/base/tax-snapshot koppelen aan bron-documentregel en geposte financiële regel. |
+| TaxTreatmentDefinition | Versioned fiscale behandeling vastleggen | Een immutable tenant-owned purchase-taxcontract met treatment, rate, supplier-VAT mode, deductibility en legtemplates. |
+| TaxTreatmentGroupId | Multi-leg fiscale feiten correleren | Alle VatPayable/VatDeductible-facts van één toekomstige source line immutable groeperen. |
 | TaxPeriod | Een fiscaal aangiftetijdvak afbakenen | De periode waarvoor fiscale bedragen worden vastgesteld. |
 | TaxReturn | Een fiscale aangifte representeren | De formele rapportage van verschuldigde en verrekenbare belasting over een tijdvak. |
 
@@ -371,6 +373,15 @@ expliciet deferred scope blijft buiten V1.
 - TaxCalculation gebruikt Money en geen floats of primitieve geldbedragen.
 - TaxCalculation maakt geen JournalEntries.
 - TaxPosting bewaart de gebruikte TaxRate, taxable base, taxAmount, TaxTreatment en VAT-return-/ICP-classificatie als transactiesnapshot; de actuele TaxCode-state is nooit historische rapportagewaarheid.
+- Een versioned TaxTreatmentDefinition is immutable. Historische versies blijven
+  leesbaar; de current lookup kiest deterministisch de hoogste actieve versie.
+- Purchase-tax calculation scheidt SupplierGross van SelfAssessedVat. Supplier Payable
+  wordt later uitsluitend uit SupplierGross opgebouwd; self-assessed VAT verhoogt de
+  supplierverplichting nooit.
+- TaxLegRole is exact VatPayable of VatDeductible. NonDeductibleTaxCost is een
+  Expense/Asset-costcomponent en geen fictieve fiscale leg.
+- New-model TaxPostings bewaren volledige group/role/treatment/reporting-/amounttruth;
+  legacy rows zonder deze metadata blijven expliciet leesbaar zonder synthetic backfill.
 - SalesInvoice bewaart document-level immutable customer/supplier VAT-ID- en jurisdictionsnapshots plus een expliciete nullable SupplyDate. InvoiceDate en OrderDate zijn geen impliciete prestatiedatum; SalesCreditInvoice erft de oorspronkelijke fiscale context uit haar source invoice.
 - TaxPostings zijn immutable en append-only. Het definitieve correctiemodel gebruikt een expliciet type `Original` of `Reversal`; bedragen blijven positief en Input/Output-direction blijft gelijk aan het origineel.
 - Een Reversal verwijst naar precies één Original, neemt TaxCode/rate/base/tax/Currency/direction exact over en is in v1 altijd volledig. Een Original mag maximaal eenmaal worden gereversed en een Reversal kan niet zelf reversal-target zijn.
