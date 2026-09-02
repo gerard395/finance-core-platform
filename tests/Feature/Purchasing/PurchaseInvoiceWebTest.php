@@ -53,6 +53,10 @@ final class PurchaseInvoiceWebTest extends TestCase
 
     private const string JOURNAL = '94000000-0000-4000-8000-000000000011';
 
+    private const string VAT_PAYABLE = '94000000-0000-4000-8000-000000000012';
+
+    private const string TREATMENT = '94000000-0000-4000-8000-000000000013';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -277,6 +281,45 @@ final class PurchaseInvoiceWebTest extends TestCase
                 $response->assertSessionMissing('status', 'Creditnota is geboekt en automatisch met de bronfactuur verrekend.');
             }
         }
+    }
+
+    public function test_international_invoice_and_credit_web_flow_uses_server_owned_facts_and_historical_group(): void
+    {
+        $this->assignAll();
+        $this->login();
+        DB::table('administrations')->where('id', self::ADMIN)->update(['organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'NL']);
+        DB::table('relations')->where('id', self::RELATION)->update(['vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE']);
+        DB::table('tax_codes')->where('id', self::OUTPUT)->update(['treatment' => 'reverse_charge_eu_service', 'vat_return_classification' => 'eu_services', 'icp_classification' => 'service']);
+        DB::table('ledger_accounts')->insert(['id' => self::VAT_PAYABLE, 'administration_id' => self::ADMIN, 'code' => '1620', 'name' => 'VAT payable', 'type' => 'liability', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('purchase_posting_configurations')->where('administration_id', self::ADMIN)->update(['vat_payable_ledger_account_id' => self::VAT_PAYABLE]);
+        DB::table('tax_treatment_definitions')->insert(['id' => self::TREATMENT, 'administration_id' => self::ADMIN, 'tax_code_id' => self::OUTPUT, 'version' => 1, 'treatment_type' => 'eu_b2b_general_rule_service', 'jurisdiction' => 'NL', 'vat_rate' => '21', 'supplier_vat_mode' => 'self_assessed', 'deductibility_policy' => 'user_specified_line_rate', 'leg_definitions' => json_encode([
+            ['role' => 'vat_payable', 'direction' => 'output', 'reporting_classification' => 'eu_general_service_due_4b', 'ledger_account_role' => 'vat_payable_control', 'emit_when_zero' => false],
+            ['role' => 'vat_deductible', 'direction' => 'input', 'reporting_classification' => 'deductible_input_5b', 'ledger_account_role' => 'input_vat_control', 'emit_when_zero' => false],
+        ], JSON_THROW_ON_ERROR), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+
+        $this->get('/purchasing/invoices/create')->assertOk()->assertSee('Aftrekpercentage')->assertSee('Algemene B2B-dienst')->assertDontSee('TaxTreatmentDefinitionId');
+        $payload = $this->payload('IPV-WEB-001');
+        $payload['lines'][0] = ['description' => '<script>alert(9)</script>', 'quantity' => '1', 'unit_price' => '100', 'ledger_account_id' => self::EXPENSE, 'tax_code_id' => self::OUTPUT, 'international' => '1', 'supply_classification' => 'general_rule_service', 'business_to_business' => '1', 'general_rule_confirmed' => '1', 'deductibility_percentage' => '100', 'deductibility_rationale' => '<script>reason</script>', 'evidence' => '<script>evidence</script>', 'supplier_jurisdiction' => 'FR', 'supplier_vat_id' => 'FAKE', 'administration_id' => '95000000-0000-4000-8000-000000000001'];
+        $this->post('/purchasing/invoices', $payload)->assertSessionHasNoErrors();
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'IPV-WEB-001')->first();
+        self::assertNotNull($invoice);
+        $this->post('/purchasing/invoices/'.$invoice->id.'/finalize')->assertSessionHas('status');
+        $stored = json_decode((string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('international_tax_input'), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('DE', $stored['supplier_jurisdiction']);
+        self::assertSame('DE123456789', $stored['supplier_vat_identity']);
+        $this->post('/purchasing/invoices/'.$invoice->id.'/post', ['posting_date' => '2026-08-25'])->assertSessionHas('status');
+        $this->get('/purchasing/invoices/'.$invoice->id)->assertOk()->assertSee('Internationale btw-boeking')->assertSee('&lt;script&gt;evidence&lt;/script&gt;', false)->assertDontSee('<script>evidence</script>', false)->assertSee('100,00')->assertSee('21,00');
+
+        $lineId = (string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('id');
+        $this->get('/purchasing/credits/create?source='.$invoice->id)->assertOk()->assertSee('Historische behandeling')->assertSee('eu_b2b_general_rule_service');
+        $this->post('/purchasing/credits', ['source_invoice_id' => $invoice->id, 'supplier_credit_invoice_number' => 'IPV-CR-001', 'supplier_credit_date' => '2026-08-25', 'received_date' => '2026-08-25', 'source_line_ids' => [$lineId]]);
+        $credit = DB::table('purchase_credit_invoices')->where('supplier_credit_invoice_number', 'IPV-CR-001')->first();
+        self::assertNotNull($credit);
+        $this->post('/purchasing/credits/'.$credit->id.'/finalize')->assertSessionHas('status');
+        $this->post('/purchasing/credits/'.$credit->id.'/post', ['posting_date' => '2026-08-25'])->assertSessionHas('status');
+        self::assertSame('100', DB::table('open_items')->where('id', DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $credit->id)->value('open_item_id'))->value('original_amount'));
+        self::assertSame(2, DB::table('tax_postings')->where('source_document_id', $credit->id)->count());
+        $this->get('/purchasing/credits/'.$credit->id)->assertOk()->assertSee('Historisch gereverseerde btw-legs')->assertSee('vat_payable')->assertSee('vat_deductible')->assertSee('Leverancierscreditsaldo');
     }
 
     private function fixtures(): void

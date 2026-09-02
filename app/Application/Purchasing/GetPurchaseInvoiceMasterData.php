@@ -12,6 +12,6 @@ final readonly class GetPurchaseInvoiceMasterData
 
     public function execute(AdministrationId $admin): array
     {
-        return ['suppliers' => $this->reader->activeSuppliers($admin), 'accounts' => $this->reader->activeLineAccounts($admin), 'tax_codes' => $this->reader->activeInputTaxCodes($admin)];
+        return ['suppliers' => $this->reader->activeSuppliers($admin), 'accounts' => $this->reader->activeLineAccounts($admin), 'tax_codes' => $this->reader->activePurchaseTaxCodes($admin), 'international_tax_code_ids' => array_map(static fn ($id): string => $id->toString(), $this->reader->internationalTaxCodeIds($admin))];
     }
 }

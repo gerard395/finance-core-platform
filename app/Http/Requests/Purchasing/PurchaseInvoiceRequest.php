@@ -41,6 +41,17 @@ final class PurchaseInvoiceRequest extends FormRequest
             'lines.*.ledger_account_id' => ['nullable', 'uuid'],
             'lines.*.tax_code_id' => ['nullable', 'uuid'],
             'lines.*.fully_deductible' => ['nullable', 'boolean'],
+            'lines.*.international' => ['nullable', 'boolean'],
+            'lines.*.supply_classification' => ['nullable', Rule::in(['goods', 'general_rule_service'])],
+            'lines.*.business_to_business' => ['nullable', 'boolean'],
+            'lines.*.arrives_in_netherlands' => ['nullable', 'boolean'],
+            'lines.*.general_rule_confirmed' => ['nullable', 'boolean'],
+            'lines.*.special_place_of_supply' => ['nullable', 'boolean'],
+            'lines.*.foreign_supplier_vat' => ['nullable', 'boolean'],
+            'lines.*.import_or_customs' => ['nullable', 'boolean'],
+            'lines.*.evidence' => ['nullable', 'string', 'max:1000'],
+            'lines.*.deductibility_percentage' => ['nullable', 'integer', 'between:0,100'],
+            'lines.*.deductibility_rationale' => ['nullable', 'string', 'max:1000'],
             'lines.*._delete' => ['nullable', 'boolean'],
         ];
     }

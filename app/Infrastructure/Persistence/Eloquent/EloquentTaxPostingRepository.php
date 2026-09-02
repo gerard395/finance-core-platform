@@ -83,6 +83,20 @@ final class EloquentTaxPostingRepository implements TaxPostingReadRepository, Ta
             ->all();
     }
 
+    public function findForSource(AdministrationId $administrationId, TaxSourceDocumentType $sourceDocumentType, TaxSourceDocumentId $sourceDocumentId): array
+    {
+        return TaxPostingRecord::query()
+            ->where('administration_id', $administrationId->toString())
+            ->where('source_document_type', $sourceDocumentType->value)
+            ->where('source_document_id', $sourceDocumentId->toString())
+            ->orderBy('source_line_id')
+            ->orderBy('tax_leg_role')
+            ->orderBy('id')
+            ->get()
+            ->map(static fn (TaxPostingRecord $record): TaxPosting => self::hydrate($record))
+            ->all();
+    }
+
     public function findForAdministrationAndPeriod(
         AdministrationId $administrationId,
         PostingDate $startDate,

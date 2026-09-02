@@ -14,6 +14,6 @@ use App\Domain\Shared\Finance\Money;
 
 final readonly class PurchaseCreditPostingReadModel
 {
-    /** @param array<string, TaxPostingId> $reversalTaxPostingIdsByCreditLine */
+    /** @param array<string, list<TaxPostingId>> $reversalTaxPostingIdsByCreditLine */
     public function __construct(public PurchaseCreditInvoiceId $creditId, public PostingDate $postingDate, public JournalEntryId $journalEntryId, public OpenItemId $creditPayableOpenItemId, public Money $grossAmount, public PurchaseInvoiceId $sourceInvoiceId, public OpenItemId $sourcePayableOpenItemId, public array $reversalTaxPostingIdsByCreditLine, public bool $allSourceLinesClaimed, public Money $matchedAmount, public Money $sourceRemainingAmount, public Money $creditRemainingAmount) {}
 }

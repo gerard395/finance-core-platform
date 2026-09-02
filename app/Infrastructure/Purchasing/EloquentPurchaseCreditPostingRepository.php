@@ -58,7 +58,7 @@ final class EloquentPurchaseCreditPostingRepository implements PurchaseCreditPos
         }
         $taxIds = [];
         foreach (DB::table('tax_postings')->where('administration_id', $admin->toString())->where('source_document_type', 'purchase_credit_invoice')->where('source_document_id', $id->toString())->orderBy('source_line_id')->get(['id', 'source_line_id']) as $tax) {
-            $taxIds[$tax->source_line_id] = new TaxPostingId(new Uuid($tax->id));
+            $taxIds[$tax->source_line_id][] = new TaxPostingId(new Uuid($tax->id));
         }
         $lineCount = DB::table('purchase_credit_invoice_lines')->where('administration_id', $admin->toString())->where('purchase_credit_invoice_id', $id->toString())->count();
         $claimCount = DB::table('purchase_credit_source_line_claims')->where('administration_id', $admin->toString())->where('purchase_credit_invoice_id', $id->toString())->count();

@@ -34,4 +34,10 @@ interface PurchaseInvoiceMasterDataReader
 
     /** @return list<TaxCodeSelectionItem> */
     public function activeInputTaxCodes(AdministrationId $administrationId): array;
+
+    /** @return list<TaxCodeSelectionItem> */
+    public function activePurchaseTaxCodes(AdministrationId $administrationId): array;
+
+    /** @return list<TaxCodeId> */
+    public function internationalTaxCodeIds(AdministrationId $administrationId): array;
 }

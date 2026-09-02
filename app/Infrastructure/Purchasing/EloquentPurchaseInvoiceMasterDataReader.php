@@ -94,4 +94,33 @@ final readonly class EloquentPurchaseInvoiceMasterDataReader implements Purchase
     {
         return $this->taxCodes->findActiveForAdministrationAndDirection($admin, TaxPostingDirection::Input);
     }
+
+    public function activePurchaseTaxCodes(AdministrationId $admin): array
+    {
+        $items = [];
+        foreach ($this->activeInputTaxCodes($admin) as $item) {
+            $items[$item->id()->toString()] = $item;
+        }
+        foreach ($this->internationalTaxCodeIds($admin) as $id) {
+            $item = $this->activeTaxCode($admin, $id);
+            if ($item !== null) {
+                $items[$id->toString()] = $item;
+            }
+        }
+        ksort($items);
+
+        return array_values($items);
+    }
+
+    public function internationalTaxCodeIds(AdministrationId $admin): array
+    {
+        return DB::table('tax_treatment_definitions')
+            ->where('administration_id', $admin->toString())
+            ->where('active', true)
+            ->distinct()
+            ->orderBy('tax_code_id')
+            ->pluck('tax_code_id')
+            ->map(static fn (string $id): TaxCodeId => new TaxCodeId(new Uuid($id)))
+            ->all();
+    }
 }

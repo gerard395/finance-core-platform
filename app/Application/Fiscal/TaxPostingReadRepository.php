@@ -20,6 +20,13 @@ interface TaxPostingReadRepository
         TaxSourceDocumentId $sourceDocumentId,
     ): array;
 
+    /** @return list<TaxPosting> */
+    public function findForSource(
+        AdministrationId $administrationId,
+        TaxSourceDocumentType $sourceDocumentType,
+        TaxSourceDocumentId $sourceDocumentId,
+    ): array;
+
     public function hasReversalForOriginalSource(
         AdministrationId $administrationId,
         TaxSourceDocumentType $sourceDocumentType,

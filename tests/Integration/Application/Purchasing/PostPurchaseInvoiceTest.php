@@ -14,13 +14,19 @@ use App\Application\Fiscal\TaxTreatmentDefinitionRepository;
 use App\Application\Fiscal\TaxTreatmentDefinitionSelection;
 use App\Application\Fiscal\TaxTreatmentDefinitionSelectionStatus;
 use App\Application\Purchasing\CancelPurchaseInvoice;
+use App\Application\Purchasing\CreatePurchaseCreditInvoice;
 use App\Application\Purchasing\CreatePurchaseInvoice;
 use App\Application\Purchasing\CreatePurchaseInvoiceStatus;
+use App\Application\Purchasing\FinalizePurchaseCreditInvoice;
 use App\Application\Purchasing\FinalizePurchaseInvoice;
 use App\Application\Purchasing\FinalizePurchaseInvoiceResult;
+use App\Application\Purchasing\PostPurchaseCreditInvoice;
+use App\Application\Purchasing\PostPurchaseCreditInvoiceStatus;
 use App\Application\Purchasing\PostPurchaseInvoice;
 use App\Application\Purchasing\PostPurchaseInvoiceResult;
 use App\Application\Purchasing\PostPurchaseInvoiceStatus;
+use App\Application\Purchasing\PurchaseCreditDraftInput;
+use App\Application\Purchasing\PurchaseCreditMutationResult;
 use App\Application\Purchasing\PurchaseInvoiceDraftInput;
 use App\Application\Purchasing\PurchaseInvoiceLineInput;
 use App\Application\Purchasing\PurchaseInvoiceMasterDataReader;
@@ -48,8 +54,10 @@ use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Entities\PurchaseInvoice;
 use App\Domain\Purchasing\Enums\PurchaseSupplyClassification;
 use App\Domain\Purchasing\ValueObjects\InternationalPurchaseSourceFacts;
+use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceNumber;
 use App\Domain\Purchasing\ValueObjects\PurchaseDocumentAddress;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
+use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\SupplierInvoiceNumber;
 use App\Domain\Relations\ValueObjects\AddressLine;
 use App\Domain\Relations\ValueObjects\City;
@@ -178,6 +186,122 @@ final class PostPurchaseInvoiceTest extends TestCase
         }
 
         return $rows;
+    }
+
+    #[DataProvider('internationalCreditScenarios')]
+    public function test_purchase_credit_reverses_complete_historical_international_group(int $basisPoints, string $expenseCredit, ?string $inputVatCredit): void
+    {
+        $invoiceId = $this->internationalFinalized('IPV-CREDIT-SOURCE-'.$basisPoints, 'eu_goods_acquisition_nl', $basisPoints);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $sourceLineId = (string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoiceId)->value('id');
+        $created = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), new PurchaseCreditDraftInput(
+            new PurchaseInvoiceId(new Uuid($invoiceId)),
+            new PurchaseCreditInvoiceNumber('IPV-CREDIT-'.$basisPoints),
+            new DateTimeImmutable('2026-08-23'),
+            new DateTimeImmutable('2026-08-24'),
+            [new PurchaseInvoiceLineId(new Uuid($sourceLineId))],
+        ), $this->actor());
+        self::assertSame(PurchaseCreditMutationResult::Success, $created->status);
+        self::assertSame(PurchaseCreditMutationResult::Success, $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $created->id, $this->actor()));
+
+        $result = $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor());
+
+        self::assertSame(PostPurchaseCreditInvoiceStatus::Success, $result->status);
+        self::assertSame('100', DB::table('open_items')->where('id', $result->openItemId?->toString())->value('original_amount'));
+        $journal = DB::table('journal_entry_lines')->where('journal_entry_id', $result->journalEntryId?->toString())->get();
+        self::assertSame($expenseCredit, $journal->firstWhere('ledger_account_id', self::EXPENSE)?->credit_amount);
+        self::assertSame('100', $journal->firstWhere('ledger_account_id', self::AP)?->debit_amount);
+        self::assertSame('21', $journal->firstWhere('ledger_account_id', self::VAT_PAYABLE)?->debit_amount);
+        self::assertSame($inputVatCredit, $journal->firstWhere('ledger_account_id', self::VAT)?->credit_amount);
+        $reversals = DB::table('tax_postings')->where('source_document_type', 'purchase_credit_invoice')->get();
+        self::assertCount($basisPoints === 0 ? 1 : 2, $reversals);
+        self::assertSame($basisPoints === 0 ? ['vat_payable'] : ['vat_deductible', 'vat_payable'], $reversals->pluck('tax_leg_role')->sort()->values()->all());
+        self::assertSame($reversals->count(), $reversals->pluck('reversed_tax_posting_id')->unique()->count());
+        self::assertSame(1, DB::table('purchase_credit_source_line_claims')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame('100', $result->matchedAmount?->amount());
+    }
+
+    public static function internationalCreditScenarios(): array
+    {
+        return [
+            'full deduction' => [10000, '100', '21'],
+            'zero deduction' => [0, '121', null],
+            'half deduction' => [5000, '110.5', '10.5'],
+        ];
+    }
+
+    public function test_international_credit_mid_group_failure_rolls_back_every_fact(): void
+    {
+        $invoiceId = $this->internationalFinalized('IPV-CREDIT-ROLLBACK-SOURCE', 'eu_goods_acquisition_nl', 10000);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $created = $this->createInternationalCredit($invoiceId, 'IPV-CREDIT-ROLLBACK');
+        $before = [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()];
+        $this->app->instance(TaxPostingStore::class, new FailingSecondTaxPostingStore($this->app->make(TaxPostingStore::class)));
+
+        $result = $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor());
+
+        self::assertSame(PostPurchaseCreditInvoiceStatus::PostingFailure, $result->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('tax_postings')->count(), DB::table('open_items')->count(), DB::table('open_item_matches')->count()]);
+        self::assertSame(0, DB::table('purchase_credit_source_line_claims')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame(0, DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame('finalized', DB::table('purchase_credit_invoices')->where('id', $created->id->toString())->value('status'));
+    }
+
+    public function test_international_credit_rejects_an_incomplete_historical_group_before_writes(): void
+    {
+        $invoiceId = $this->internationalFinalized('IPV-CREDIT-CORRUPT-SOURCE', 'eu_goods_acquisition_nl', 10000);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $created = $this->createInternationalCredit($invoiceId, 'IPV-CREDIT-CORRUPT');
+        $snapshot = json_decode((string) DB::table('purchase_credit_invoice_lines')->where('purchase_credit_invoice_id', $created->id->toString())->value('international_tax_snapshot'), true, flags: JSON_THROW_ON_ERROR);
+        $referenced = (string) DB::table('purchase_credit_invoice_lines')->where('purchase_credit_invoice_id', $created->id->toString())->value('source_tax_posting_id');
+        $missing = collect($snapshot['original_ids'])->first(static fn (string $id): bool => $id !== $referenced);
+        DB::table('tax_postings')->where('id', $missing)->delete();
+        $before = [DB::table('journal_entries')->count(), DB::table('open_items')->count(), DB::table('purchase_credit_source_line_claims')->count()];
+
+        $result = $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor());
+
+        self::assertSame(PostPurchaseCreditInvoiceStatus::FinancialStateInvalid, $result->status);
+        self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_items')->count(), DB::table('purchase_credit_source_line_claims')->count()]);
+        self::assertSame('finalized', DB::table('purchase_credit_invoices')->where('id', $created->id->toString())->value('status'));
+    }
+
+    public function test_real_mysql_concurrent_international_credit_double_post_is_idempotent(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $invoiceId = $this->internationalFinalized('IPV-CREDIT-RACE-SOURCE', 'eu_goods_acquisition_nl', 10000);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $created = $this->createInternationalCredit($invoiceId, 'IPV-CREDIT-RACE');
+        DB::commit();
+        $results = $this->race(fn (): string => $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor())->status->name, fn (): string => $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor())->status->name);
+        sort($results);
+        self::assertSame(['AlreadyPosted', 'Success'], $results);
+        self::assertSame(2, DB::table('tax_postings')->where('source_document_id', $created->id->toString())->count());
+        self::assertSame(1, DB::table('purchase_credit_invoice_postings')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        self::assertSame(1, DB::table('purchase_credit_source_line_claims')->where('purchase_credit_invoice_id', $created->id->toString())->count());
+        $this->cleanup();
+        DB::beginTransaction();
+    }
+
+    public function test_real_mysql_competing_international_credits_have_one_complete_winner(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required.');
+        }
+        $invoiceId = $this->internationalFinalized('IPV-CREDIT-CLAIM-SOURCE', 'eu_goods_acquisition_nl', 10000);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $left = $this->createInternationalCredit($invoiceId, 'IPV-CREDIT-CLAIM-A');
+        $right = $this->createInternationalCredit($invoiceId, 'IPV-CREDIT-CLAIM-B');
+        DB::commit();
+        $results = $this->race(fn (): string => $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $left->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor())->status->name, fn (): string => $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $right->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor())->status->name);
+        sort($results);
+        self::assertSame(['SourceLineAlreadyCredited', 'Success'], $results);
+        self::assertSame(2, DB::table('tax_postings')->where('source_document_type', 'purchase_credit_invoice')->count());
+        self::assertSame(1, DB::table('purchase_credit_invoice_postings')->whereIn('purchase_credit_invoice_id', [$left->id->toString(), $right->id->toString()])->count());
+        self::assertSame(1, DB::table('purchase_credit_invoices')->whereIn('id', [$left->id->toString(), $right->id->toString()])->where('status', 'finalized')->count());
+        $this->cleanup();
+        DB::beginTransaction();
     }
 
     public function test_international_post_requires_server_owned_vat_payable_configuration(): void
@@ -600,6 +724,16 @@ final class PostPurchaseInvoiceTest extends TestCase
         return $this->app->make(PostPurchaseInvoice::class)->execute($this->admin(), new PurchaseInvoiceId(new Uuid($id)), new PostingDate(new DateTimeImmutable('2026-08-25')));
     }
 
+    private function createInternationalCredit(string $invoiceId, string $number): mixed
+    {
+        $sourceLineId = (string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoiceId)->value('id');
+        $created = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), new PurchaseCreditDraftInput(new PurchaseInvoiceId(new Uuid($invoiceId)), new PurchaseCreditInvoiceNumber($number), new DateTimeImmutable('2026-08-23'), new DateTimeImmutable('2026-08-24'), [new PurchaseInvoiceLineId(new Uuid($sourceLineId))]), $this->actor());
+        self::assertSame(PurchaseCreditMutationResult::Success, $created->status);
+        self::assertSame(PurchaseCreditMutationResult::Success, $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $created->id, $this->actor()));
+
+        return $created;
+    }
+
     private function input(string $number): PurchaseInvoiceDraftInput
     {
         $currency = new Currency('EUR');
@@ -698,7 +832,12 @@ final class PostPurchaseInvoiceTest extends TestCase
     private function cleanup(): void
     {
         DB::table('accounting_period_status_history')->where('administration_id', self::ADMIN)->delete();
-        foreach (['purchase_invoice_postings', 'open_items', 'tax_postings', 'journal_entry_lines', 'journal_entries', 'purchase_invoice_lines', 'purchase_invoices', 'purchase_posting_configurations', 'tax_treatment_definitions', 'tax_codes', 'journals', 'ledger_accounts', 'suppliers', 'relations'] as $table) {
+        foreach (['open_item_matches', 'purchase_credit_source_line_claims', 'purchase_credit_invoice_postings', 'purchase_credit_invoice_lines', 'purchase_credit_invoices', 'purchase_invoice_postings', 'open_items'] as $table) {
+            DB::table($table)->where('administration_id', self::ADMIN)->delete();
+        }
+        DB::table('tax_postings')->where('administration_id', self::ADMIN)->where('type', 'reversal')->delete();
+        DB::table('tax_postings')->where('administration_id', self::ADMIN)->delete();
+        foreach (['journal_entry_lines', 'journal_entries', 'purchase_invoice_lines', 'purchase_invoices', 'purchase_posting_configurations', 'tax_treatment_definitions', 'tax_codes', 'journals', 'ledger_accounts', 'suppliers', 'relations'] as $table) {
             DB::table($table)->where('administration_id', self::ADMIN)->delete();
         }
         DB::table('accounting_periods')->where('administration_id', self::ADMIN)->delete();

@@ -11,21 +11,34 @@ use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\LedgerAccountName;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Administration\ValueObjects\AdministrationId;
+use App\Domain\Fiscal\Enums\DeductibilityPolicy;
 use App\Domain\Fiscal\Enums\IcpClassification;
+use App\Domain\Fiscal\Enums\SupplierVatMode;
+use App\Domain\Fiscal\Enums\TaxLedgerAccountRole;
+use App\Domain\Fiscal\Enums\TaxLegRole;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
+use App\Domain\Fiscal\Enums\TaxReportingClassification;
 use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\TaxTreatmentType;
 use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\DeductibilityBasisPoints;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
+use App\Domain\Fiscal\ValueObjects\TaxLegDefinition;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentDefinitionId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentGroupId;
 use App\Domain\Identity\ValueObjects\DisplayName;
 use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Entities\PurchaseCreditInvoice;
 use App\Domain\Purchasing\Entities\PurchaseCreditInvoiceLine;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
+use App\Domain\Purchasing\Enums\PurchaseSupplyClassification;
+use App\Domain\Purchasing\ValueObjects\InternationalPurchaseSourceFacts;
 use App\Domain\Purchasing\ValueObjects\PurchaseAccountSnapshot;
+use App\Domain\Purchasing\ValueObjects\PurchaseCreditInternationalTaxSnapshot;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceId;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceNumber;
@@ -34,6 +47,7 @@ use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseSupplierSnapshot;
 use App\Domain\Purchasing\ValueObjects\PurchaseTaxSnapshot;
+use App\Domain\Purchasing\ValueObjects\PurchaseTaxTreatmentSnapshot;
 use App\Domain\Relations\ValueObjects\AddressLine;
 use App\Domain\Relations\ValueObjects\City;
 use App\Domain\Relations\ValueObjects\CountryCode;
@@ -125,6 +139,7 @@ final class EloquentPurchaseCreditInvoiceRepository implements PurchaseCreditInv
                 'id' => $l->id()->toString(), 'administration_id' => $c->administrationId()->toString(),
                 'purchase_credit_invoice_id' => $c->id()->toString(), 'source_purchase_invoice_id' => $c->sourcePurchaseInvoiceId()?->toString(),
                 'source_purchase_invoice_line_id' => $l->sourcePurchaseInvoiceLineId()?->toString(), 'source_tax_posting_id' => $l->sourceTaxPostingId()?->toString(),
+                'international_tax_snapshot' => $this->internationalSnapshotJson($l->internationalTaxSnapshot()),
                 'description' => $l->description()->value(), 'quantity' => $l->quantity()->value(), 'unit_price_amount' => $l->unitPrice()->amount(), 'currency' => $c->currency()->code(),
                 'ledger_account_id' => $a?->id->toString(), 'ledger_account_code_snapshot' => $a?->code->value(), 'ledger_account_name_snapshot' => $a?->name->value(), 'ledger_account_type_snapshot' => $a?->type->value,
                 'tax_code_id' => $t?->id->toString(), 'tax_code_snapshot' => $t?->code->value(), 'tax_name_snapshot' => $t?->name->value(), 'tax_rate_snapshot' => $t?->rate->value(),
@@ -142,11 +157,48 @@ final class EloquentPurchaseCreditInvoiceRepository implements PurchaseCreditInv
             $t = new PurchaseTaxSnapshot(new TaxCodeId(new Uuid($l->tax_code_id)), new TaxCodeCode($l->tax_code_snapshot), new TaxCodeName($l->tax_name_snapshot), new TaxRate($l->tax_rate_snapshot), TaxPostingDirection::from($l->tax_direction_snapshot), TaxTreatment::from($l->tax_treatment_snapshot), VatReturnClassification::from($l->vat_return_classification_snapshot), IcpClassification::from($l->icp_classification_snapshot));
             $net = new Money($l->net_amount, $cur);
 
-            return new PurchaseCreditInvoiceLine(new PurchaseCreditInvoiceLineId(new Uuid($l->id)), new LineDescription($l->description), new Quantity($l->quantity), new Money($l->unit_price_amount, $cur), new PurchaseInvoiceLineId(new Uuid($l->source_purchase_invoice_line_id)), $a, $t, $net, new Money($l->tax_amount, $cur), new Money($l->gross_amount, $cur), $l->source_tax_posting_id === null ? null : new TaxPostingId(new Uuid($l->source_tax_posting_id)));
+            return new PurchaseCreditInvoiceLine(new PurchaseCreditInvoiceLineId(new Uuid($l->id)), new LineDescription($l->description), new Quantity($l->quantity), new Money($l->unit_price_amount, $cur), new PurchaseInvoiceLineId(new Uuid($l->source_purchase_invoice_line_id)), $a, $t, $net, new Money($l->tax_amount, $cur), new Money($l->gross_amount, $cur), $l->source_tax_posting_id === null ? null : new TaxPostingId(new Uuid($l->source_tax_posting_id)), $this->hydrateInternationalSnapshot($l->international_tax_snapshot ?? null, $cur));
         })->all();
         $s = new PurchaseSupplierSnapshot(new SupplierId(new Uuid($r->supplier_id)), new RelationId(new Uuid($r->supplier_relation_id_snapshot)), new SupplierNumber($r->supplier_number_snapshot), new DisplayName($r->supplier_name_snapshot), $r->supplier_vat_id_snapshot === null ? null : new VatIdentificationNumber($r->supplier_vat_id_snapshot), $r->supplier_jurisdiction_snapshot === null ? null : new CountryCode($r->supplier_jurisdiction_snapshot));
         $a = new PurchaseDocumentAddress(new AddressLine($r->address_line_1_snapshot), $r->address_line_2_snapshot === null ? null : new AddressLine($r->address_line_2_snapshot), new PostalCode($r->postal_code_snapshot), new City($r->city_snapshot), new CountryCode($r->country_code_snapshot));
 
         return new PurchaseCreditInvoice(new PurchaseCreditInvoiceId(new Uuid($r->id)), new PurchaseCreditInvoiceNumber($r->supplier_credit_invoice_number), new AdministrationId(new Uuid($r->administration_id)), new SupplierId(new Uuid($r->supplier_id)), $cur, new DateTimeImmutable($r->supplier_credit_date), new PurchaseInvoiceId(new Uuid($r->source_purchase_invoice_id)), PurchaseCreditInvoiceStatus::from($r->status), $s, $a, new DateTimeImmutable($r->received_date), new DateTimeImmutable($r->fiscal_reporting_date), $r->source_supply_date === null ? null : new DateTimeImmutable($r->source_supply_date), new OpenItemId(new Uuid($r->source_payable_open_item_id)), new UserId(new Uuid($r->created_by)), new DateTimeImmutable($r->created_at), $lines, $r->finalized_by === null ? null : new UserId(new Uuid($r->finalized_by)), $r->finalized_at === null ? null : new DateTimeImmutable($r->finalized_at), $r->cancelled_by === null ? null : new UserId(new Uuid($r->cancelled_by)), $r->cancelled_at === null ? null : new DateTimeImmutable($r->cancelled_at), $r->posted_by === null ? null : new UserId(new Uuid($r->posted_by)), $r->posted_at === null ? null : new DateTimeImmutable($r->posted_at));
+    }
+
+    private function internationalSnapshotJson(?PurchaseCreditInternationalTaxSnapshot $snapshot): ?string
+    {
+        if ($snapshot === null) {
+            return null;
+        }
+        $t = $snapshot->treatment;
+        $f = $t->sourceFacts;
+
+        return json_encode([
+            'definition_id' => $t->definitionId->toString(), 'version' => $t->definitionVersion,
+            'type' => $t->treatmentType->value, 'jurisdiction' => $t->jurisdiction, 'rate' => $t->vatRate->value(),
+            'supplier_vat_mode' => $t->supplierVatMode->value, 'deductibility_policy' => $t->deductibilityPolicy->value,
+            'deductibility' => $t->deductibility->value(), 'group_id' => $snapshot->sourceGroupId->toString(),
+            'original_ids' => array_map(static fn (TaxPostingId $id): string => $id->toString(), $snapshot->originalTaxPostingIds),
+            'legs' => array_map(static fn (TaxLegDefinition $leg): array => ['role' => $leg->role->value, 'direction' => $leg->direction->value, 'reporting' => $leg->reportingClassification->value, 'account_role' => $leg->ledgerAccountRole->value, 'emit_zero' => $leg->emitWhenZero], $t->legDefinitions),
+            'facts' => ['supplier_jurisdiction' => $f->supplierJurisdiction, 'customer_jurisdiction' => $f->customerJurisdiction, 'supplier_vat_identity' => $f->supplierVatIdentity, 'customer_vat_identity' => $f->customerVatIdentity, 'classification' => $f->classification->value, 'b2b' => $f->businessToBusiness, 'arrives_nl' => $f->arrivesInNetherlands, 'general_rule' => $f->generalRuleConfirmed, 'special_rule' => $f->specialPlaceOfSupply, 'foreign_vat' => $f->foreignSupplierVat, 'import_customs' => $f->importOrCustoms, 'evidence' => $f->evidence, 'rationale' => $f->deductibilityRationale, 'policy_version' => $f->deductibilityPolicyVersion],
+            'frozen_by' => $t->frozenBy->toString(), 'frozen_at' => $t->frozenAt->format('Y-m-d H:i:s.u'),
+            'supplier_gross' => $snapshot->supplierGross->amount(), 'self_assessed_vat' => $snapshot->selfAssessedVat->amount(),
+            'deductible_vat' => $snapshot->deductibleVat->amount(), 'non_deductible_tax_cost' => $snapshot->nonDeductibleTaxCost->amount(),
+        ], JSON_THROW_ON_ERROR);
+    }
+
+    private function hydrateInternationalSnapshot(?string $json, Currency $currency): ?PurchaseCreditInternationalTaxSnapshot
+    {
+        if ($json === null) {
+            return null;
+        }
+        $v = json_decode($json, true, flags: JSON_THROW_ON_ERROR);
+        $f = $v['facts'];
+        $facts = new InternationalPurchaseSourceFacts($f['supplier_jurisdiction'], $f['customer_jurisdiction'], $f['supplier_vat_identity'], $f['customer_vat_identity'], PurchaseSupplyClassification::from($f['classification']), $f['b2b'], $f['arrives_nl'], $f['general_rule'], $f['special_rule'], $f['foreign_vat'], $f['import_customs'], $f['evidence'], $f['rationale'], $f['policy_version']);
+        $deductibility = new DeductibilityBasisPoints($v['deductibility']);
+        $legs = array_map(static fn (array $leg): TaxLegDefinition => new TaxLegDefinition(TaxLegRole::from($leg['role']), TaxPostingDirection::from($leg['direction']), TaxReportingClassification::from($leg['reporting']), TaxLedgerAccountRole::from($leg['account_role']), $leg['emit_zero']), $v['legs']);
+        $treatment = new PurchaseTaxTreatmentSnapshot(new TaxTreatmentDefinitionId(new Uuid($v['definition_id'])), $v['version'], TaxTreatmentType::from($v['type']), $v['jurisdiction'], new TaxRate($v['rate']), SupplierVatMode::from($v['supplier_vat_mode']), DeductibilityPolicy::from($v['deductibility_policy']), $legs, $deductibility, $facts, new UserId(new Uuid($v['frozen_by'])), new DateTimeImmutable($v['frozen_at']));
+
+        return new PurchaseCreditInternationalTaxSnapshot($treatment, new TaxTreatmentGroupId(new Uuid($v['group_id'])), array_map(static fn (string $id): TaxPostingId => new TaxPostingId(new Uuid($id)), $v['original_ids']), new Money($v['supplier_gross'], $currency), new Money($v['self_assessed_vat'], $currency), new Money($v['deductible_vat'], $currency), new Money($v['non_deductible_tax_cost'], $currency));
     }
 }

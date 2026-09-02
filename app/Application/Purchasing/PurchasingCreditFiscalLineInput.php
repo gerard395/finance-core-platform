@@ -20,6 +20,8 @@ final readonly class PurchasingCreditFiscalLineInput
         private JournalEntryLineId $expenseReversalLineId,
         private ?JournalEntryLineId $taxReversalLineId,
         private TaxPostingId $reversalTaxPostingId,
+        /** @var list<PurchasingCreditTaxLegReversalInput> */
+        private array $internationalLegs = [],
     ) {}
 
     public function purchaseCreditInvoiceLineId(): PurchaseCreditInvoiceLineId
@@ -55,5 +57,11 @@ final readonly class PurchasingCreditFiscalLineInput
     public function reversalTaxPostingId(): TaxPostingId
     {
         return $this->reversalTaxPostingId;
+    }
+
+    /** @return list<PurchasingCreditTaxLegReversalInput> */
+    public function internationalLegs(): array
+    {
+        return $this->internationalLegs;
     }
 }

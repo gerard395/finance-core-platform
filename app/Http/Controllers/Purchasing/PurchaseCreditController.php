@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Purchasing;
 
+use App\Application\Fiscal\TaxPostingReadRepository;
 use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Purchasing\CreatePurchaseCreditInvoice;
 use App\Application\Purchasing\GetPurchaseCreditInvoice;
@@ -14,6 +15,8 @@ use App\Application\Purchasing\PurchaseCreditDraftInput;
 use App\Application\Purchasing\PurchaseCreditMutationResult;
 use App\Application\Purchasing\PurchaseCreditPostingRepository;
 use App\Application\Purchasing\UpdateDraftPurchaseCreditInvoice;
+use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Identity\Definitions\PurchasingPermission;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceId;
@@ -33,7 +36,7 @@ use InvalidArgumentException;
 
 final class PurchaseCreditController extends Controller
 {
-    public function __construct(private ListPurchaseCredits $list, private ListEligiblePurchaseCreditSources $sources, private GetPurchaseCreditSourceSelection $selection, private GetPurchaseCreditInvoice $get, private CreatePurchaseCreditInvoice $createCredit, private UpdateDraftPurchaseCreditInvoice $updateCredit, private PurchaseCreditPostingRepository $postings, private PermissionAuthorizer $permissions, private DutchMoneyFormatter $money) {}
+    public function __construct(private ListPurchaseCredits $list, private ListEligiblePurchaseCreditSources $sources, private GetPurchaseCreditSourceSelection $selection, private GetPurchaseCreditInvoice $get, private CreatePurchaseCreditInvoice $createCredit, private UpdateDraftPurchaseCreditInvoice $updateCredit, private PurchaseCreditPostingRepository $postings, private TaxPostingReadRepository $taxPostings, private PermissionAuthorizer $permissions, private DutchMoneyFormatter $money) {}
 
     public function index(Request $request): View
     {
@@ -73,7 +76,9 @@ final class PurchaseCreditController extends Controller
         $detail = $this->get->execute($context->administration->id(), $id);
         abort_if($detail === null, 404);
 
-        return view('purchasing.credits.show', $this->viewData($context) + ['credit' => $detail, 'posting' => $this->postings->findReadModel($context->administration->id(), $id)]);
+        $taxPostings = $this->taxPostings->findForSource($context->administration->id(), TaxSourceDocumentType::PurchaseCreditInvoice, new TaxSourceDocumentId($id->uuid()));
+
+        return view('purchasing.credits.show', $this->viewData($context) + ['credit' => $detail, 'posting' => $this->postings->findReadModel($context->administration->id(), $id), 'taxPostings' => $taxPostings]);
     }
 
     public function edit(Request $request, string $credit): View
