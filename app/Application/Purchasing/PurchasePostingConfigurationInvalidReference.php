@@ -9,4 +9,5 @@ enum PurchasePostingConfigurationInvalidReference: string
     case PurchaseJournal = 'purchase_journal';
     case AccountsPayable = 'accounts_payable';
     case InputVat = 'input_vat';
+    case VatPayable = 'vat_payable';
 }

@@ -44,6 +44,25 @@ bin/validate-domain Sales
 
 Voer na Pint-formattering alle validaties opnieuw uit.
 
+### Databaseveiligheid bij tests
+
+Gebruik voor tests uitsluitend:
+
+```bash
+./vendor/bin/sail artisan test
+```
+
+`--env=testing` selecteert alleen de Laravel-environment en injecteert niet automatisch de
+databasevariabelen uit `phpunit.xml`. Een los commando zoals `artisan migrate:fresh
+--env=testing` kan zonder aanvullende bescherming daarom nog steeds de developmentdatabase
+uit `.env` selecteren.
+
+Directe destructieve Artisancommands (`migrate:fresh`, `migrate:refresh`, `migrate:reset`,
+`migrate:rollback` en `db:wipe`) worden centraal geblokkeerd, tenzij environment,
+geconfigureerde database én daadwerkelijk verbonden database exact `testing` zijn. Een
+onbekende database of mismatch faalt gesloten. Normale `migrate` en `migrate:status` blijven
+beschikbaar voor development.
+
 ## 7. Lokale Story-commit
 
 ```bash

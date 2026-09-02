@@ -37,11 +37,11 @@ geen PurchaseInvoice-status.
   niet vóór InvoiceDate. PostingDate is pas expliciete P3-003-use-case-input.
 - P3 gebruikt uitsluitend EUR, positieve Quantity en net-exclusive Money zonder floats.
 - Iedere regel verwijst bij Draft-mutatie naar een active same-tenant Expense/Asset-
-  rekening en een active Input TaxCode. Accountidentiteit/type/code/naam en volledige
-  taxcode/rate/treatment/VAT/ICP-snapshot worden vastgelegd.
-- Alleen domestic standard/reduced volledig aftrekbare positieve Input VAT en expliciete
-  zero/exempt/outside-scope zero VAT zijn ondersteund. Output, international,
-  reverse-charge en positieve partial/non-deductible VAT worden geweigerd.
+  rekening en TaxCode. Domestic gebruikt een active Input TaxCode; IPV V1 accepteert een
+  expliciete international selector met server-side treatmentresolutie.
+- Domestic standard/reduced en zero/exempt/outside-scope blijven backward compatible.
+  IPV-002 ondersteunt daarnaast EU-goederen met bewezen aankomst in Nederland en
+  general-rule EU/non-EU B2B-services met line-level deductibility in basis points.
 - Net, tax en gross worden exact uit de regels opgeteld. Finalize vereist minstens één
   regel en bewaart de Domain UserId en applicatie-clock timestamp éénmaal.
 - Finalized, Posted en Cancelled zijn inhoudelijk immutable. Cancelled documenten
@@ -60,6 +60,13 @@ volledige Finalized snapshot plus actuele configuration en levert via PostingEng
 één transaction de geposte Purchase JournalEntry, immutable Input TaxPostings, één
 Payable/Credit OpenItem, één duurzame linkage en de status Posted. Fouten rollen alle
 facts terug; headerlocking en linkage-uniciteit maken double post idempotent.
+
+IPV-002 laat Finalize authoritative supplierfacts uit Relation/Supplier en eigen
+fiscal-partyfacts uit Administration bevriezen, samen met exact treatment/version,
+evidence en deductibility. Client-supplied country/VAT-ID is geen authority. Post
+realiseert een VatPayable- en optionele VatDeductible-leg; non-deductible VAT verhoogt
+dezelfde Expense/Asset-context. PurchasePostingConfiguration bezit AP, Input VAT en de
+server-owned VAT-payable-account. Supplier Payable blijft exact SupplierGross.
 
 P3-004 ontsluit deze contracten in Web zonder financiële Presentation-logica. De
 request-scoped navigatie en routes scheiden View, Draft Manage, Finalize en Post exact.

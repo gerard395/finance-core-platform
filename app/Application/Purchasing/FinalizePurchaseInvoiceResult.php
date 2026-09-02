@@ -11,4 +11,11 @@ enum FinalizePurchaseInvoiceResult
     case NotFound;
     case InvalidState;
     case ValidationFailed;
+    case MissingTaxTreatment;
+    case TaxTreatmentIntegrityFailure;
+    case UnsupportedTaxTreatment;
+    case InvalidDeductibility;
+    case IncompleteFiscalPartyFacts;
+    case UnsupportedForeignVat;
+    case UnsupportedImportCustoms;
 }

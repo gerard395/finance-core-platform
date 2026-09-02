@@ -57,6 +57,30 @@ final readonly class PostPurchaseCreditInvoiceWithTax
 
         foreach ($creditInvoice->lines() as $line) {
             $input = $inputs[$line->id()->toString()];
+            if (($international = $line->internationalTaxSnapshot()) !== null) {
+                if ($input->internationalLegs() === []) {
+                    throw new DomainException('International credit requires its complete historical tax treatment group.');
+                }
+                $description = 'Purchase credit invoice '.$creditInvoice->number()->value().' line '.$line->id()->toString();
+                $journalLines[] = new JournalEntryLine($input->expenseReversalLineId(), $input->expenseAccountId(), null, $line->net()->add($international->nonDeductibleTaxCost), $description);
+                $grossTotal = $grossTotal->add($international->supplierGross);
+                foreach ($input->internationalLegs() as $legInput) {
+                    $original = $legInput->original;
+                    $this->identityPolicy->assertNewIdAvailable($legInput->reversalTaxPostingId, $workingHistory);
+                    $key = $original->id()->toString();
+                    if (isset($seenOriginals[$key]) || isset($newIds[$legInput->reversalTaxPostingId->toString()])) {
+                        throw new DomainException('Tax treatment legs must be reversed exactly once.');
+                    }
+                    $seenOriginals[$key] = true;
+                    $newIds[$legInput->reversalTaxPostingId->toString()] = true;
+                    $this->reversalPolicy->assertCanReverseOriginal($original, $workingHistory);
+                    $journalLines[] = $original->direction() === TaxPostingDirection::Output
+                        ? new JournalEntryLine($legInput->journalEntryLineId, $legInput->taxAccountId, $original->taxAmount(), null, $description.' '.$original->legSnapshot()?->role->value.' reversal')
+                        : new JournalEntryLine($legInput->journalEntryLineId, $legInput->taxAccountId, null, $original->taxAmount(), $description.' '.$original->legSnapshot()?->role->value.' reversal');
+                }
+
+                continue;
+            }
             $original = $input->originalTaxPosting();
             $this->identityPolicy->assertNewIdAvailable($input->reversalTaxPostingId(), $workingHistory);
             if (isset($newIds[$input->reversalTaxPostingId()->toString()])) {
@@ -92,6 +116,26 @@ final readonly class PostPurchaseCreditInvoiceWithTax
         $reversals = [];
         foreach ($creditInvoice->lines() as $line) {
             $input = $inputs[$line->id()->toString()];
+            if ($line->internationalTaxSnapshot() !== null) {
+                foreach ($input->internationalLegs() as $legInput) {
+                    $original = $legInput->original;
+                    if ($entry->line($input->expenseReversalLineId()) === null || $entry->line($legInput->journalEntryLineId) === null || $original->legSnapshot() === null) {
+                        throw new DomainException('International tax reversal references must exist in the posted journal entry.');
+                    }
+                    $reversal = new TaxPosting(
+                        $legInput->reversalTaxPostingId, $creditInvoice->administrationId(), $original->taxCodeId(), $original->taxRate(),
+                        $original->taxableBase(), $original->taxAmount(), $original->direction(), TaxSourceDocumentType::PurchaseCreditInvoice,
+                        new TaxSourceDocumentId($creditInvoice->id()->uuid()), new TaxSourceLineId($line->id()->uuid()),
+                        new PostingDate($creditInvoice->fiscalReportingDate()), $entry->id(), $input->expenseReversalLineId(), $legInput->journalEntryLineId,
+                        TaxPostingType::Reversal, $original->id(), $original->treatment(), $original->vatReturnClassification(), $original->icpClassification(), $original->legSnapshot(),
+                    );
+                    $this->reversalPolicy->assertValidReversal($original, $reversal, $workingHistory);
+                    $workingHistory[] = $reversal;
+                    $reversals[] = $reversal;
+                }
+
+                continue;
+            }
             $original = $input->originalTaxPosting();
             if ($entry->line($input->expenseReversalLineId()) === null || ($input->taxReversalLineId() !== null && $entry->line($input->taxReversalLineId()) === null)) {
                 throw new DomainException('Tax reversal references must exist in the posted journal entry.');

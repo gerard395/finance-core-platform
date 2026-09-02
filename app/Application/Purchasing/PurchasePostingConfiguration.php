@@ -15,5 +15,6 @@ final readonly class PurchasePostingConfiguration
         public JournalId $purchaseJournalId,
         public LedgerAccountId $accountsPayableLedgerAccountId,
         public LedgerAccountId $inputVatLedgerAccountId,
+        public ?LedgerAccountId $vatPayableLedgerAccountId = null,
     ) {}
 }

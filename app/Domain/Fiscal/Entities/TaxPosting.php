@@ -9,6 +9,7 @@ use App\Domain\Accounting\ValueObjects\JournalEntryLineId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Enums\IcpClassification;
+use App\Domain\Fiscal\Enums\TaxLegRole;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
@@ -17,6 +18,7 @@ use App\Domain\Fiscal\Enums\VatReturnClassification;
 use App\Domain\Fiscal\ValueObjects\TaxClassification;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
+use App\Domain\Fiscal\ValueObjects\TaxPostingLegSnapshot;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Fiscal\ValueObjects\TaxSourceLineId;
@@ -45,8 +47,11 @@ final readonly class TaxPosting
         private TaxTreatment $treatment = TaxTreatment::DomesticStandard,
         private VatReturnClassification $vatReturnClassification = VatReturnClassification::DomesticStandard,
         private IcpClassification $icpClassification = IcpClassification::None,
+        private ?TaxPostingLegSnapshot $legSnapshot = null,
     ) {
-        new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
+        if ($legSnapshot === null) {
+            new TaxClassification($treatment, $vatReturnClassification, $icpClassification, $direction);
+        }
         if (! $this->taxableBase->currency()->equals($this->taxAmount->currency())) {
             throw new DomainException('Tax posting amounts must use the same currency.');
         }
@@ -73,6 +78,20 @@ final readonly class TaxPosting
 
         if ($this->type === TaxPostingType::Reversal && $this->reversedTaxPostingId === null) {
             throw new DomainException('A reversal tax posting must reference the original tax posting.');
+        }
+
+        if ($this->legSnapshot !== null) {
+            if (! $this->taxAmount->currency()->equals($this->legSnapshot->assessedVat->currency())) {
+                throw new DomainException('Tax posting leg snapshot must use the posting currency.');
+            }
+            if ($this->legSnapshot->role === TaxLegRole::VatPayable
+                && ($this->direction !== TaxPostingDirection::Output || ! $this->taxAmount->equals($this->legSnapshot->assessedVat))) {
+                throw new DomainException('VAT payable TaxPosting must represent the complete assessed VAT.');
+            }
+            if ($this->legSnapshot->role === TaxLegRole::VatDeductible
+                && ($this->direction !== TaxPostingDirection::Input || ! $this->taxAmount->equals($this->legSnapshot->deductibleVat))) {
+                throw new DomainException('VAT deductible TaxPosting must represent the deductible VAT.');
+            }
         }
     }
 
@@ -131,6 +150,11 @@ final readonly class TaxPosting
         return $this->postingDate;
     }
 
+    public function fiscalReportingDate(): PostingDate
+    {
+        return $this->postingDate;
+    }
+
     public function journalEntryId(): JournalEntryId
     {
         return $this->journalEntryId;
@@ -174,5 +198,15 @@ final readonly class TaxPosting
     public function isReversal(): bool
     {
         return $this->type === TaxPostingType::Reversal;
+    }
+
+    public function legSnapshot(): ?TaxPostingLegSnapshot
+    {
+        return $this->legSnapshot;
+    }
+
+    public function isLegacy(): bool
+    {
+        return $this->legSnapshot === null;
     }
 }

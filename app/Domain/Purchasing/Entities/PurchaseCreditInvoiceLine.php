@@ -6,6 +6,7 @@ namespace App\Domain\Purchasing\Entities;
 
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
 use App\Domain\Purchasing\ValueObjects\PurchaseAccountSnapshot;
+use App\Domain\Purchasing\ValueObjects\PurchaseCreditInternationalTaxSnapshot;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceLineId;
 use App\Domain\Purchasing\ValueObjects\PurchaseTaxSnapshot;
@@ -22,7 +23,7 @@ final readonly class PurchaseCreditInvoiceLine
 
     private Money $gross;
 
-    public function __construct(private PurchaseCreditInvoiceLineId $id, private LineDescription $description, private Quantity $quantity, private Money $unitPrice, private ?PurchaseInvoiceLineId $sourcePurchaseInvoiceLineId = null, private ?PurchaseAccountSnapshot $account = null, private ?PurchaseTaxSnapshot $tax = null, ?Money $net = null, ?Money $taxAmount = null, ?Money $gross = null, private ?TaxPostingId $sourceTaxPostingId = null)
+    public function __construct(private PurchaseCreditInvoiceLineId $id, private LineDescription $description, private Quantity $quantity, private Money $unitPrice, private ?PurchaseInvoiceLineId $sourcePurchaseInvoiceLineId = null, private ?PurchaseAccountSnapshot $account = null, private ?PurchaseTaxSnapshot $tax = null, ?Money $net = null, ?Money $taxAmount = null, ?Money $gross = null, private ?TaxPostingId $sourceTaxPostingId = null, private ?PurchaseCreditInternationalTaxSnapshot $internationalTaxSnapshot = null)
     {
         if ($unitPrice->isNegative()) {
             throw new InvalidArgumentException('Unit price cannot be negative.');
@@ -93,5 +94,17 @@ final readonly class PurchaseCreditInvoiceLine
     public function sourceTaxPostingId(): ?TaxPostingId
     {
         return $this->sourceTaxPostingId;
+    }
+
+    public function internationalTaxSnapshot(): ?PurchaseCreditInternationalTaxSnapshot
+    {
+        return $this->internationalTaxSnapshot;
+    }
+
+    /** @return list<TaxPostingId> */
+    public function sourceTaxPostingIds(): array
+    {
+        return $this->internationalTaxSnapshot?->originalTaxPostingIds
+            ?? ($this->sourceTaxPostingId === null ? [] : [$this->sourceTaxPostingId]);
     }
 }

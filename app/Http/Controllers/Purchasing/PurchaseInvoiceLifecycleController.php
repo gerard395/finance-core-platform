@@ -31,7 +31,18 @@ final class PurchaseInvoiceLifecycleController extends Controller
             abort(404);
         }
         if ($result !== FinalizePurchaseInvoiceResult::Success && $result !== FinalizePurchaseInvoiceResult::AlreadyFinalized) {
-            return back()->with('error', 'De inkoopfactuur is niet compleet of kan niet worden gefinaliseerd.');
+            $message = match ($result) {
+                FinalizePurchaseInvoiceResult::MissingTaxTreatment => 'Voor deze btw-code ontbreekt een fiscale behandeling.',
+                FinalizePurchaseInvoiceResult::TaxTreatmentIntegrityFailure => 'De fiscale behandeling is niet eenduidig ingericht.',
+                FinalizePurchaseInvoiceResult::InvalidDeductibility => 'Het aftrekpercentage of de onderbouwing is ongeldig.',
+                FinalizePurchaseInvoiceResult::IncompleteFiscalPartyFacts => 'De fiscale gegevens of vereiste bewijsinformatie zijn onvolledig.',
+                FinalizePurchaseInvoiceResult::UnsupportedImportCustoms => 'Import, douane en Artikel 23 worden hier nog niet ondersteund.',
+                FinalizePurchaseInvoiceResult::UnsupportedForeignVat => 'Buitenlandse leveranciers-btw wordt hier niet ondersteund.',
+                FinalizePurchaseInvoiceResult::UnsupportedTaxTreatment => 'Deze fiscale behandeling wordt niet ondersteund.',
+                default => 'De inkoopfactuur is niet compleet of kan niet worden gefinaliseerd.',
+            };
+
+            return back()->with('error', $message);
         }
 
         return $this->redirect($context, $id)->with('status', $result === FinalizePurchaseInvoiceResult::Success ? 'Inkoopfactuur is gefinaliseerd.' : 'Deze inkoopfactuur was al gefinaliseerd.');

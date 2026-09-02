@@ -9,11 +9,19 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentGroupId;
 
 interface TaxPostingReadRepository
 {
     /** @return list<TaxPosting> */
     public function findOriginalsForSource(
+        AdministrationId $administrationId,
+        TaxSourceDocumentType $sourceDocumentType,
+        TaxSourceDocumentId $sourceDocumentId,
+    ): array;
+
+    /** @return list<TaxPosting> */
+    public function findForSource(
         AdministrationId $administrationId,
         TaxSourceDocumentType $sourceDocumentType,
         TaxSourceDocumentId $sourceDocumentId,
@@ -30,5 +38,11 @@ interface TaxPostingReadRepository
         AdministrationId $administrationId,
         PostingDate $startDate,
         PostingDate $endDate,
+    ): array;
+
+    /** @return list<TaxPosting> */
+    public function findForTreatmentGroup(
+        AdministrationId $administrationId,
+        TaxTreatmentGroupId $groupId,
     ): array;
 }

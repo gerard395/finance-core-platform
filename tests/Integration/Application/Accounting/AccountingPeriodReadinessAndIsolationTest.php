@@ -101,6 +101,39 @@ final class AccountingPeriodReadinessAndIsolationTest extends TestCase
         self::assertNull($reader->get($this->admin(self::B), $period->id()));
     }
 
+    public function test_history_readmodel_uses_causality_for_adversarial_same_timestamp_ids(): void
+    {
+        $at = '2026-09-01 10:00:00';
+        $cases = [
+            [self::A, 'aa230000-0000-4000-8000-000000000022', 'FY26', 'ffffffff-ffff-4fff-8fff-ffffffffffff', '00000000-0000-4000-8000-000000000001'],
+            [self::B, 'aa230000-0000-4000-8000-000000000023', 'FY27', '00000000-0000-4000-8000-000000000002', 'ffffffff-ffff-4fff-8fff-fffffffffffe'],
+        ];
+
+        foreach ($cases as [$administration, $yearId, $code, $closeId, $reopenId]) {
+            $year = $this->completeYear($administration, $yearId, $code, '2026-01-01', '2026-12-31');
+            $period = $year->periods()[0];
+            DB::table('accounting_period_status_history')->insert([
+                [
+                    'id' => $closeId, 'administration_id' => $administration,
+                    'book_year_id' => $year->id()->toString(), 'accounting_period_id' => $period->id()->toString(),
+                    'from_status' => 'open', 'to_status' => 'closed', 'reason' => 'close',
+                    'actor_id' => self::ACTOR, 'occurred_at' => $at,
+                ],
+                [
+                    'id' => $reopenId, 'administration_id' => $administration,
+                    'book_year_id' => $year->id()->toString(), 'accounting_period_id' => $period->id()->toString(),
+                    'from_status' => 'closed', 'to_status' => 'open', 'reason' => 'reopen',
+                    'actor_id' => self::ACTOR, 'occurred_at' => $at,
+                ],
+            ]);
+
+            $model = $this->app->make(AccountingPeriodHistoryReadRepository::class)->get($this->admin($administration), $period->id());
+
+            self::assertNotNull($model);
+            self::assertSame(['close', 'reopen'], array_map(static fn ($entry) => $entry->reason, $model->history));
+        }
+    }
+
     public function test_tenant_reads_writes_overlap_and_codes_are_isolated(): void
     {
         $a = $this->completeYear(self::A, 'aa230000-0000-4000-8000-000000000031', 'FY26', '2026-01-01', '2026-12-31');

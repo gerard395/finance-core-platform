@@ -43,6 +43,7 @@ use App\Application\Fiscal\TaxCodeReadRepository;
 use App\Application\Fiscal\TaxCodeStore;
 use App\Application\Fiscal\TaxPostingReadRepository;
 use App\Application\Fiscal\TaxPostingStore;
+use App\Application\Fiscal\TaxTreatmentDefinitionRepository;
 use App\Application\Identity\AdministrationMembershipRepository;
 use App\Application\Identity\AuthAccountStore;
 use App\Application\Identity\AuthorizationReadRepository;
@@ -168,6 +169,7 @@ use App\Application\Sales\SalesPostingConfigurationStore;
 use App\Application\Shared\TransactionManager;
 use App\Domain\Accounting\Services\PostingEngine;
 use App\Domain\Accounting\Services\PostingValidation;
+use App\Domain\Fiscal\Services\PurchaseTaxTreatmentCalculation;
 use App\Domain\Fiscal\Services\TaxCalculation;
 use App\Domain\Fiscal\Services\TaxPostingIdentityPolicy;
 use App\Domain\Fiscal\Services\TaxPostingReversalPolicy;
@@ -226,6 +228,7 @@ use App\Infrastructure\Persistence\Eloquent\EloquentSalesInvoiceRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentSupplierRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentTaxCodeRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentTaxPostingRepository;
+use App\Infrastructure\Persistence\Eloquent\EloquentTaxTreatmentDefinitionRepository;
 use App\Infrastructure\Persistence\Eloquent\EloquentUserRepository;
 use App\Infrastructure\Persistence\LaravelDatabaseTransactionManager;
 use App\Infrastructure\Purchasing\EloquentPurchaseCreditClaimReader;
@@ -295,6 +298,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(OpenItemSettlementStore::class, EloquentOpenItemRepository::class);
         $this->app->bind(TaxPostingReadRepository::class, EloquentTaxPostingRepository::class);
         $this->app->bind(TaxPostingStore::class, EloquentTaxPostingRepository::class);
+        $this->app->bind(TaxTreatmentDefinitionRepository::class, EloquentTaxTreatmentDefinitionRepository::class);
         $this->app->bind(TaxCodeReadRepository::class, EloquentTaxCodeRepository::class);
         $this->app->bind(TaxCodeStore::class, EloquentTaxCodeRepository::class);
         $this->app->bind(TaxCodeCatalogueProvisioner::class, DutchTaxCodeCatalogueProvisioner::class);
@@ -453,6 +457,7 @@ class AppServiceProvider extends ServiceProvider
                 $identities,
                 $app->make(PurchaseInvoicePostingClock::class),
                 $app->make(AccountingPeriodPostingGuard::class),
+                new PurchaseTaxTreatmentCalculation,
             );
         });
         $this->app->bind(PostSalesCreditInvoiceWithTax::class, function ($app): PostSalesCreditInvoiceWithTax {

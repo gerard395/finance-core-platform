@@ -13,6 +13,13 @@ enum PostPurchaseInvoiceStatus
     case ConfigurationMissing;
     case ConfigurationInvalid;
     case FiscalStateInvalid;
+    case UnsupportedTaxTreatment;
+    case MissingTaxTreatment;
+    case MissingTaxConfiguration;
+    case InvalidDeductibility;
+    case IncompleteFiscalPartyFacts;
+    case UnsupportedForeignVat;
+    case UnsupportedImportCustoms;
     case PeriodClosed;
     case NoAccountingPeriod;
     case PeriodIntegrityFailure;

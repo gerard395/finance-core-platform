@@ -11,6 +11,6 @@ use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 
 final readonly class PurchaseCreditHistoricalPosting
 {
-    /** @param array<string,LedgerAccountId|null> $vatAccounts */
-    public function __construct(public JournalEntryId $sourceJournalEntryId, public JournalId $journalId, public OpenItem $sourcePayable, public array $vatAccounts) {}
+    /** @param array<string,LedgerAccountId|null> $vatAccounts @param array<string,LedgerAccountId> $taxAccounts */
+    public function __construct(public JournalEntryId $sourceJournalEntryId, public JournalId $journalId, public OpenItem $sourcePayable, public array $vatAccounts, public array $taxAccounts = []) {}
 }

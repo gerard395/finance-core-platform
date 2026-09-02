@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Http\Controllers\Purchasing;
 
 use App\Application\Accounting\OpenItemReadRepository;
+use App\Application\Fiscal\TaxPostingReadRepository;
 use App\Application\Identity\PermissionAuthorizer;
 use App\Application\Purchasing\CreatePurchaseInvoice;
 use App\Application\Purchasing\CreatePurchaseInvoiceStatus;
@@ -18,10 +19,15 @@ use App\Application\Purchasing\UpdateDraftPurchaseInvoice;
 use App\Application\Purchasing\UpdateDraftPurchaseInvoiceResult;
 use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
+use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
+use App\Domain\Fiscal\ValueObjects\DeductibilityBasisPoints;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
+use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\PurchasingPermission;
 use App\Domain\Purchasing\Enums\PurchaseInvoiceStatus;
+use App\Domain\Purchasing\Enums\PurchaseSupplyClassification;
+use App\Domain\Purchasing\ValueObjects\InternationalPurchaseSourceFacts;
 use App\Domain\Purchasing\ValueObjects\PurchaseDocumentAddress;
 use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
 use App\Domain\Purchasing\ValueObjects\SupplierInvoiceNumber;
@@ -47,7 +53,7 @@ use InvalidArgumentException;
 
 final class PurchaseInvoiceController extends Controller
 {
-    public function __construct(private ListPurchaseInvoices $list, private GetPurchaseInvoice $get, private GetPurchaseInvoiceMasterData $masterData, private CreatePurchaseInvoice $createInvoice, private UpdateDraftPurchaseInvoice $updateInvoice, private GetPurchaseInvoicePosting $getPosting, private OpenItemReadRepository $openItems, private PermissionAuthorizer $permissions, private DutchMoneyFormatter $money) {}
+    public function __construct(private ListPurchaseInvoices $list, private GetPurchaseInvoice $get, private GetPurchaseInvoiceMasterData $masterData, private CreatePurchaseInvoice $createInvoice, private UpdateDraftPurchaseInvoice $updateInvoice, private GetPurchaseInvoicePosting $getPosting, private OpenItemReadRepository $openItems, private TaxPostingReadRepository $taxPostings, private PermissionAuthorizer $permissions, private DutchMoneyFormatter $money) {}
 
     public function index(Request $request): View
     {
@@ -74,7 +80,9 @@ final class PurchaseInvoiceController extends Controller
             }
         }
 
-        return view('purchasing.invoices.show', $this->viewData($context) + ['invoice' => $detail, 'posting' => $posting, 'openItem' => $openItem]);
+        $taxPostings = $this->taxPostings->findOriginalsForSource($context->administration->id(), TaxSourceDocumentType::PurchaseInvoice, new TaxSourceDocumentId($id->uuid()));
+
+        return view('purchasing.invoices.show', $this->viewData($context) + ['invoice' => $detail, 'posting' => $posting, 'openItem' => $openItem, 'taxPostings' => $taxPostings]);
     }
 
     public function create(Request $request): View
@@ -153,7 +161,21 @@ final class PurchaseInvoiceController extends Controller
             if (count(array_filter($values, static fn (string $value): bool => $value !== '')) !== count($values)) {
                 throw new InvalidArgumentException('Incomplete purchase invoice line.');
             }
-            $lines[] = new PurchaseInvoiceLineInput(new LineDescription($line['description']), new Quantity($line['quantity']), new Money($line['unit_price'], $currency), new LedgerAccountId(new Uuid($line['ledger_account_id'])), new TaxCodeId(new Uuid($line['tax_code_id'])), (bool) ($line['fully_deductible'] ?? false));
+            $international = (bool) ($line['international'] ?? false);
+            $deductibility = $international ? new DeductibilityBasisPoints(((int) ($line['deductibility_percentage'] ?? -1)) * 100) : null;
+            $facts = $international ? new InternationalPurchaseSourceFacts(
+                'ZZ', 'ZZ', null, null,
+                PurchaseSupplyClassification::from($line['supply_classification'] ?? ''),
+                (bool) ($line['business_to_business'] ?? false),
+                (bool) ($line['arrives_in_netherlands'] ?? false),
+                (bool) ($line['general_rule_confirmed'] ?? false),
+                (bool) ($line['special_place_of_supply'] ?? false),
+                (bool) ($line['foreign_supplier_vat'] ?? false),
+                (bool) ($line['import_or_customs'] ?? false),
+                isset($line['evidence']) ? trim((string) $line['evidence']) : null,
+                isset($line['deductibility_rationale']) ? trim((string) $line['deductibility_rationale']) : null,
+            ) : null;
+            $lines[] = new PurchaseInvoiceLineInput(new LineDescription($line['description']), new Quantity($line['quantity']), new Money($line['unit_price'], $currency), new LedgerAccountId(new Uuid($line['ledger_account_id'])), new TaxCodeId(new Uuid($line['tax_code_id'])), (bool) ($line['fully_deductible'] ?? false), $deductibility, $facts);
         }
 
         return new PurchaseInvoiceDraftInput(new SupplierId(new Uuid($data['supplier_id'])), new SupplierInvoiceNumber($data['supplier_invoice_number']), new DateTimeImmutable($data['invoice_date']), new DateTimeImmutable($data['received_date']), empty($data['supply_date']) ? null : new DateTimeImmutable($data['supply_date']), new DateTimeImmutable($data['due_date']), $currency, new PurchaseDocumentAddress(new AddressLine($data['address_line_1']), empty($data['address_line_2']) ? null : new AddressLine($data['address_line_2']), new PostalCode($data['postal_code']), new City($data['city']), new CountryCode(strtoupper($data['country_code']))), $lines);

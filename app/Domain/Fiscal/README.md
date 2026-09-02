@@ -27,6 +27,26 @@ VAT/ICP-classificatie bestaan. VAT-return en ICP worden later uit dezelfde appen
 facts opgebouwd; een credit neemt de oorspronkelijke classificatie exact over en de
 reversalpolicy weigert afwijkingen.
 
+## Versioned purchase-tax treatments
+
+IPV-001 voegt een capabilityneutrale `TaxTreatmentDefinition` toe met immutable version,
+treatment type, jurisdiction, rate, supplier-VAT mode, deductibilitypolicy en unieke
+`VatPayable`/`VatDeductible`-legtemplates. `TaxTreatmentGroupId` correleert gerealiseerde
+legs van één toekomstige source line. `NonDeductibleTaxCost` is nadrukkelijk geen TaxLeg.
+
+`PurchaseTaxTreatmentCalculation` houdt SupplierNet, SupplierTaxCharged, SupplierGross
+en SelfAssessedVat afzonderlijk. SupplierGross is later de enige basis voor supplier
+Payable/OpenItem; self-assessed VAT verhoogt die schuld nooit. Deductibility gebruikt
+integer basis points. De calculator rondt assessed en deductible VAT per line half-up op
+maximaal acht decimalen en kent de exacte remainder toe aan non-deductible cost.
+
+New-model TaxPostings bewaren group/role plus volledige immutable treatment- en
+amountsnapshots. Legacy rows zonder deze nullable metadata blijven expliciet herkenbaar
+en leesbaar; er vindt geen historische synthese plaats. Persistence bewaakt tenant-FK's,
+all-or-none metadata en concurrency-safe source/group/role-uniciteit. IPV-002 realiseert
+de groups nu bij PurchaseInvoice Post uit authoritative, bij Finalize bevroren party- en
+treatmenttruth. Creditreversal, TaxCode-provisioning en VAT-returnlogica blijven erbuiten.
+
 ## Invarianten
 
 - TaxCodeId en TaxCodeCode zijn immutable.
@@ -57,7 +77,9 @@ VAT-identificatienummers in masterdata zijn uitsluitend syntactisch gevalideerd.
 - TaxSourceDocumentId en TaxSourceLineId bewaren capabilityneutrale UUID-referenties zonder Sales- of Purchasing-dependency.
 - TaxCalculation accepteert uitsluitend een actieve TaxCode en retourneert immutable net-, tax- en gross-bedragen met dezelfde Currency.
 - TaxAmount wordt exact berekend als NetAmount × TaxRate; GrossAmount is NetAmount + TaxAmount.
-- Er wordt niet afgerond. Een uitkomst die niet exact binnen de Money-precisie past, wordt geweigerd; afrondingsbeleid volgt later expliciet.
+- De legacy `TaxCalculation` rondt niet en weigert precisionoverflow. De afzonderlijke
+  purchase-treatmentcalculator heeft het expliciete IPV-contract: half-up per line op
+  maximaal acht decimalen met een exacte non-deductible remainder.
 - JournalEntries en boekingen blijven uitsluitend de verantwoordelijkheid van Accounting en PostingEngine.
 - TaxPosting refereert alleen immutable Accounting-identiteiten; fiscale metadata wordt niet aan PostingRequest of JournalEntryLine toegevoegd.
 - Repositories, persistence, Laravel en infrastructuur vallen buiten Fiscal Domain.

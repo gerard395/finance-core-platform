@@ -9,4 +9,6 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 interface PurchasePostingConfigurationReader
 {
     public function read(AdministrationId $administrationId): PurchasePostingConfigurationReadResult;
+
+    public function readForPosting(AdministrationId $administrationId, bool $requiresInputVat): PurchasePostingConfigurationReadResult;
 }

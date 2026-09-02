@@ -81,6 +81,37 @@ final readonly class PostPurchaseCreditInvoice
                 $ordered = $credit->lines();
                 usort($ordered, fn ($a, $b) => strcmp($a->sourcePurchaseInvoiceLineId()->toString(), $b->sourcePurchaseInvoiceLineId()->toString()));
                 foreach ($ordered as $line) {
+                    if (($international = $line->internationalTaxSnapshot()) !== null) {
+                        $legs = [];
+                        $originalIds = [];
+                        foreach ($international->originalTaxPostingIds as $originalId) {
+                            $original = $byId[$originalId->toString()] ?? null;
+                            $taxAccount = $historical->taxAccounts[$originalId->toString()] ?? null;
+                            if ($original === null || $taxAccount === null || $original->legSnapshot() === null
+                                || ! $original->legSnapshot()->groupId->equals($international->sourceGroupId)) {
+                                return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::FinancialStateInvalid);
+                            }
+                            $originalIds[$originalId->toString()] = true;
+                            $legs[] = new PurchasingCreditTaxLegReversalInput($original, $taxAccount, $this->ids->journalEntryLineId(), $this->ids->taxPostingId());
+                        }
+                        $actualGroup = $this->taxReads->findForTreatmentGroup($admin, $international->sourceGroupId);
+                        $actualOriginalIds = [];
+                        foreach ($actualGroup as $groupPosting) {
+                            if ($groupPosting->type()->value === 'original') {
+                                $actualOriginalIds[$groupPosting->id()->toString()] = true;
+                            }
+                        }
+                        ksort($originalIds);
+                        ksort($actualOriginalIds);
+                        if ($originalIds !== $actualOriginalIds || $legs === [] || $line->account() === null) {
+                            return new PostPurchaseCreditInvoiceResult(PostPurchaseCreditInvoiceStatus::FinancialStateInvalid);
+                        }
+                        $first = $legs[0];
+                        $fiscalLines[] = new PurchasingCreditFiscalLineInput($line->id(), $first->original, $line->account()->id, $first->taxAccountId, $this->ids->journalEntryLineId(), null, $this->ids->taxPostingId(), $legs);
+                        $claims[] = new PurchaseCreditSourceLineClaim($this->ids->claimId(), $admin, $line->sourcePurchaseInvoiceLineId(), $id, $line->id(), $now);
+
+                        continue;
+                    }
                     $taxId = $line->sourceTaxPostingId();
                     $original = $taxId === null ? null : ($byId[$taxId->toString()] ?? null);
                     $account = $line->account();

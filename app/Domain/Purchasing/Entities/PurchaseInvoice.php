@@ -171,6 +171,16 @@ final class PurchaseInvoice
         unset($this->lines[$id->toString()]);
     }
 
+    public function replaceLine(PurchaseInvoiceLine $line): void
+    {
+        $this->assertDraft();
+        if (! isset($this->lines[$line->id()->toString()])) {
+            throw new DomainException('Purchase invoice line does not exist.');
+        }
+        $this->assertLine($line);
+        $this->lines[$line->id()->toString()] = $line;
+    }
+
     public function finalize(UserId $actor, DateTimeImmutable $at): bool
     {
         if ($this->status === PurchaseInvoiceStatus::Finalized) {

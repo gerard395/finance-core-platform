@@ -2,12 +2,23 @@
 
 namespace Tests;
 
+use App\Infrastructure\Console\GuardDestructiveDatabaseCommands;
+use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 abstract class TestCase extends BaseTestCase
 {
+    public function createApplication(): Application
+    {
+        $application = parent::createApplication();
+        $application->make(GuardDestructiveDatabaseCommands::class)
+            ->ensureCurrentTargetAllowed('migrate:fresh');
+
+        return $application;
+    }
+
     protected function createOpenAccountingPeriodFixture(string $administrationId): void
     {
         $yearId = (string) Str::uuid();

@@ -13,19 +13,27 @@ use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxCode;
 use App\Domain\Fiscal\Entities\TaxPosting;
 use App\Domain\Fiscal\Enums\IcpClassification;
+use App\Domain\Fiscal\Enums\SupplierVatMode;
 use App\Domain\Fiscal\Enums\TaxCodeStatus;
+use App\Domain\Fiscal\Enums\TaxLegRole;
 use App\Domain\Fiscal\Enums\TaxPostingDirection;
 use App\Domain\Fiscal\Enums\TaxPostingType;
+use App\Domain\Fiscal\Enums\TaxReportingClassification;
 use App\Domain\Fiscal\Enums\TaxSourceDocumentType;
 use App\Domain\Fiscal\Enums\TaxTreatment;
+use App\Domain\Fiscal\Enums\TaxTreatmentType;
 use App\Domain\Fiscal\Enums\VatReturnClassification;
+use App\Domain\Fiscal\ValueObjects\DeductibilityBasisPoints;
 use App\Domain\Fiscal\ValueObjects\TaxCodeCode;
 use App\Domain\Fiscal\ValueObjects\TaxCodeId;
 use App\Domain\Fiscal\ValueObjects\TaxCodeName;
 use App\Domain\Fiscal\ValueObjects\TaxPostingId;
+use App\Domain\Fiscal\ValueObjects\TaxPostingLegSnapshot;
 use App\Domain\Fiscal\ValueObjects\TaxRate;
 use App\Domain\Fiscal\ValueObjects\TaxSourceDocumentId;
 use App\Domain\Fiscal\ValueObjects\TaxSourceLineId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentDefinitionId;
+use App\Domain\Fiscal\ValueObjects\TaxTreatmentGroupId;
 use App\Domain\Reporting\VatOverview;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
@@ -42,7 +50,9 @@ use DateTimeImmutable;
 use DomainException;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
+use Throwable;
 
 final class EloquentTaxPostingReadPersistenceTest extends TestCase
 {
@@ -83,6 +93,7 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         self::assertSame(TaxSourceDocumentType::SalesInvoice, $read->sourceDocumentType());
         self::assertTrue($posting->sourceDocumentId()->equals($read->sourceDocumentId()));
         self::assertTrue($posting->sourceLineId()->equals($read->sourceLineId()));
+        self::assertSame('2026-08-20', $read->fiscalReportingDate()->value()->format('Y-m-d'));
         self::assertTrue($posting->journalEntryId()->equals($read->journalEntryId()));
         self::assertTrue($posting->baseJournalEntryLineId()->equals($read->baseJournalEntryLineId()));
         self::assertTrue($posting->taxJournalEntryLineId()?->equals($read->taxJournalEntryLineId()));
@@ -90,6 +101,7 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         self::assertSame(TaxTreatment::DomesticStandard, $read->treatment());
         self::assertSame(VatReturnClassification::DomesticStandard, $read->vatReturnClassification());
         self::assertSame(IcpClassification::None, $read->icpClassification());
+        self::assertTrue($read->isLegacy());
     }
 
     public function test_zero_tax_reporting_fact_roundtrips_without_a_tax_journal_line(): void
@@ -295,6 +307,101 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         self::assertFalse(method_exists(TaxPostingStore::class, 'save'));
     }
 
+    public function test_new_model_leg_roundtrips_group_snapshot_and_is_tenant_scoped(): void
+    {
+        $this->seedTreatmentDefinition(self::ADMINISTRATION_A);
+        $snapshot = $this->legSnapshot();
+        $this->repository->append($this->posting(1, self::ADMINISTRATION_A, '2026-08-20', legSnapshot: $snapshot));
+
+        $found = $this->repository->findForTreatmentGroup($this->administrationId(self::ADMINISTRATION_A), $snapshot->groupId);
+        self::assertCount(1, $found);
+        self::assertFalse($found[0]->isLegacy());
+        self::assertSame(TaxLegRole::VatPayable, $found[0]->legSnapshot()?->role);
+        self::assertSame(TaxTreatmentType::EuB2bGeneralRuleService, $found[0]->legSnapshot()?->treatmentType);
+        self::assertSame('NL', $found[0]->legSnapshot()?->jurisdiction);
+        self::assertSame(TaxReportingClassification::EuGeneralServiceDue4b, $found[0]->legSnapshot()?->reportingClassification);
+        self::assertSame(SupplierVatMode::SelfAssessed, $found[0]->legSnapshot()?->supplierVatMode);
+        self::assertSame('100', $found[0]->taxableBase()->amount());
+        self::assertSame('21', $found[0]->taxAmount()->amount());
+        self::assertSame('21', $found[0]->taxRate()->value());
+        self::assertSame(5000, $found[0]->legSnapshot()?->deductibility->value());
+        self::assertSame('21', $found[0]->legSnapshot()?->assessedVat->amount());
+        self::assertSame('10.5', $found[0]->legSnapshot()?->deductibleVat->amount());
+        self::assertSame('10.5', $found[0]->legSnapshot()?->nonDeductibleTaxCost->amount());
+        self::assertSame([], $this->repository->findForTreatmentGroup($this->administrationId(self::ADMINISTRATION_B), $snapshot->groupId));
+    }
+
+    public function test_real_mysql_allows_at_most_one_same_source_group_role_leg(): void
+    {
+        if (! function_exists('pcntl_fork')) {
+            self::markTestSkipped('pcntl is required for the tax-leg concurrency test.');
+        }
+        $this->seedTreatmentDefinition(self::ADMINISTRATION_A);
+        DB::commit();
+        $files = [tempnam(sys_get_temp_dir(), 'tax-leg-race-'), tempnam(sys_get_temp_dir(), 'tax-leg-race-')];
+        $children = [];
+        foreach ($files as $index => $file) {
+            self::assertIsString($file);
+            $pid = pcntl_fork();
+            self::assertNotSame(-1, $pid);
+            if ($pid === 0) {
+                try {
+                    DB::purge();
+                    (new EloquentTaxPostingRepository)->append($this->posting($index + 1, self::ADMINISTRATION_A, '2026-08-20', source: 90, legSnapshot: $this->legSnapshot()));
+                    file_put_contents($file, 'success');
+                    exit(0);
+                } catch (DomainException) {
+                    file_put_contents($file, 'conflict');
+                    exit(0);
+                } catch (Throwable $exception) {
+                    file_put_contents($file, 'error:'.$exception::class);
+                    exit(1);
+                }
+            }
+            $children[] = $pid;
+        }
+        foreach ($children as $pid) {
+            pcntl_waitpid($pid, $status);
+            self::assertSame(0, pcntl_wexitstatus($status));
+        }
+        $results = array_map(static fn (string $file): string => trim((string) file_get_contents($file)), $files);
+        sort($results);
+        self::assertSame(['conflict', 'success'], $results);
+        self::assertSame(1, TaxPostingRecord::query()->where('tax_treatment_group_id', $this->legSnapshot()->groupId->toString())->count());
+        foreach ($files as $file) {
+            unlink($file);
+        }
+        DB::table('tax_postings')->where('administration_id', self::ADMINISTRATION_A)->delete();
+        DB::table('tax_treatment_definitions')->where('administration_id', self::ADMINISTRATION_A)->delete();
+        DB::table('tax_codes')->where('administration_id', self::ADMINISTRATION_A)->delete();
+        DB::table('journal_entry_lines')->whereIn('administration_id', [self::ADMINISTRATION_A, self::ADMINISTRATION_B])->delete();
+        DB::table('journal_entries')->whereIn('administration_id', [self::ADMINISTRATION_A, self::ADMINISTRATION_B])->delete();
+        DB::table('journals')->whereIn('administration_id', [self::ADMINISTRATION_A, self::ADMINISTRATION_B])->delete();
+        DB::table('ledger_accounts')->whereIn('administration_id', [self::ADMINISTRATION_A, self::ADMINISTRATION_B])->delete();
+        DB::table('administrations')->whereIn('id', [self::ADMINISTRATION_A, self::ADMINISTRATION_B])->delete();
+        DB::beginTransaction();
+    }
+
+    public function test_new_model_leg_requires_an_existing_same_tenant_definition(): void
+    {
+        $this->expectException(QueryException::class);
+
+        $this->repository->append($this->posting(1, self::ADMINISTRATION_A, '2026-08-20', legSnapshot: $this->legSnapshot()));
+    }
+
+    public function test_database_rejects_partially_populated_new_model_metadata(): void
+    {
+        $posting = $this->posting(1, self::ADMINISTRATION_A, '2026-08-20');
+        $this->repository->append($posting);
+        $attributes = TaxPostingRecord::query()->sole()->getAttributes();
+        TaxPostingRecord::query()->delete();
+        unset($attributes['created_at'], $attributes['updated_at']);
+        $attributes['tax_treatment_group_id'] = '85000000-0000-4000-8000-000000000099';
+
+        $this->expectException(QueryException::class);
+        TaxPostingRecord::query()->create($attributes);
+    }
+
     /** @return list<TaxPosting> */
     private function read(string $administration, string $start, string $end): array
     {
@@ -324,6 +431,8 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
         TaxTreatment $treatment = TaxTreatment::DomesticStandard,
         VatReturnClassification $vatReturn = VatReturnClassification::DomesticStandard,
         IcpClassification $icp = IcpClassification::None,
+        ?int $source = null,
+        ?TaxPostingLegSnapshot $legSnapshot = null,
     ): TaxPosting {
         $currency = new Currency('EUR');
         $entryAdministration = $accountingAdministration ?? $administration;
@@ -337,8 +446,8 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
             new Money($taxAmount, $currency),
             $direction,
             $sourceType,
-            new TaxSourceDocumentId(new Uuid(sprintf('82000000-0000-4000-8000-%012d', $id))),
-            new TaxSourceLineId(new Uuid(sprintf('83000000-0000-4000-8000-%012d', $id))),
+            new TaxSourceDocumentId(new Uuid(sprintf('82000000-0000-4000-8000-%012d', $source ?? $id))),
+            new TaxSourceLineId(new Uuid(sprintf('83000000-0000-4000-8000-%012d', $source ?? $id))),
             $this->date($date),
             $this->journalEntryId($entryAdministration, $entry),
             $this->lineId($baseLineAdministration ?? $entryAdministration, $entry, 1),
@@ -348,6 +457,54 @@ final class EloquentTaxPostingReadPersistenceTest extends TestCase
             $treatment,
             $vatReturn,
             $icp,
+            $legSnapshot,
+        );
+    }
+
+    private function seedTreatmentDefinition(string $administration): void
+    {
+        (new EloquentTaxCodeRepository)->save($this->administrationId($administration), new TaxCode(
+            new TaxCodeId(new Uuid('81000000-0000-4000-8000-000000000001')),
+            new TaxCodeCode('IPV21'),
+            new TaxCodeName('IPV 21'),
+            new TaxRate('21'),
+            TaxPostingDirection::Output,
+            TaxCodeStatus::Active,
+        ));
+        DB::table('tax_treatment_definitions')->insert([
+            'id' => '84000000-0000-4000-8000-000000000001',
+            'administration_id' => $administration,
+            'tax_code_id' => '81000000-0000-4000-8000-000000000001',
+            'version' => 1,
+            'treatment_type' => TaxTreatmentType::EuB2bGeneralRuleService->value,
+            'jurisdiction' => 'NL',
+            'vat_rate' => '21',
+            'supplier_vat_mode' => SupplierVatMode::SelfAssessed->value,
+            'deductibility_policy' => 'user_specified_line_rate',
+            'leg_definitions' => '[]',
+            'active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function legSnapshot(): TaxPostingLegSnapshot
+    {
+        $currency = new Currency('EUR');
+
+        return new TaxPostingLegSnapshot(
+            new TaxTreatmentDefinitionId(new Uuid('84000000-0000-4000-8000-000000000001')),
+            1,
+            new TaxTreatmentGroupId(new Uuid('85000000-0000-4000-8000-000000000001')),
+            TaxLegRole::VatPayable,
+            TaxTreatmentType::EuB2bGeneralRuleService,
+            'NL',
+            TaxReportingClassification::EuGeneralServiceDue4b,
+            new DeductibilityBasisPoints(5000),
+            new Money('21', $currency),
+            new Money('10.5', $currency),
+            new Money('10.5', $currency),
+            SupplierVatMode::SelfAssessed,
         );
     }
 
