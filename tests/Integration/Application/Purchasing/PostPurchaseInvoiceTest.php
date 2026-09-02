@@ -151,12 +151,16 @@ final class PostPurchaseInvoiceTest extends TestCase
     }
 
     #[DataProvider('internationalScenarios')]
-    public function test_posts_v1_international_treatments_with_exact_deduction_and_supplier_payable(string $type, int $basisPoints, string $expense, ?string $inputVat): void
+    public function test_posts_v1_international_treatments_with_exact_deduction_and_supplier_payable(string $type, int $basisPoints, string $expense, ?string $inputVat, string $payableReporting): void
     {
         DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update([
             'treatment_type' => $type,
             'leg_definitions' => json_encode($this->legDefinitions($type), JSON_THROW_ON_ERROR),
         ]);
+        if ($type === 'non_eu_b2b_general_rule_service') {
+            DB::table('tax_codes')->where('id', self::TAX_INT)->update(['direction' => 'input', 'treatment' => 'outside_scope', 'vat_return_classification' => 'outside_scope', 'icp_classification' => 'none']);
+            DB::table('relations')->where('id', self::RELATION)->update(['fiscal_jurisdiction' => 'US', 'vat_identification_number' => null]);
+        }
         $invoiceId = $this->internationalFinalized('IPV-'.$type.'-'.$basisPoints, $type, $basisPoints);
         $result = $this->postInvoice($invoiceId);
 
@@ -173,6 +177,8 @@ final class PostPurchaseInvoiceTest extends TestCase
         self::assertSame('2026-08-22', $tax->first()?->posting_date);
         self::assertSame('21', $tax->firstWhere('tax_leg_role', 'vat_payable')?->tax_amount);
         self::assertSame($inputVat, $tax->firstWhere('tax_leg_role', 'vat_deductible')?->tax_amount);
+        self::assertSame($payableReporting, $tax->firstWhere('tax_leg_role', 'vat_payable')?->reporting_classification);
+        self::assertSame($basisPoints === 0 ? null : 'deductible_input_5b', $tax->firstWhere('tax_leg_role', 'vat_deductible')?->reporting_classification);
     }
 
     public static function internationalScenarios(): array
@@ -180,12 +186,63 @@ final class PostPurchaseInvoiceTest extends TestCase
         $types = ['eu_goods_acquisition_nl', 'eu_b2b_general_rule_service', 'non_eu_b2b_general_rule_service'];
         $rows = [];
         foreach ($types as $type) {
-            $rows[$type.' full'] = [$type, 10000, '100', '21'];
-            $rows[$type.' zero'] = [$type, 0, '121', null];
-            $rows[$type.' half'] = [$type, 5000, '110.5', '10.5'];
+            $payableReporting = match ($type) {
+                'eu_goods_acquisition_nl' => 'eu_acquisition_due_4b',
+                'eu_b2b_general_rule_service' => 'eu_general_service_due_4b',
+                default => 'non_eu_general_service_due_4a',
+            };
+            $rows[$type.' full'] = [$type, 10000, '100', '21', $payableReporting];
+            $rows[$type.' zero'] = [$type, 0, '121', null, $payableReporting];
+            $rows[$type.' half'] = [$type, 5000, '110.5', '10.5', $payableReporting];
         }
 
         return $rows;
+    }
+
+    public function test_international_definition_rate_and_legs_override_stale_legacy_selector_semantics(): void
+    {
+        DB::table('tax_codes')->where('id', self::TAX_INT)->update(['rate' => '9', 'direction' => 'input', 'treatment' => 'outside_scope', 'vat_return_classification' => 'outside_scope', 'icp_classification' => 'none']);
+        DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update(['treatment_type' => 'non_eu_b2b_general_rule_service', 'vat_rate' => '21', 'leg_definitions' => json_encode($this->legDefinitions('non_eu_b2b_general_rule_service'), JSON_THROW_ON_ERROR)]);
+        DB::table('relations')->where('id', self::RELATION)->update(['fiscal_jurisdiction' => 'US', 'vat_identification_number' => null]);
+
+        $invoiceId = $this->internationalFinalized('IPV-NON-EU-AUTHORITY', 'non_eu_b2b_general_rule_service', 10000);
+        $result = $this->postInvoice($invoiceId);
+
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $result->status);
+        $stored = json_decode((string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoiceId)->value('tax_treatment_definition_snapshot'), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame('21', $stored['rate']);
+        self::assertSame('non_eu_b2b_general_rule_service', $stored['type']);
+        $tax = DB::table('tax_postings')->where('source_document_id', $invoiceId)->get();
+        self::assertSame(['deductible_input_5b', 'non_eu_general_service_due_4a'], $tax->pluck('reporting_classification')->sort()->values()->all());
+        self::assertSame(['21', '21'], $tax->pluck('tax_amount')->sort()->values()->all());
+        self::assertSame('100', DB::table('open_items')->where('id', $result->openItemId?->toString())->value('original_amount'));
+    }
+
+    public function test_non_eu_credit_reverses_historical_definition_truth_after_current_selector_changes(): void
+    {
+        DB::table('tax_codes')->where('id', self::TAX_INT)->update(['direction' => 'input', 'treatment' => 'outside_scope', 'vat_return_classification' => 'outside_scope', 'icp_classification' => 'none']);
+        DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update(['treatment_type' => 'non_eu_b2b_general_rule_service', 'leg_definitions' => json_encode($this->legDefinitions('non_eu_b2b_general_rule_service'), JSON_THROW_ON_ERROR)]);
+        DB::table('relations')->where('id', self::RELATION)->update(['fiscal_jurisdiction' => 'US', 'vat_identification_number' => null]);
+        $invoiceId = $this->internationalFinalized('IPV-NON-EU-CREDIT-SOURCE', 'non_eu_b2b_general_rule_service', 10000);
+        self::assertSame(PostPurchaseInvoiceStatus::Success, $this->postInvoice($invoiceId)->status);
+        $originals = DB::table('tax_postings')->where('source_document_id', $invoiceId)->orderBy('tax_leg_role')->get()->keyBy('tax_leg_role');
+        $created = $this->createInternationalCredit($invoiceId, 'IPV-NON-EU-CREDIT');
+        DB::table('tax_codes')->where('id', self::TAX_INT)->update(['rate' => '0']);
+        DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update(['active' => false]);
+
+        $result = $this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $created->id, new PostingDate(new DateTimeImmutable('2026-08-25')), $this->actor());
+
+        self::assertSame(PostPurchaseCreditInvoiceStatus::Success, $result->status);
+        self::assertSame('100', DB::table('open_items')->where('id', $result->openItemId?->toString())->value('original_amount'));
+        $reversals = DB::table('tax_postings')->where('source_document_id', $created->id->toString())->orderBy('tax_leg_role')->get()->keyBy('tax_leg_role');
+        foreach (['vat_deductible', 'vat_payable'] as $role) {
+            self::assertSame($originals[$role]->id, $reversals[$role]->reversed_tax_posting_id);
+            self::assertSame($originals[$role]->reporting_classification, $reversals[$role]->reporting_classification);
+            self::assertSame(
+                DB::table('journal_entry_lines')->where('id', $originals[$role]->tax_journal_entry_line_id)->value('ledger_account_id'),
+                DB::table('journal_entry_lines')->where('id', $reversals[$role]->tax_journal_entry_line_id)->value('ledger_account_id'),
+            );
+        }
     }
 
     #[DataProvider('internationalCreditScenarios')]

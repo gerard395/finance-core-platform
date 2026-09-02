@@ -19,6 +19,12 @@ final readonly class PurchaseInvoiceLine
 {
     public function __construct(private PurchaseInvoiceLineId $id, private LineDescription $description, private Quantity $quantity, private Money $unitPrice, private PurchaseAccountSnapshot $account, private PurchaseTaxSnapshot $tax, private Money $net, private Money $taxAmount, private Money $gross, private ?DeductibilityBasisPoints $deductibility = null, private ?InternationalPurchaseSourceFacts $internationalSourceFacts = null, private ?PurchaseTaxTreatmentSnapshot $treatmentSnapshot = null)
     {
+        if (($internationalSourceFacts !== null) !== $tax->internationalDefinitionAuthoritative) {
+            throw new InvalidArgumentException('International purchase source facts and definition-authoritative selector must be present together.');
+        }
+        if ($treatmentSnapshot !== null && $internationalSourceFacts === null) {
+            throw new InvalidArgumentException('An international treatment snapshot requires international source facts.');
+        }
         if ($unitPrice->isNegative() || ! $net->equals($unitPrice->multiply($quantity->value())) || ! $gross->equals($net->add($taxAmount))) {
             throw new InvalidArgumentException('Purchase invoice line amounts are inconsistent.');
         }

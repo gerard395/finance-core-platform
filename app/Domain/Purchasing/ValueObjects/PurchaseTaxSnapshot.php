@@ -18,8 +18,12 @@ use InvalidArgumentException;
 
 final readonly class PurchaseTaxSnapshot
 {
-    public function __construct(public TaxCodeId $id, public TaxCodeCode $code, public TaxCodeName $name, public TaxRate $rate, public TaxPostingDirection $direction, public TaxTreatment $treatment, public VatReturnClassification $vatReturn, public IcpClassification $icp)
+    private function __construct(public TaxCodeId $id, public TaxCodeCode $code, public TaxCodeName $name, public TaxRate $rate, public TaxPostingDirection $direction, public TaxTreatment $treatment, public VatReturnClassification $vatReturn, public IcpClassification $icp, public bool $internationalDefinitionAuthoritative)
     {
+        if ($internationalDefinitionAuthoritative) {
+            return;
+        }
+
         try {
             new TaxClassification($treatment, $vatReturn, $icp, $direction);
         } catch (DomainException $exception) {
@@ -33,5 +37,15 @@ final readonly class PurchaseTaxSnapshot
         if (in_array($treatment, [TaxTreatment::Exempt, TaxTreatment::OutsideScope, TaxTreatment::ZeroRated], true) && $rate->value() !== '0') {
             throw new InvalidArgumentException('Zero, exempt and outside-scope purchase TaxCodes require a zero rate.');
         }
+    }
+
+    public static function legacy(TaxCodeId $id, TaxCodeCode $code, TaxCodeName $name, TaxRate $rate, TaxPostingDirection $direction, TaxTreatment $treatment, VatReturnClassification $vatReturn, IcpClassification $icp): self
+    {
+        return new self($id, $code, $name, $rate, $direction, $treatment, $vatReturn, $icp, false);
+    }
+
+    public static function internationalSelector(TaxCodeId $id, TaxCodeCode $code, TaxCodeName $name, TaxRate $nonAuthoritativeRate, TaxPostingDirection $nonAuthoritativeDirection, TaxTreatment $nonAuthoritativeTreatment, VatReturnClassification $nonAuthoritativeVatReturn, IcpClassification $nonAuthoritativeIcp): self
+    {
+        return new self($id, $code, $name, $nonAuthoritativeRate, $nonAuthoritativeDirection, $nonAuthoritativeTreatment, $nonAuthoritativeVatReturn, $nonAuthoritativeIcp, true);
     }
 }

@@ -118,7 +118,8 @@ final readonly class FinalizePurchaseInvoice
             return FinalizePurchaseInvoiceResult::InvalidDeductibility;
         }
         $partyFactsComplete = $facts->businessToBusiness && $facts->customerJurisdiction === 'NL'
-            && $facts->supplierJurisdiction !== 'NL' && $facts->supplierVatIdentity !== null && $facts->customerVatIdentity !== null;
+            && $facts->supplierJurisdiction !== 'NL' && $facts->customerVatIdentity !== null
+            && ($definition->treatmentType() === TaxTreatmentType::NonEuB2bGeneralRuleService || $facts->supplierVatIdentity !== null);
         $scenarioComplete = match ($definition->treatmentType()) {
             TaxTreatmentType::EuGoodsAcquisitionNl => $facts->classification === PurchaseSupplyClassification::Goods && $facts->arrivesInNetherlands && trim((string) $facts->evidence) !== '',
             TaxTreatmentType::EuB2bGeneralRuleService, TaxTreatmentType::NonEuB2bGeneralRuleService => $facts->classification === PurchaseSupplyClassification::GeneralRuleService && $facts->generalRuleConfirmed,

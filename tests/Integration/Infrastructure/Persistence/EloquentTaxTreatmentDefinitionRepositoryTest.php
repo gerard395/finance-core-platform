@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Integration\Infrastructure\Persistence;
 
 use App\Application\Fiscal\TaxTreatmentDefinitionRepository;
+use App\Application\Fiscal\TaxTreatmentDefinitionSelectionStatus;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxTreatmentDefinition;
 use App\Domain\Fiscal\Enums\DeductibilityPolicy;
@@ -60,9 +61,19 @@ final class EloquentTaxTreatmentDefinitionRepositoryTest extends TestCase
 
         self::assertSame('21', $repository->findVersion($this->admin(self::A), $this->definitionId(), 1)?->vatRate()->value());
         self::assertSame('9', $repository->findVersion($this->admin(self::A), $this->definitionId(), 2)?->vatRate()->value());
-        self::assertSame(2, $repository->findActiveForTaxCode($this->admin(self::A), $this->taxCodeId())?->version());
+        self::assertNull($repository->findActiveForTaxCode($this->admin(self::A), $this->taxCodeId()));
         self::assertNull($repository->findVersion($this->admin(self::B), $this->definitionId(), 1));
         self::assertInstanceOf(EloquentTaxTreatmentDefinitionRepository::class, $this->app->make(TaxTreatmentDefinitionRepository::class));
+        self::assertSame(TaxTreatmentDefinitionSelectionStatus::IntegrityFailure, $repository->resolveActiveForTaxCode($this->admin(self::A), $this->taxCodeId())->status);
+    }
+
+    public function test_selection_requires_exactly_one_active_definition(): void
+    {
+        $repository = new EloquentTaxTreatmentDefinitionRepository;
+        self::assertSame(TaxTreatmentDefinitionSelectionStatus::Missing, $repository->resolveActiveForTaxCode($this->admin(self::A), $this->taxCodeId())->status);
+        $repository->append($this->definition(self::A, 1, '21', true));
+        self::assertSame(TaxTreatmentDefinitionSelectionStatus::Found, $repository->resolveActiveForTaxCode($this->admin(self::A), $this->taxCodeId())->status);
+        self::assertSame(TaxTreatmentDefinitionSelectionStatus::Missing, $repository->resolveActiveForTaxCode($this->admin(self::B), $this->taxCodeId())->status);
     }
 
     public function test_database_rejects_cross_tenant_tax_code_association(): void

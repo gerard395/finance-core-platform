@@ -48,7 +48,7 @@ final class PurchaseInvoiceValueObjectsTest extends TestCase
     public function test_international_input_tax_snapshot_is_rejected(): void
     {
         $this->expectException(InvalidArgumentException::class);
-        new PurchaseTaxSnapshot(
+        PurchaseTaxSnapshot::legacy(
             new TaxCodeId(new Uuid('bbbbbbbb-0000-4000-8000-000000000099')),
             new TaxCodeCode('INEU'),
             new TaxCodeName('EU acquisition'),

@@ -6,6 +6,7 @@ namespace App\Infrastructure\Persistence\Eloquent;
 
 use App\Application\Fiscal\TaxTreatmentDefinitionRepository;
 use App\Application\Fiscal\TaxTreatmentDefinitionSelection;
+use App\Application\Fiscal\TaxTreatmentDefinitionSelectionStatus;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Fiscal\Entities\TaxTreatmentDefinition;
 use App\Domain\Fiscal\Enums\DeductibilityPolicy;
@@ -66,14 +67,9 @@ final class EloquentTaxTreatmentDefinitionRepository implements TaxTreatmentDefi
 
     public function findActiveForTaxCode(AdministrationId $administrationId, TaxCodeId $taxCodeId): ?TaxTreatmentDefinition
     {
-        $record = TaxTreatmentDefinitionRecord::query()
-            ->where('administration_id', $administrationId->toString())
-            ->where('tax_code_id', $taxCodeId->toString())
-            ->where('active', true)
-            ->orderByDesc('version')
-            ->first();
+        $selection = $this->resolveActiveForTaxCode($administrationId, $taxCodeId);
 
-        return $record === null ? null : self::hydrate($record);
+        return $selection->status === TaxTreatmentDefinitionSelectionStatus::Found ? $selection->definition : null;
     }
 
     public function resolveActiveForTaxCode(AdministrationId $administrationId, TaxCodeId $taxCodeId): TaxTreatmentDefinitionSelection
@@ -87,8 +83,7 @@ final class EloquentTaxTreatmentDefinitionRepository implements TaxTreatmentDefi
         if ($records->isEmpty()) {
             return TaxTreatmentDefinitionSelection::missing();
         }
-        $currentVersion = (int) $records->first()->getAttribute('version');
-        if ($records->filter(fn (TaxTreatmentDefinitionRecord $record): bool => (int) $record->getAttribute('version') === $currentVersion)->count() !== 1) {
+        if ($records->count() !== 1) {
             return TaxTreatmentDefinitionSelection::integrityFailure();
         }
 

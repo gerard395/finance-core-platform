@@ -136,9 +136,9 @@ final class EloquentPurchaseInvoiceRepository implements PurchaseInvoiceReposito
         $currency = new Currency($r->currency);
         $lines = DB::table('purchase_invoice_lines')->where('administration_id', $r->administration_id)->where('purchase_invoice_id', $r->id)->orderBy('id')->get()->map(function ($l) use ($currency) {
             $account = new PurchaseAccountSnapshot(new LedgerAccountId(new Uuid($l->ledger_account_id)), new LedgerAccountCode($l->ledger_account_code_snapshot), new LedgerAccountName($l->ledger_account_name_snapshot), LedgerAccountType::from($l->ledger_account_type_snapshot));
-            $tax = new PurchaseTaxSnapshot(new TaxCodeId(new Uuid($l->tax_code_id)), new TaxCodeCode($l->tax_code_snapshot), new TaxCodeName($l->tax_name_snapshot), new TaxRate($l->tax_rate_snapshot), TaxPostingDirection::from($l->tax_direction_snapshot), TaxTreatment::from($l->tax_treatment_snapshot), VatReturnClassification::from($l->vat_return_classification_snapshot), IcpClassification::from($l->icp_classification_snapshot));
-
             [$deductibility, $facts] = $this->hydrateSourceFacts($l->international_tax_input ?? null);
+            $taxArguments = [new TaxCodeId(new Uuid($l->tax_code_id)), new TaxCodeCode($l->tax_code_snapshot), new TaxCodeName($l->tax_name_snapshot), new TaxRate($l->tax_rate_snapshot), TaxPostingDirection::from($l->tax_direction_snapshot), TaxTreatment::from($l->tax_treatment_snapshot), VatReturnClassification::from($l->vat_return_classification_snapshot), IcpClassification::from($l->icp_classification_snapshot)];
+            $tax = $facts === null ? PurchaseTaxSnapshot::legacy(...$taxArguments) : PurchaseTaxSnapshot::internationalSelector(...$taxArguments);
             $snapshot = $this->hydrateTreatmentSnapshot($l->tax_treatment_definition_snapshot ?? null, $facts, $deductibility);
 
             return new PurchaseInvoiceLine(new PurchaseInvoiceLineId(new Uuid($l->id)), new LineDescription($l->description), new Quantity($l->quantity), new Money($l->unit_price_amount, $currency), $account, $tax, new Money($l->net_amount, $currency), new Money($l->tax_amount, $currency), new Money($l->gross_amount, $currency), $deductibility, $facts, $snapshot);

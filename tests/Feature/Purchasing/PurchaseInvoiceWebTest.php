@@ -358,6 +358,60 @@ final class PurchaseInvoiceWebTest extends TestCase
         self::assertSame(0, DB::table('open_items')->count());
     }
 
+    public function test_non_eu_selector_supports_web_draft_update_finalize_and_post_without_legacy_fiscal_authority(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->configureNonEuInternationalPurchase();
+
+        $this->get('/purchasing/invoices/create')->assertOk()->assertSee('INNONEUD21')->assertDontSee('TaxTreatmentDefinitionId');
+        $payload = $this->internationalPayload('IPV-NON-EU-WEB', '100');
+        $payload['definition_id'] = '95000000-0000-4000-8000-000000000001';
+        $payload['version'] = 999;
+        $payload['rate'] = '0';
+        $payload['reporting_classification'] = 'outside_scope';
+        $this->post('/purchasing/invoices', $payload)->assertSessionHasNoErrors();
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'IPV-NON-EU-WEB')->first();
+        self::assertNotNull($invoice);
+        $line = DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->first();
+        self::assertNotNull($line);
+        self::assertSame('INNONEUD21', $line->tax_code_snapshot);
+        self::assertSame('outside_scope', $line->tax_treatment_snapshot);
+        self::assertNull($line->tax_treatment_definition_snapshot);
+
+        $payload['lines'][0]['evidence'] = 'Bijgewerkt non-EU bewijs';
+        $this->put('/purchasing/invoices/'.$invoice->id, $payload)->assertSessionHasNoErrors();
+        $this->get('/purchasing/invoices/'.$invoice->id.'/edit')->assertOk()->assertSee('Bijgewerkt non-EU bewijs');
+        $this->post('/purchasing/invoices/'.$invoice->id.'/finalize')->assertSessionHas('status');
+        $snapshot = json_decode((string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('tax_treatment_definition_snapshot'), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(self::TREATMENT, $snapshot['definition_id']);
+        self::assertSame(1, $snapshot['version']);
+        self::assertSame('21', $snapshot['rate']);
+        self::assertSame('non_eu_b2b_general_rule_service', $snapshot['type']);
+
+        $this->post('/purchasing/invoices/'.$invoice->id.'/post', ['posting_date' => '2026-08-25'])->assertSessionHas('status');
+        $this->get('/purchasing/invoices/'.$invoice->id)->assertOk()->assertSee('non_eu_b2b_general_rule_service')->assertDontSee('INNONEUD21 · outside_scope');
+        self::assertSame('100', DB::table('open_items')->where('id', DB::table('purchase_invoice_postings')->where('purchase_invoice_id', $invoice->id)->value('open_item_id'))->value('original_amount'));
+        self::assertSame(['deductible_input_5b', 'non_eu_general_service_due_4a'], DB::table('tax_postings')->where('source_document_id', $invoice->id)->pluck('reporting_classification')->sort()->values()->all());
+    }
+
+    public function test_ambiguous_international_definition_is_hidden_and_cannot_fall_back_to_legacy_draft(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->configureNonEuInternationalPurchase();
+        DB::table('tax_treatment_definitions')->insert([
+            'id' => '94000000-0000-4000-8000-000000000099', 'administration_id' => self::ADMIN, 'tax_code_id' => self::OUTPUT, 'version' => 2,
+            'treatment_type' => 'non_eu_b2b_general_rule_service', 'jurisdiction' => 'NL', 'vat_rate' => '21', 'supplier_vat_mode' => 'self_assessed',
+            'deductibility_policy' => 'user_specified_line_rate', 'leg_definitions' => DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->value('leg_definitions'),
+            'active' => true, 'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $this->get('/purchasing/invoices/create')->assertOk()->assertDontSee('INNONEUD21');
+        $this->post('/purchasing/invoices', $this->internationalPayload('IPV-AMBIGUOUS', '100'))->assertSessionHasErrors('invoice');
+        self::assertSame(0, DB::table('purchase_invoices')->count());
+    }
+
     public function test_empty_whitespace_and_evidence_only_rationale_are_rejected_without_create_or_update_mutation(): void
     {
         $this->assignAll();
@@ -458,6 +512,20 @@ final class PurchaseInvoiceWebTest extends TestCase
             ['role' => 'vat_payable', 'direction' => 'output', 'reporting_classification' => 'eu_general_service_due_4b', 'ledger_account_role' => 'vat_payable_control', 'emit_when_zero' => false],
             ['role' => 'vat_deductible', 'direction' => 'input', 'reporting_classification' => 'deductible_input_5b', 'ledger_account_role' => 'input_vat_control', 'emit_when_zero' => false],
         ], JSON_THROW_ON_ERROR), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+    }
+
+    private function configureNonEuInternationalPurchase(): void
+    {
+        $this->configureInternationalPurchase();
+        DB::table('relations')->where('id', self::RELATION)->update(['vat_identification_number' => null, 'fiscal_jurisdiction' => 'US']);
+        DB::table('tax_codes')->where('id', self::OUTPUT)->update(['code' => 'INNONEUD21', 'name' => 'Non-EU service 21', 'rate' => '9', 'direction' => 'input', 'treatment' => 'outside_scope', 'vat_return_classification' => 'outside_scope', 'icp_classification' => 'none']);
+        DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update([
+            'treatment_type' => 'non_eu_b2b_general_rule_service',
+            'leg_definitions' => json_encode([
+                ['role' => 'vat_payable', 'direction' => 'output', 'reporting_classification' => 'non_eu_general_service_due_4a', 'ledger_account_role' => 'vat_payable_control', 'emit_when_zero' => false],
+                ['role' => 'vat_deductible', 'direction' => 'input', 'reporting_classification' => 'deductible_input_5b', 'ledger_account_role' => 'input_vat_control', 'emit_when_zero' => false],
+            ], JSON_THROW_ON_ERROR),
+        ]);
     }
 
     private function assignAll(): void
