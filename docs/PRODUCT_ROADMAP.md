@@ -833,6 +833,14 @@ authoritative partyfacts, immutable Finalize-snapshots en 100/0/50%-multi-leg po
 SupplierGross-only payable; developmentmasterdata wordt niet automatisch ingericht.
 VAT-return Web en fiscal filing locks blijven geparkeerd.
 
+IPV-004 rondt de International Purchase VAT V1-review af als **merge-ready**. Ondersteund
+zijn EU-goederen die aantoonbaar in Nederland aankomen, general-rule EU en non-EU
+B2B-diensten, 0–100% deductibility en volledige historische PurchaseCredit-reversal.
+Legacy domestic purchases blijven TaxCode-authoritative; voor new-model international
+purchases is TaxCode selector-only en is exact één actieve TaxTreatmentDefinition
+authoritative voor treatment, rate, sourcefacts en legs. Import/customs, Artikel 23,
+foreign VAT reclaim, special place-of-supply en VAT-return/finalization blijven deferred.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
