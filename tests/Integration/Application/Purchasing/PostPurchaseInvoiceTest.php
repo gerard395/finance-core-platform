@@ -368,6 +368,19 @@ final class PostPurchaseInvoiceTest extends TestCase
         self::assertSame(0, DB::table('journal_entries')->count());
     }
 
+    public function test_direct_application_finalize_still_rejects_missing_user_specified_deductibility_rationale(): void
+    {
+        $facts = new InternationalPurchaseSourceFacts('DE', 'NL', 'DE123456789', 'NL123456789B01', PurchaseSupplyClassification::GeneralRuleService, true, false, true, false, false, false, 'General rule declaration', null);
+        $invoiceId = $this->internationalCreated('IPV-MISSING-RATIONALE', 'eu_b2b_general_rule_service', 10000, $facts);
+
+        self::assertSame(FinalizePurchaseInvoiceResult::InvalidDeductibility, $this->app->make(FinalizePurchaseInvoice::class)->execute($this->admin(), new PurchaseInvoiceId(new Uuid($invoiceId)), $this->actor()));
+        self::assertSame('draft', DB::table('purchase_invoices')->where('id', $invoiceId)->value('status'));
+        self::assertNull(DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoiceId)->value('tax_treatment_definition_snapshot'));
+        foreach (['journal_entries', 'tax_postings', 'open_items', 'purchase_invoice_postings'] as $table) {
+            self::assertSame(0, DB::table($table)->count(), $table);
+        }
+    }
+
     public function test_ambiguous_current_treatment_is_typed_integrity_failure(): void
     {
         $invoiceId = $this->internationalCreated('IPV-TREATMENT-INTEGRITY', 'eu_goods_acquisition_nl', 10000);

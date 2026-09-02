@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature\Purchasing;
 
 use App\Application\Identity\ProvisionUserAccount;
+use App\Application\Purchasing\GetPurchaseInvoice;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -16,6 +17,7 @@ use App\Domain\Identity\ValueObjects\AdministrationMembershipId;
 use App\Domain\Identity\ValueObjects\DisplayName;
 use App\Domain\Identity\ValueObjects\EmailAddress;
 use App\Domain\Identity\ValueObjects\UserId;
+use App\Domain\Purchasing\ValueObjects\PurchaseInvoiceId;
 use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
@@ -287,15 +289,7 @@ final class PurchaseInvoiceWebTest extends TestCase
     {
         $this->assignAll();
         $this->login();
-        DB::table('administrations')->where('id', self::ADMIN)->update(['organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'NL']);
-        DB::table('relations')->where('id', self::RELATION)->update(['vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE']);
-        DB::table('tax_codes')->where('id', self::OUTPUT)->update(['treatment' => 'reverse_charge_eu_service', 'vat_return_classification' => 'eu_services', 'icp_classification' => 'service']);
-        DB::table('ledger_accounts')->insert(['id' => self::VAT_PAYABLE, 'administration_id' => self::ADMIN, 'code' => '1620', 'name' => 'VAT payable', 'type' => 'liability', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
-        DB::table('purchase_posting_configurations')->where('administration_id', self::ADMIN)->update(['vat_payable_ledger_account_id' => self::VAT_PAYABLE]);
-        DB::table('tax_treatment_definitions')->insert(['id' => self::TREATMENT, 'administration_id' => self::ADMIN, 'tax_code_id' => self::OUTPUT, 'version' => 1, 'treatment_type' => 'eu_b2b_general_rule_service', 'jurisdiction' => 'NL', 'vat_rate' => '21', 'supplier_vat_mode' => 'self_assessed', 'deductibility_policy' => 'user_specified_line_rate', 'leg_definitions' => json_encode([
-            ['role' => 'vat_payable', 'direction' => 'output', 'reporting_classification' => 'eu_general_service_due_4b', 'ledger_account_role' => 'vat_payable_control', 'emit_when_zero' => false],
-            ['role' => 'vat_deductible', 'direction' => 'input', 'reporting_classification' => 'deductible_input_5b', 'ledger_account_role' => 'input_vat_control', 'emit_when_zero' => false],
-        ], JSON_THROW_ON_ERROR), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
+        $this->configureInternationalPurchase();
 
         $this->get('/purchasing/invoices/create')->assertOk()->assertSee('Aftrekpercentage')->assertSee('Algemene B2B-dienst')->assertDontSee('TaxTreatmentDefinitionId');
         $payload = $this->payload('IPV-WEB-001');
@@ -322,6 +316,104 @@ final class PurchaseInvoiceWebTest extends TestCase
         $this->get('/purchasing/credits/'.$credit->id)->assertOk()->assertSee('Historisch gereverseerde btw-legs')->assertSee('vat_payable')->assertSee('vat_deductible')->assertSee('Leverancierscreditsaldo');
     }
 
+    public function test_user_specified_deductibility_roundtrips_and_finalizes_for_zero_half_and_full_rates(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->configureInternationalPurchase();
+
+        foreach ([100 => 10000, 50 => 5000, 0 => 0] as $percentage => $basisPoints) {
+            $payload = $this->internationalPayload('IPV-RATIONALE-'.$percentage, (string) $percentage);
+            $payload['lines'][0]['deductibility_rationale'] = '  Zakelijk gebruik '.$percentage.' procent  ';
+            $payload['lines'][0]['evidence'] = '<script>bewijs '.$percentage.'</script>';
+
+            $this->post('/purchasing/invoices', $payload)->assertSessionHasNoErrors();
+            $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'IPV-RATIONALE-'.$percentage)->first();
+            self::assertNotNull($invoice);
+            $stored = json_decode((string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('international_tax_input'), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame($basisPoints, $stored['deductibility']);
+            self::assertSame('Zakelijk gebruik '.$percentage.' procent', $stored['rationale']);
+            self::assertSame('<script>bewijs '.$percentage.'</script>', $stored['evidence']);
+            self::assertTrue($stored['b2b']);
+            self::assertTrue($stored['general_rule']);
+
+            $this->get('/purchasing/invoices/'.$invoice->id.'/edit')
+                ->assertOk()
+                ->assertSee('value="'.$percentage.'"', false)
+                ->assertSee('value="Zakelijk gebruik '.$percentage.' procent"', false)
+                ->assertSee('&lt;script&gt;bewijs '.$percentage.'&lt;/script&gt;', false)
+                ->assertDontSee('<script>bewijs '.$percentage.'</script>', false);
+            $this->post('/purchasing/invoices/'.$invoice->id.'/finalize')->assertSessionHas('status');
+            $snapshot = json_decode((string) DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('tax_treatment_definition_snapshot'), true, flags: JSON_THROW_ON_ERROR);
+            self::assertSame('eu_b2b_general_rule_service', $snapshot['type']);
+            $finalized = $this->app->make(GetPurchaseInvoice::class)->execute($this->admin(), new PurchaseInvoiceId(new Uuid($invoice->id)));
+            self::assertSame($basisPoints, $finalized?->lines()[0]->treatmentSnapshot()?->deductibility->value());
+            self::assertSame('Zakelijk gebruik '.$percentage.' procent', $finalized?->lines()[0]->treatmentSnapshot()?->sourceFacts->deductibilityRationale);
+            self::assertSame('<script>bewijs '.$percentage.'</script>', $finalized?->lines()[0]->treatmentSnapshot()?->sourceFacts->evidence);
+        }
+
+        self::assertSame(0, DB::table('purchase_invoice_postings')->count());
+        self::assertSame(0, DB::table('journal_entries')->count());
+        self::assertSame(0, DB::table('tax_postings')->count());
+        self::assertSame(0, DB::table('open_items')->count());
+    }
+
+    public function test_empty_whitespace_and_evidence_only_rationale_are_rejected_without_create_or_update_mutation(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->configureInternationalPurchase();
+
+        foreach ([null, '', '   '] as $index => $rationale) {
+            $payload = $this->internationalPayload('IPV-RATIONALE-INVALID-'.$index, '100');
+            $payload['lines'][0]['evidence'] = 'Bewijs is niet de aftrekonderbouwing';
+            if ($rationale === null) {
+                unset($payload['lines'][0]['deductibility_rationale']);
+            } else {
+                $payload['lines'][0]['deductibility_rationale'] = $rationale;
+            }
+
+            $this->post('/purchasing/invoices', $payload)
+                ->assertSessionHasErrors('lines.0.deductibility_rationale')
+                ->assertSessionHasInput('lines.0.tax_code_id', self::OUTPUT)
+                ->assertSessionHasInput('lines.0.deductibility_percentage', '100')
+                ->assertSessionHasInput('lines.0.evidence', 'Bewijs is niet de aftrekonderbouwing')
+                ->assertSessionHasInput('lines.0.business_to_business', '1')
+                ->assertSessionHasInput('lines.0.general_rule_confirmed', '1');
+        }
+        self::assertSame(0, DB::table('purchase_invoices')->count());
+
+        $valid = $this->internationalPayload('IPV-RATIONALE-UPDATE', '50');
+        $this->post('/purchasing/invoices', $valid)->assertSessionHasNoErrors();
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'IPV-RATIONALE-UPDATE')->first();
+        self::assertNotNull($invoice);
+        $before = DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('international_tax_input');
+        $valid['lines'][0]['deductibility_rationale'] = '   ';
+        $this->put('/purchasing/invoices/'.$invoice->id, $valid)->assertSessionHasErrors('lines.0.deductibility_rationale');
+        self::assertSame($before, DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('international_tax_input'));
+    }
+
+    public function test_goods_evidence_requirement_remains_separate_from_deductibility_rationale(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $this->configureInternationalPurchase();
+        DB::table('tax_codes')->where('id', self::OUTPUT)->update(['treatment' => 'intra_community_goods', 'vat_return_classification' => 'intra_community_supplies', 'icp_classification' => 'goods_supply']);
+        DB::table('tax_treatment_definitions')->where('id', self::TREATMENT)->update(['treatment_type' => 'eu_goods_acquisition_nl']);
+        $payload = $this->internationalPayload('IPV-GOODS-NO-EVIDENCE', '100');
+        $payload['lines'][0]['supply_classification'] = 'goods';
+        $payload['lines'][0]['arrives_in_netherlands'] = '1';
+        unset($payload['lines'][0]['evidence']);
+
+        $this->post('/purchasing/invoices', $payload)->assertSessionHasNoErrors();
+        $invoice = DB::table('purchase_invoices')->where('supplier_invoice_number', 'IPV-GOODS-NO-EVIDENCE')->first();
+        self::assertNotNull($invoice);
+        $this->post('/purchasing/invoices/'.$invoice->id.'/finalize')
+            ->assertSessionHas('error', 'De fiscale gegevens of vereiste bewijsinformatie zijn onvolledig.');
+        self::assertSame('draft', DB::table('purchase_invoices')->where('id', $invoice->id)->value('status'));
+        self::assertNull(DB::table('purchase_invoice_lines')->where('purchase_invoice_id', $invoice->id)->value('tax_treatment_definition_snapshot'));
+    }
+
     private function fixtures(): void
     {
         $user = new UserId(new Uuid(self::USER));
@@ -345,6 +437,27 @@ final class PurchaseInvoiceWebTest extends TestCase
     private function payload(string $number): array
     {
         return ['supplier_id' => self::SUPPLIER, 'supplier_invoice_number' => $number, 'invoice_date' => '2026-08-20', 'received_date' => '2026-08-22', 'due_date' => '2026-09-20', 'currency' => 'USD', 'address_line_1' => 'Document <script>alert(2)</script>', 'postal_code' => '1000AA', 'city' => 'Amsterdam', 'country_code' => 'NL', 'lines' => [['description' => 'Purchase', 'quantity' => '1', 'unit_price' => '100', 'ledger_account_id' => self::EXPENSE, 'tax_code_id' => self::TAX, 'fully_deductible' => '1'], ['description' => '', 'quantity' => '', 'unit_price' => '', 'ledger_account_id' => '', 'tax_code_id' => '', 'fully_deductible' => '1']]];
+    }
+
+    private function internationalPayload(string $number, string $percentage): array
+    {
+        $payload = $this->payload($number);
+        $payload['lines'][0] = ['description' => 'International purchase', 'quantity' => '1', 'unit_price' => '100', 'ledger_account_id' => self::EXPENSE, 'tax_code_id' => self::OUTPUT, 'international' => '1', 'supply_classification' => 'general_rule_service', 'business_to_business' => '1', 'general_rule_confirmed' => '1', 'deductibility_percentage' => $percentage, 'deductibility_rationale' => 'Zakelijk gebruik', 'evidence' => 'Algemene B2B-dienst'];
+
+        return $payload;
+    }
+
+    private function configureInternationalPurchase(): void
+    {
+        DB::table('administrations')->where('id', self::ADMIN)->update(['organisation_vat_number' => 'NL123456789B01', 'fiscal_jurisdiction' => 'NL']);
+        DB::table('relations')->where('id', self::RELATION)->update(['vat_identification_number' => 'DE123456789', 'fiscal_jurisdiction' => 'DE']);
+        DB::table('tax_codes')->where('id', self::OUTPUT)->update(['treatment' => 'reverse_charge_eu_service', 'vat_return_classification' => 'eu_services', 'icp_classification' => 'service']);
+        DB::table('ledger_accounts')->insert(['id' => self::VAT_PAYABLE, 'administration_id' => self::ADMIN, 'code' => '1620', 'name' => 'VAT payable', 'type' => 'liability', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        DB::table('purchase_posting_configurations')->where('administration_id', self::ADMIN)->update(['vat_payable_ledger_account_id' => self::VAT_PAYABLE]);
+        DB::table('tax_treatment_definitions')->insert(['id' => self::TREATMENT, 'administration_id' => self::ADMIN, 'tax_code_id' => self::OUTPUT, 'version' => 1, 'treatment_type' => 'eu_b2b_general_rule_service', 'jurisdiction' => 'NL', 'vat_rate' => '21', 'supplier_vat_mode' => 'self_assessed', 'deductibility_policy' => 'user_specified_line_rate', 'leg_definitions' => json_encode([
+            ['role' => 'vat_payable', 'direction' => 'output', 'reporting_classification' => 'eu_general_service_due_4b', 'ledger_account_role' => 'vat_payable_control', 'emit_when_zero' => false],
+            ['role' => 'vat_deductible', 'direction' => 'input', 'reporting_classification' => 'deductible_input_5b', 'ledger_account_role' => 'input_vat_control', 'emit_when_zero' => false],
+        ], JSON_THROW_ON_ERROR), 'active' => true, 'created_at' => now(), 'updated_at' => now()]);
     }
 
     private function assignAll(): void

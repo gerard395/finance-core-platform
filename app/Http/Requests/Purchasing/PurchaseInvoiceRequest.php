@@ -4,8 +4,14 @@ declare(strict_types=1);
 
 namespace App\Http\Requests\Purchasing;
 
+use App\Application\Fiscal\TaxTreatmentDefinitionRepository;
+use App\Domain\Fiscal\Enums\DeductibilityPolicy;
+use App\Domain\Fiscal\ValueObjects\TaxCodeId;
+use App\Domain\Shared\Identity\Uuid;
+use App\Http\Administration\ActiveAdministrationContext;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use InvalidArgumentException;
 
 final class PurchaseInvoiceRequest extends FormRequest
 {
@@ -16,12 +22,21 @@ final class PurchaseInvoiceRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        $this->merge(['currency' => 'EUR']);
+        $lines = $this->input('lines', []);
+        if (is_array($lines)) {
+            foreach ($lines as $index => $line) {
+                if (is_array($line) && is_string($line['deductibility_rationale'] ?? null)) {
+                    $lines[$index]['deductibility_rationale'] = trim($line['deductibility_rationale']);
+                }
+            }
+        }
+
+        $this->merge(['currency' => 'EUR', 'lines' => $lines]);
     }
 
-    public function rules(): array
+    public function rules(TaxTreatmentDefinitionRepository $treatments): array
     {
-        return [
+        $rules = [
             'supplier_id' => ['required', 'uuid'],
             'supplier_invoice_number' => ['required', 'string', 'max:512'],
             'invoice_date' => ['required', 'date_format:Y-m-d'],
@@ -54,5 +69,44 @@ final class PurchaseInvoiceRequest extends FormRequest
             'lines.*.deductibility_rationale' => ['nullable', 'string', 'max:1000'],
             'lines.*._delete' => ['nullable', 'boolean'],
         ];
+
+        foreach ((array) $this->input('lines', []) as $index => $line) {
+            if (is_array($line) && $this->requiresDeductibilityRationale($line, $treatments)) {
+                $rules["lines.$index.deductibility_rationale"] = ['required', 'string', 'max:1000'];
+            }
+        }
+
+        return $rules;
+    }
+
+    public function messages(): array
+    {
+        return [
+            'lines.*.deductibility_rationale.required' => 'Vul de onderbouwing voor het aftrekpercentage in.',
+            'lines.*.deductibility_rationale.string' => 'De onderbouwing voor het aftrekpercentage is ongeldig.',
+            'lines.*.deductibility_rationale.max' => 'De onderbouwing voor het aftrekpercentage mag maximaal 1000 tekens bevatten.',
+        ];
+    }
+
+    private function requiresDeductibilityRationale(array $line, TaxTreatmentDefinitionRepository $treatments): bool
+    {
+        if (! filter_var($line['international'] ?? false, FILTER_VALIDATE_BOOL)) {
+            return false;
+        }
+
+        $context = $this->attributes->get('administration_context');
+        if (! $context instanceof ActiveAdministrationContext || ! is_string($line['tax_code_id'] ?? null)) {
+            return false;
+        }
+
+        try {
+            $taxCodeId = new TaxCodeId(new Uuid($line['tax_code_id']));
+        } catch (InvalidArgumentException) {
+            return false;
+        }
+
+        $selection = $treatments->resolveActiveForTaxCode($context->administration->id(), $taxCodeId);
+
+        return $selection->definition?->deductibilityPolicy() === DeductibilityPolicy::UserSpecifiedLineRate;
     }
 }
