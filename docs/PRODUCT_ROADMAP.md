@@ -850,6 +850,14 @@ reversal blijven de financiële kern. MT940, CSV-profielen, PSD2/API, FX,
 overpayment/suspense en auto-posting blijven deferred. Import/customs/Artikel 23 blijft
 Purchasing-scope en VAT/ICP filing blijft afzonderlijk geparkeerd.
 
+BIR-001/BIR-002 realiseren inmiddels de secure CAMT.053-parser, private artifactboundary,
+immutable tenant-scoped sourcefacts, statementbalancecontrole en idempotente ConfirmImport.
+BIR-003 voegt de afgeleide Unresolved/Ignored-worklist, append-only Ignore/Restore-history en
+deterministische, uitlegbare CustomerReceipt/SupplierPayment/Other-suggestions toe. Prepared
+allocations ondersteunen partial OpenItems en meerdere targets binnen één Relation, maar zijn
+niet durable. Financiële BankTransaction-/Payment-promotie, PostingEngine, Settlements,
+Other-posting en B3-correctie blijven exact BIR-004-scope.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**

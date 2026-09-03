@@ -444,7 +444,9 @@ children en worden uitsluitend via de BankTransaction Aggregate Root beheerd.
 - Finalize vereist minimaal één allocation en vergelijkt de exacte som met het absolute BankTransaction-bedrag.
 - Finalize valideert OpenItem-readiness maar maakt geen JournalEntry of Settlement.
 - Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
-- Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
+- Banking Domain bevat geen UI-, parser-, persistence- of PSD2-logica. Immutable
+  bankimportsources, reconciliationhistory en matchingcontracten blijven van financiële
+  BankTransaction-/Payment-truth gescheiden; Application orkestreert deze grenzen.
 
 #### Architectuurregels
 
@@ -483,6 +485,23 @@ accountheuristiek.
 B2 V1 is EUR-only, vereist volledige allocation van het absolute bankbedrag en kent
 geen unallocated remainder, overpayment/suspense, import, reconciliation of FX.
 TransactionDate en expliciete PostingDate zijn verschillende feiten.
+
+### BIR immutable source en reconciliation worklist
+
+BIR-001/BIR-002 voegen Administration-owned immutable CAMT.053/EUR Batch-, Statement- en
+Entry-sourcefacts toe. Import en preview creëren geen financiële waarheid. BIR-003 leidt
+Unresolved/Ignored af zonder mutable source-status; Reconciled/Reversed blijven afgeleid uit
+de toekomstige financiële linkage en B3-reversaltruth. Handmatig Ignore/RestoreFromIgnored
+is append-only met actor, reason, authoritative timestamp, monotone sequence en een
+same-entry predecessorchain.
+
+De worklist berekent uitlegbare CustomerReceipt/SupplierPayment/Other-suggestions uit
+tenant-local source-, Relation- en actuele OpenItemtruth. Prepared allocations zijn
+Application-readmodels met OpenItemId, RelationId, amount, open-balance snapshot en het
+historische control-account; zij zijn geen durable PaymentAllocation. Partial OpenItems en
+meerdere allocations binnen één Relation zijn toegestaan. Cross-Relation of een remainder
+geeft geen payment-ready plan. BIR-004 bezit pas financiële promotie, posting, settlements,
+Other en correction/re-reconciliation.
 
 B2-001A maakt `OpenItem.controlLedgerAccountId` verplichte immutable Accounting-truth.
 SalesInvoice, SalesCredit en PurchaseInvoice leveren de werkelijk geboekte AR/AP-
