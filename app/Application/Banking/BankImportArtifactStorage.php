@@ -14,5 +14,7 @@ interface BankImportArtifactStorage
 
     public function promoteToRetained(string $temporaryKey, string $retainedKey, string $expectedSha256): bool;
 
+    public function restoreToQuarantine(string $retainedKey, string $temporaryKey, string $expectedSha256): bool;
+
     public function deleteTemporary(string $storageKey): void;
 }

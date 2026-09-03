@@ -52,6 +52,17 @@ final class LaravelBankImportArtifactStorage implements BankImportArtifactStorag
         return false;
     }
 
+    public function restoreToQuarantine(string $retainedKey, string $temporaryKey, string $expectedSha256): bool
+    {
+        $disk = Storage::disk('bank_imports');
+        $bytes = $this->read($retainedKey);
+        if (! str_starts_with($retainedKey, 'retained/') || ! str_starts_with($temporaryKey, 'quarantine/') || $bytes === null || ! hash_equals($expectedSha256, hash('sha256', $bytes)) || $disk->exists($temporaryKey)) {
+            return false;
+        }
+
+        return $disk->move($retainedKey, $temporaryKey);
+    }
+
     public function deleteTemporary(string $storageKey): void
     {
         if (str_starts_with($storageKey, 'quarantine/')) {

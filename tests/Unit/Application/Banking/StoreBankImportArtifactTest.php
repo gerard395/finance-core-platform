@@ -43,6 +43,11 @@ final class StoreBankImportArtifactTest extends TestCase
                 return false;
             }
 
+            public function restoreToQuarantine(string $retainedKey, string $temporaryKey, string $expectedSha256): bool
+            {
+                return false;
+            }
+
             public function deleteTemporary(string $storageKey): void
             {
                 unset($this->files[$storageKey]);

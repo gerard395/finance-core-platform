@@ -15,5 +15,7 @@ interface AdministrationBankAccountRepository
 
     public function find(AdministrationId $administrationId, AdministrationBankAccountId $id): ?AdministrationBankAccount;
 
+    public function lock(AdministrationId $administrationId, AdministrationBankAccountId $id): ?AdministrationBankAccount;
+
     public function save(AdministrationBankAccount $account): AdministrationBankAccountWriteResult;
 }

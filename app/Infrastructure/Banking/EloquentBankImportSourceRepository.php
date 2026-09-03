@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Infrastructure\Banking;
 
 use App\Application\Banking\BankImportSourceRepository;
+use App\Application\Banking\ConfirmBankImportStatus;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Banking\Entities\BankImportBatch;
 use App\Domain\Banking\Entities\BankStatement;
@@ -28,6 +29,11 @@ use Illuminate\Support\Facades\DB;
 
 final class EloquentBankImportSourceRepository implements BankImportSourceRepository
 {
+    public function list(AdministrationId $administrationId): array
+    {
+        return DB::table('bank_import_batches')->where('administration_id', $administrationId->toString())->orderByDesc('imported_at')->orderBy('id')->pluck('id')->map(fn (string $id): BankImportBatch => $this->find($administrationId, new BankImportBatchId(new Uuid($id))))->all();
+    }
+
     public function find(AdministrationId $administrationId, BankImportBatchId $id): ?BankImportBatch
     {
         $batch = DB::table('bank_import_batches')->where('administration_id', $administrationId->toString())->where('id', $id->toString())->first();
@@ -43,22 +49,61 @@ final class EloquentBankImportSourceRepository implements BankImportSourceReposi
         return new BankImportBatch(new BankImportBatchId(new Uuid($batch->id)), new AdministrationId(new Uuid($batch->administration_id)), new AdministrationBankAccountId(new Uuid($batch->administration_bank_account_id)), SourceFormat::from($batch->source_format), CamtNamespaceVersion::from($batch->namespace_version), new OriginalFileHash($batch->original_file_hash), $batch->parser_version, new CanonicalizationVersion($batch->canonicalization_version), new UserId(new Uuid($batch->actor_id)), new DateTimeImmutable($batch->imported_at), $batch->artifact_reference, $statements);
     }
 
+    public function conflict(BankImportBatch $batch): ?ConfirmBankImportStatus
+    {
+        $base = ['administration_id' => $batch->administrationId->toString(), 'administration_bank_account_id' => $batch->bankAccountId->toString()];
+        if (DB::table('bank_import_batches')->where($base)->where('original_file_hash', $batch->originalFileHash->value)->exists()) {
+            return ConfirmBankImportStatus::DuplicateBatch;
+        }
+        foreach ($batch->statements as $statement) {
+            [$kind, $value] = $this->statementIdentity($statement, $batch);
+            if (DB::table('bank_statements')->where($base)->where('namespace_version', $batch->namespaceVersion->value)->where('source_identity_kind', $kind)->where('source_identity_value', $value)->exists()) {
+                return ConfirmBankImportStatus::DuplicateStatement;
+            }
+            foreach ($statement->entries as $entry) {
+                [$kind, $value] = $this->entryIdentity($entry, $statement, $batch);
+                if (DB::table('bank_statement_entries')->where($base)->where('deduplication_kind', $kind)->where('deduplication_value', $value)->exists()) {
+                    return ConfirmBankImportStatus::DuplicateEntry;
+                }
+            }
+        }
+
+        return null;
+    }
+
     public function insert(BankImportBatch $batch): bool
     {
         try {
-            DB::transaction(function () use ($batch): void {
-                DB::table('bank_import_batches')->insert(['id' => $batch->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'administration_bank_account_id' => $batch->bankAccountId->toString(), 'source_format' => $batch->sourceFormat->value, 'namespace_version' => $batch->namespaceVersion->value, 'original_file_hash' => $batch->originalFileHash->value, 'parser_version' => $batch->parserVersion, 'canonicalization_version' => $batch->canonicalizationVersion->value, 'actor_id' => $batch->actorId->toString(), 'imported_at' => $batch->importedAt, 'artifact_reference' => $batch->artifactReference]);
-                foreach ($batch->statements as $statement) {
-                    DB::table('bank_statements')->insert(['id' => $statement->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'bank_import_batch_id' => $batch->id->toString(), 'external_id' => $statement->externalId, 'electronic_sequence' => $statement->electronicSequence, 'account_identity' => $statement->accountIdentity, 'currency' => $statement->currency, 'opening_balance' => $statement->openingBalance?->amount(), 'closing_balance' => $statement->closingBalance?->amount(), 'period_from' => $statement->fromDate, 'period_to' => $statement->toDate, 'canonical_statement_hash' => $statement->canonicalStatementHash($batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion), 'source_ordinal' => $statement->sourceOrdinal]);
-                    foreach ($statement->entries as $entry) {
-                        DB::table('bank_statement_entries')->insert(['id' => $entry->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'bank_statement_id' => $statement->id->toString(), 'booking_date' => $entry->bookingDate, 'value_date' => $entry->valueDate, 'signed_amount' => $entry->amount->amount(), 'currency' => $entry->amount->currency()->code(), 'direction' => $entry->direction->value, 'reversal' => $entry->reversal, 'account_servicer_reference' => $entry->accountServicerReference, 'entry_reference' => $entry->entryReference, 'end_to_end_id' => $entry->endToEndId, 'counterparty_name' => $entry->counterpartyName, 'counterparty_account' => $entry->counterpartyAccount, 'remittance_lines' => json_encode($entry->remittanceLines, JSON_THROW_ON_ERROR), 'creditor_reference' => $entry->creditorReference, 'mandate_id' => $entry->mandateId, 'bank_transaction_domain' => $entry->bankTransactionDomain, 'bank_transaction_family' => $entry->bankTransactionFamily, 'bank_transaction_subfamily' => $entry->bankTransactionSubfamily, 'bank_transaction_proprietary_code' => $entry->bankTransactionProprietaryCode, 'normalized_metadata' => json_encode($entry->metadata, JSON_THROW_ON_ERROR), 'canonical_entry_hash' => $entry->canonicalEntryHash($statement->accountIdentity, $batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion), 'source_ordinal' => $entry->sourceOrdinal]);
-                    }
+            DB::table('bank_import_batches')->insert(['id' => $batch->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'administration_bank_account_id' => $batch->bankAccountId->toString(), 'source_format' => $batch->sourceFormat->value, 'namespace_version' => $batch->namespaceVersion->value, 'original_file_hash' => $batch->originalFileHash->value, 'parser_version' => $batch->parserVersion, 'canonicalization_version' => $batch->canonicalizationVersion->value, 'actor_id' => $batch->actorId->toString(), 'imported_at' => $batch->importedAt, 'artifact_reference' => $batch->artifactReference]);
+            foreach ($batch->statements as $statement) {
+                [$kind, $value] = $this->statementIdentity($statement, $batch);
+                DB::table('bank_statements')->insert(['id' => $statement->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'administration_bank_account_id' => $batch->bankAccountId->toString(), 'source_format' => $batch->sourceFormat->value, 'namespace_version' => $batch->namespaceVersion->value, 'bank_import_batch_id' => $batch->id->toString(), 'external_id' => $statement->externalId, 'electronic_sequence' => $statement->electronicSequence, 'account_identity' => $statement->accountIdentity, 'currency' => $statement->currency, 'opening_balance' => $statement->openingBalance?->amount(), 'closing_balance' => $statement->closingBalance?->amount(), 'period_from' => $statement->fromDate, 'period_to' => $statement->toDate, 'canonical_statement_hash' => $statement->canonicalStatementHash($batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion), 'source_identity_kind' => $kind, 'source_identity_value' => $value, 'source_identity_version' => $batch->canonicalizationVersion->value, 'source_ordinal' => $statement->sourceOrdinal]);
+                foreach ($statement->entries as $entry) {
+                    [$entryKind, $entryValue] = $this->entryIdentity($entry, $statement, $batch);
+                    DB::table('bank_statement_entries')->insert(['id' => $entry->id->toString(), 'administration_id' => $batch->administrationId->toString(), 'administration_bank_account_id' => $batch->bankAccountId->toString(), 'bank_statement_id' => $statement->id->toString(), 'booking_date' => $entry->bookingDate, 'value_date' => $entry->valueDate, 'signed_amount' => $entry->amount->amount(), 'currency' => $entry->amount->currency()->code(), 'direction' => $entry->direction->value, 'reversal' => $entry->reversal, 'account_servicer_reference' => $entry->accountServicerReference, 'entry_reference' => $entry->entryReference, 'end_to_end_id' => $entry->endToEndId, 'counterparty_name' => $entry->counterpartyName, 'counterparty_account' => $entry->counterpartyAccount, 'remittance_lines' => json_encode($entry->remittanceLines, JSON_THROW_ON_ERROR), 'creditor_reference' => $entry->creditorReference, 'mandate_id' => $entry->mandateId, 'bank_transaction_domain' => $entry->bankTransactionDomain, 'bank_transaction_family' => $entry->bankTransactionFamily, 'bank_transaction_subfamily' => $entry->bankTransactionSubfamily, 'bank_transaction_proprietary_code' => $entry->bankTransactionProprietaryCode, 'normalized_metadata' => json_encode($entry->metadata, JSON_THROW_ON_ERROR), 'canonical_entry_hash' => $entry->canonicalEntryHash($statement->accountIdentity, $batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion), 'deduplication_kind' => $entryKind, 'deduplication_value' => $entryValue, 'deduplication_version' => $batch->canonicalizationVersion->value, 'source_ordinal' => $entry->sourceOrdinal]);
                 }
-            });
+            }
 
             return true;
         } catch (QueryException) {
             return false;
         }
+    }
+
+    private function statementIdentity(BankStatement $statement, BankImportBatch $batch): array
+    {
+        return $statement->externalId !== null ? ['external_id', trim($statement->externalId)] : ['canonical_hash', $statement->canonicalStatementHash($batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion)];
+    }
+
+    private function entryIdentity(BankStatementEntry $entry, BankStatement $statement, BankImportBatch $batch): array
+    {
+        if ($entry->accountServicerReference !== null) {
+            return ['account_servicer_reference', trim($entry->accountServicerReference)];
+        }
+        if ($entry->entryReference !== null) {
+            return ['entry_reference', trim($entry->entryReference)];
+        }
+
+        return ['canonical_hash', $entry->canonicalEntryHash($statement->accountIdentity, $batch->namespaceVersion->value, $batch->parserVersion, $batch->canonicalizationVersion)];
     }
 }
