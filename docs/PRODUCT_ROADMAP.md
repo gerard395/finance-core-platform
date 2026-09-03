@@ -841,6 +841,15 @@ purchases is TaxCode selector-only en is exact één actieve TaxTreatmentDefinit
 authoritative voor treatment, rate, sourcefacts en legs. Import/customs, Artikel 23,
 foreign VAT reclaim, special place-of-supply en VAT-return/finalization blijven deferred.
 
+PROJECT-GAP-008 kiest daarna **BIR-000 – Align Bank Import & Reconciliation Contracts**
+als verplichte predecessor voor Bank Import & Reconciliation. CAMT.053/EUR manual
+statement-upload wordt V1; immutable sourcefacts blijven gescheiden van de bestaande
+BankTransaction en worden pas bij expliciete acceptatie atomisch gepromoveerd, geboekt en
+gekoppeld. B2 PaymentAllocation/Settlement, PostingEngine, AP PostingDate-locks en B3 full
+reversal blijven de financiële kern. MT940, CSV-profielen, PSD2/API, FX,
+overpayment/suspense en auto-posting blijven deferred. Import/customs/Artikel 23 blijft
+Purchasing-scope en VAT/ICP filing blijft afzonderlijk geparkeerd.
+
 ## Releases
 
 - **v0.1 – Platform Foundation**
