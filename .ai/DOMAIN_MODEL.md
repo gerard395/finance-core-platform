@@ -492,8 +492,8 @@ TransactionDate en expliciete PostingDate zijn verschillende feiten.
 
 BIR-001/BIR-002 voegen Administration-owned immutable CAMT.053/EUR Batch-, Statement- en
 Entry-sourcefacts toe. Import en preview creëren geen financiële waarheid. BIR-003 leidt
-Unresolved/Ignored af zonder mutable source-status; Reconciled/Reversed blijven afgeleid uit
-de toekomstige financiële linkage en B3-reversaltruth. Handmatig Ignore/RestoreFromIgnored
+Unresolved/Ignored af zonder mutable source-status; BIR-004 leidt Reconciled/Reversed
+fail-closed af uit de actuele financiële linkage en B3-reversaltruth. Handmatig Ignore/RestoreFromIgnored
 is append-only met actor, reason, authoritative timestamp, monotone sequence en een
 same-entry predecessorchain.
 
@@ -502,8 +502,12 @@ tenant-local source-, Relation- en actuele OpenItemtruth. Prepared allocations z
 Application-readmodels met OpenItemId, RelationId, amount, open-balance snapshot en het
 historische control-account; zij zijn geen durable PaymentAllocation. Partial OpenItems en
 meerdere allocations binnen één Relation zijn toegestaan. Cross-Relation of een remainder
-geeft geen payment-ready plan. BIR-004 bezit pas financiële promotie, posting, settlements,
-Other en correction/re-reconciliation.
+geeft geen payment-ready plan. BIR-004 promoot de locked source atomisch naar de bestaande
+Payment- of Other-financial graph en schrijft een append-only reconciliationattempt plus een
+afzonderlijke unieke active pointer. Reversal verwijdert alleen die pointer en behoudt de
+historische attempt; re-reconciliation vormt via `replaces` een tenant/source-lokale causale
+keten. UUID en timestamp bepalen geen volgorde. Reconciled/Reversed vereisen een complete
+Posted journal-, posting-, intent- en waar relevant SettlementReversal-graph.
 
 B2-001A maakt `OpenItem.controlLedgerAccountId` verplichte immutable Accounting-truth.
 SalesInvoice, SalesCredit en PurchaseInvoice leveren de werkelijk geboekte AR/AP-

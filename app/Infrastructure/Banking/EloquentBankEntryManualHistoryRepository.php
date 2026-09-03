@@ -66,7 +66,7 @@ final class EloquentBankEntryManualHistoryRepository implements BankEntryManualH
 
     public function hasActiveReconciliation(AdministrationId $administrationId, BankStatementEntryId $entryId): bool
     {
-        return false;
+        return DB::table('bank_entry_active_reconciliations')->where('administration_id', $administrationId->toString())->where('bank_statement_entry_id', $entryId->toString())->exists();
     }
 
     private function hydrate(object $row): BankEntryReconciliationHistory

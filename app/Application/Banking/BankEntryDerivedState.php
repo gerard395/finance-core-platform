@@ -10,4 +10,5 @@ enum BankEntryDerivedState: string
     case Ignored = 'ignored';
     case Reconciled = 'reconciled';
     case Reversed = 'reversed';
+    case FinancialStateInvalid = 'financial_state_invalid';
 }

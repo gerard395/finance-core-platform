@@ -859,7 +859,12 @@ niet durable. Financiële importpromotie, prepared PaymentAllocation-persistence
 reconciliationlinkage en source/reversalcoördinatie blijven exact BIR-004-scope. BIR-004A
 levert vooraf de typed Payment/Other-BankTransaction, atomische Other-posting,
 protected-accountpolicy en gegeneraliseerde B3-correctie zonder import- of
-reconciliationkoppeling.
+reconciliationkoppeling. BIR-004 realiseert vervolgens de atomische imported-sourcepromotie
+naar CustomerReceipt, SupplierPayment of Other, append-only causale reconciliationhistory,
+één active pointer, B3-reversalcoördinatie en veilige re-reconciliation. Payment hergebruikt
+historische OpenItem-controlaccounts, allocations en Settlements; Other blijft zonder
+OpenItem- of taxtruth. BIR-005 is de eerstvolgende grens voor Web/upload/reconciliation UX en
+permissions en is nog niet gestart.
 
 ## Releases
 
