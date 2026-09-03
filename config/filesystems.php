@@ -47,6 +47,15 @@ return [
             'report' => true,
         ],
 
+        'bank_imports' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/bank-imports'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

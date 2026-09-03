@@ -25,10 +25,15 @@ use App\Application\Administration\AdministrationSettingsReader;
 use App\Application\Administration\AdministrationSettingsUpdater;
 use App\Application\Banking\AdministrationBankAccountIdentityGenerator;
 use App\Application\Banking\AdministrationBankAccountRepository;
+use App\Application\Banking\BankImportArtifactKeyGenerator;
+use App\Application\Banking\BankImportArtifactStorage;
+use App\Application\Banking\BankImportSourceIdentityGenerator;
+use App\Application\Banking\BankImportSourceRepository;
 use App\Application\Banking\BankingOpenItemLocker;
 use App\Application\Banking\BankingPostingConfigurationReader;
 use App\Application\Banking\BankingPostingConfigurationStore;
 use App\Application\Banking\BankPostingIdentityGenerator;
+use App\Application\Banking\BankStatementParser;
 use App\Application\Banking\BankTransactionClock;
 use App\Application\Banking\BankTransactionIdentityGenerator;
 use App\Application\Banking\BankTransactionPostingRepository;
@@ -179,12 +184,17 @@ use App\Infrastructure\Accounting\LaravelAccountingPeriodPlanIdentityGenerator;
 use App\Infrastructure\Accounting\LaravelOpenItemMatchIdentityGenerator;
 use App\Infrastructure\Auth\EloquentAuthAccountStore;
 use App\Infrastructure\Auth\LaravelPasswordHasher;
+use App\Infrastructure\Banking\Camt053Parser;
 use App\Infrastructure\Banking\EloquentAdministrationBankAccountRepository;
+use App\Infrastructure\Banking\EloquentBankImportSourceRepository;
 use App\Infrastructure\Banking\EloquentBankingPostingConfiguration;
 use App\Infrastructure\Banking\EloquentBankTransactionPostingRepository;
 use App\Infrastructure\Banking\EloquentBankTransactionRepository;
 use App\Infrastructure\Banking\EloquentBankTransactionReversalRepository;
 use App\Infrastructure\Banking\LaravelAdministrationBankAccountIdentityGenerator;
+use App\Infrastructure\Banking\LaravelBankImportArtifactKeyGenerator;
+use App\Infrastructure\Banking\LaravelBankImportArtifactStorage;
+use App\Infrastructure\Banking\LaravelBankImportSourceIdentityGenerator;
 use App\Infrastructure\Banking\LaravelBankPostingIdentityGenerator;
 use App\Infrastructure\Banking\LaravelBankTransactionIdentityGenerator;
 use App\Infrastructure\Banking\LaravelBankTransactionReversalIdentityGenerator;
@@ -283,6 +293,11 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
+        $this->app->bind(BankStatementParser::class, Camt053Parser::class);
+        $this->app->bind(BankImportSourceIdentityGenerator::class, LaravelBankImportSourceIdentityGenerator::class);
+        $this->app->bind(BankImportArtifactStorage::class, LaravelBankImportArtifactStorage::class);
+        $this->app->bind(BankImportArtifactKeyGenerator::class, LaravelBankImportArtifactKeyGenerator::class);
+        $this->app->bind(BankImportSourceRepository::class, EloquentBankImportSourceRepository::class);
         $this->app->bind(UserRepository::class, EloquentUserRepository::class);
         $this->app->bind(AccountingMasterDataIdentityGenerator::class, LaravelAccountingMasterDataIdentityGenerator::class);
         $this->app->bind(LedgerAccountReadRepository::class, EloquentLedgerAccountRepository::class);
