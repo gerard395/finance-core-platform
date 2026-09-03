@@ -33,8 +33,17 @@ final readonly class AssessBankTransactionReversalEligibility
         if ($source->transaction->status() !== BankTransactionStatus::Posted) {
             return BankTransactionReversalEligibilityStatus::NotPosted;
         }
-        $allocations = $source->transaction->payment()->allocations();
-        if (! $source->financialGraphCoherent || $source->posting === null || $source->journalEntry === null || $allocations === [] || count($allocations) !== count($source->settlements)) {
+        if (! $source->financialGraphCoherent || $source->posting === null || $source->journalEntry === null) {
+            return BankTransactionReversalEligibilityStatus::FinancialStateInvalid;
+        }
+        $payment = $source->transaction->paymentOrNull();
+        if ($payment === null) {
+            return $source->settlements === []
+                ? BankTransactionReversalEligibilityStatus::Eligible
+                : BankTransactionReversalEligibilityStatus::FinancialStateInvalid;
+        }
+        $allocations = $payment->allocations();
+        if ($allocations === [] || count($allocations) !== count($source->settlements)) {
             return BankTransactionReversalEligibilityStatus::FinancialStateInvalid;
         }
         foreach ($source->settlements as $settlement) {

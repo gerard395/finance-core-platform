@@ -15,16 +15,19 @@ use App\Application\Banking\BankTransactionResult;
 use App\Application\Banking\BankTransactionReversalRepository;
 use App\Application\Banking\BankTransactionSettlementReversalLinkRepository;
 use App\Application\Banking\CancelBankTransaction;
+use App\Application\Banking\CreateAndPostOtherBankTransaction;
 use App\Application\Banking\CreateManualBankTransaction;
 use App\Application\Banking\FinalizeBankTransaction;
 use App\Application\Banking\GetBankTransactionPostingDetail;
 use App\Application\Banking\PostBankTransaction;
 use App\Application\Banking\PostBankTransactionStatus;
+use App\Application\Banking\PostOtherBankTransactionStatus;
 use App\Application\Banking\ReverseBankTransaction;
 use App\Application\Banking\ReverseBankTransactionStatus;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemSettlement;
 use App\Domain\Accounting\ValueObjects\JournalEntryId;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -44,6 +47,7 @@ use App\Domain\Shared\Finance\Currency;
 use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use DateTimeImmutable;
+use DomainException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -150,6 +154,193 @@ final class BankTransactionPersistenceTest extends TestCase
         DB::table('accounting_periods')->where('administration_id', self::A)->delete();
         self::assertSame(PostBankTransactionStatus::NoAccountingPeriod, $this->postBankTransaction()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->user()));
         self::assertSame($before, [DB::table('journal_entries')->count(), DB::table('open_item_settlements')->count(), DB::table('bank_transaction_postings')->count()]);
+    }
+
+    public function test_other_intent_posts_and_reverses_historical_journal_without_payment_or_settlement(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000001';
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4990', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $postingDate = new PostingDate(new DateTimeImmutable('2026-08-27'));
+        $result = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('100', new Currency('EUR')), $postingDate, new BankTransactionReference('OTHER-IN'), new TransactionDescription('Other incoming'), $this->user());
+
+        self::assertSame(PostOtherBankTransactionStatus::Success, $result->status);
+        self::assertNotNull($result->bankTransactionId);
+        $transaction = $this->repo()->find($this->admin(self::A), $result->bankTransactionId);
+        self::assertNull($transaction?->paymentOrNull());
+        self::assertSame($contra, $transaction?->otherIntentOrNull()?->contraLedgerAccountId()->toString());
+        self::assertSame(0, DB::table('payments')->where('bank_transaction_id', $result->bankTransactionId->toString())->count());
+        self::assertSame(0, DB::table('open_item_settlements')->where('source_journal_entry_id', DB::table('bank_transaction_postings')->where('bank_transaction_id', $result->bankTransactionId->toString())->value('journal_entry_id'))->count());
+
+        $entryId = DB::table('bank_transaction_postings')->where('bank_transaction_id', $result->bankTransactionId->toString())->value('journal_entry_id');
+        $bankLine = DB::table('journal_entry_lines')->where('journal_entry_id', $entryId)->where('ledger_account_id', str_replace('b270', 'b279', self::A))->first();
+        $contraLine = DB::table('journal_entry_lines')->where('journal_entry_id', $entryId)->where('ledger_account_id', $contra)->first();
+        self::assertSame(0, bccomp('100', (string) $bankLine?->debit_amount, 4));
+        self::assertSame(0, bccomp('100', (string) $contraLine?->credit_amount, 4));
+
+        $reversal = $this->reverse()->execute($this->admin(self::A), $result->bankTransactionId, $postingDate, new BankTransactionReversalReason('Reverse other'), $this->user());
+        self::assertSame(ReverseBankTransactionStatus::Success, $reversal->status);
+        self::assertSame(0, $reversal->success?->reversedSettlementCount);
+        self::assertSame(0, DB::table('bank_transaction_settlement_reversal_links')->where('bank_transaction_reversal_id', $reversal->success?->reversalId->toString())->count());
+        $reversalLines = DB::table('journal_entry_lines')->where('journal_entry_id', $reversal->success?->reversalJournalEntryId->toString())->get()->keyBy('ledger_account_id');
+        self::assertSame(0, bccomp('100', (string) $reversalLines[$contra]?->debit_amount, 4));
+        self::assertSame(0, bccomp('100', (string) $reversalLines[str_replace('b270', 'b279', self::A)]?->credit_amount, 4));
+        self::assertSame(ReverseBankTransactionStatus::AlreadyReversed, $this->reverse()->execute($this->admin(self::A), $result->bankTransactionId, $postingDate, new BankTransactionReversalReason('Again'), $this->user())->status);
+        self::assertSame(ReverseBankTransactionStatus::NotFound, $this->reverse()->execute($this->admin(self::B), $result->bankTransactionId, $postingDate, new BankTransactionReversalReason('Cross tenant'), $this->user())->status);
+
+        $outgoing = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('-40', new Currency('EUR')), $postingDate, new BankTransactionReference('OTHER-OUT'), new TransactionDescription('Other outgoing'), $this->user());
+        self::assertSame(PostOtherBankTransactionStatus::Success, $outgoing->status);
+        $outgoingEntry = DB::table('bank_transaction_postings')->where('bank_transaction_id', $outgoing->bankTransactionId?->toString())->value('journal_entry_id');
+        $outgoingLines = DB::table('journal_entry_lines')->where('journal_entry_id', $outgoingEntry)->get()->keyBy('ledger_account_id');
+        self::assertSame(0, bccomp('40', (string) $outgoingLines[$contra]?->debit_amount, 4));
+        self::assertSame(0, bccomp('40', (string) $outgoingLines[str_replace('b270', 'b279', self::A)]?->credit_amount, 4));
+        $outgoingReversal = $this->reverse()->execute($this->admin(self::A), $outgoing->bankTransactionId, $postingDate, new BankTransactionReversalReason('Reverse outgoing'), $this->user());
+        self::assertSame(ReverseBankTransactionStatus::Success, $outgoingReversal->status);
+        $outgoingReversalLines = DB::table('journal_entry_lines')->where('journal_entry_id', $outgoingReversal->success?->reversalJournalEntryId->toString())->get()->keyBy('ledger_account_id');
+        self::assertSame(0, bccomp('40', (string) $outgoingReversalLines[str_replace('b270', 'b279', self::A)]?->debit_amount, 4));
+        self::assertSame(0, bccomp('40', (string) $outgoingReversalLines[$contra]?->credit_amount, 4));
+    }
+
+    public function test_other_outgoing_and_typed_denials_are_side_effect_free(): void
+    {
+        $contraA = 'b27a0000-0000-4000-8000-000000000002';
+        $contraB = 'b27a0000-0000-4000-8000-000000000003';
+        foreach ([[self::A, $contraA], [self::B, $contraB]] as [$admin, $contra]) {
+            DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => $admin, 'code' => '4991', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        }
+        $post = $this->app->make(CreateAndPostOtherBankTransaction::class);
+        $date = new PostingDate(new DateTimeImmutable('2026-08-27'));
+        $arguments = [$this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contraA)), new Money('-25', new Currency('EUR')), $date, new BankTransactionReference('OTHER-OUT'), new TransactionDescription('Other outgoing'), $this->user()];
+        self::assertSame(PostOtherBankTransactionStatus::MissingPostingConfiguration, $post->execute(...$arguments)->status);
+        self::assertSame(0, DB::table('bank_transactions')->count());
+
+        $this->configure(self::A);
+        self::assertSame(PostOtherBankTransactionStatus::InvalidContraAccount, $post->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contraB)), new Money('-25', new Currency('EUR')), $date, new BankTransactionReference('CROSS'), new TransactionDescription('Cross'), $this->user())->status);
+        self::assertSame(PostOtherBankTransactionStatus::InvalidContraAccount, $post->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid(str_replace('b270', 'b279', self::A))), new Money('-25', new Currency('EUR')), $date, new BankTransactionReference('PROTECTED'), new TransactionDescription('Protected'), $this->user())->status);
+        self::assertSame(PostOtherBankTransactionStatus::NotFound, $post->execute($this->admin(self::A), $this->bank(self::B), new LedgerAccountId(new Uuid($contraA)), new Money('-25', new Currency('EUR')), $date, new BankTransactionReference('BANK'), new TransactionDescription('Cross bank'), $this->user())->status);
+
+        DB::table('accounting_periods')->where('administration_id', self::A)->update(['status' => 'closed']);
+        self::assertSame(PostOtherBankTransactionStatus::PeriodClosed, $post->execute(...$arguments)->status);
+        DB::table('accounting_periods')->where('administration_id', self::A)->delete();
+        self::assertSame(PostOtherBankTransactionStatus::NoAccountingPeriod, $post->execute(...$arguments)->status);
+        self::assertSame(0, DB::table('bank_transactions')->count());
+        self::assertSame(0, DB::table('journal_entries')->where('journal_id', str_replace('b270', 'b278', self::A))->count());
+    }
+
+    public function test_other_posting_rolls_back_transaction_intent_and_journal_on_failure(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000004';
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4992', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $journals = $this->createMock(JournalEntryStore::class);
+        $journals->method('append')->willThrowException(new \RuntimeException('Forced journal failure.'));
+        $this->app->instance(JournalEntryStore::class, $journals);
+
+        $result = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('10', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReference('ROLLBACK'), new TransactionDescription('Rollback'), $this->user());
+
+        self::assertSame(PostOtherBankTransactionStatus::PostingFailure, $result->status);
+        self::assertSame(0, DB::table('bank_transactions')->count());
+        self::assertSame(0, DB::table('other_bank_transaction_intents')->count());
+        self::assertSame(0, DB::table('bank_transaction_postings')->count());
+    }
+
+    public function test_real_mysql_double_other_post_has_one_coherent_financial_truth(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000005';
+        $transactionId = new BankTransactionId(new Uuid('b27a0000-0000-4000-8000-000000000006'));
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4993', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $operation = fn (): string => $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('10', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReference('CONCURRENT'), new TransactionDescription('Concurrent'), $this->user(), $transactionId)->status->name;
+
+        $results = $this->runConcurrentBankOperations($operation, $operation);
+        sort($results);
+
+        self::assertSame(['AlreadyPosted', 'Success'], $results);
+        self::assertSame(1, DB::table('bank_transactions')->where('id', $transactionId->toString())->count());
+        self::assertSame(1, DB::table('other_bank_transaction_intents')->where('bank_transaction_id', $transactionId->toString())->count());
+        self::assertSame(1, DB::table('bank_transaction_postings')->where('bank_transaction_id', $transactionId->toString())->count());
+        $this->cleanupCommittedFixtures();
+    }
+
+    public function test_real_mysql_double_other_reversal_has_one_typed_winner_and_one_durable_contra(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000007';
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4994', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $posted = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('30', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReference('REV-RACE'), new TransactionDescription('Reversal race'), $this->user());
+        self::assertSame(PostOtherBankTransactionStatus::Success, $posted->status);
+        $transactionId = $posted->bankTransactionId;
+        self::assertNotNull($transactionId);
+        $operation = fn (): string => $this->reverse()->execute($this->admin(self::A), $transactionId, new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReversalReason('Concurrent reversal'), $this->user())->status->name;
+
+        $results = $this->runConcurrentBankOperations($operation, $operation);
+        sort($results);
+
+        self::assertSame(['AlreadyReversed', 'Success'], $results);
+        self::assertSame(1, DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $transactionId->toString())->count());
+        self::assertSame(0, DB::table('bank_transaction_settlement_reversal_links')->count());
+        self::assertSame('posted', DB::table('bank_transactions')->where('id', $transactionId->toString())->value('status'));
+        self::assertSame(1, DB::table('journal_entries')->where('reference', 'REV-'.$transactionId->toString())->count());
+        $entries = [DB::table('bank_transaction_postings')->where('bank_transaction_id', $transactionId->toString())->value('journal_entry_id'), DB::table('bank_transaction_reversals')->where('original_bank_transaction_id', $transactionId->toString())->value('reversal_journal_entry_id')];
+        foreach ($entries as $entry) {
+            self::assertSame(0, bccomp((string) DB::table('journal_entry_lines')->where('journal_entry_id', $entry)->sum('debit_amount'), (string) DB::table('journal_entry_lines')->where('journal_entry_id', $entry)->sum('credit_amount'), 4));
+        }
+        $this->cleanupCommittedFixtures();
+    }
+
+    public function test_failure_after_bank_transaction_row_rolls_back_before_other_intent(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000008';
+        $identity = new BankTransactionId(new Uuid('b27a0000-0000-4000-8000-000000000009'));
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4995', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $failing = $this->createMock(BankTransactionRepository::class);
+        $failing->method('find')->willReturn(null);
+        $failing->method('save')->willReturnCallback(static function (BankTransaction $transaction): void {
+            DB::table('bank_transactions')->insert(['id' => $transaction->id()->toString(), 'administration_id' => $transaction->administrationId()->toString(), 'administration_bank_account_id' => $transaction->bankAccountId()->toString(), 'transaction_date' => $transaction->transactionDate()->value()->format('Y-m-d'), 'amount' => $transaction->amount()->amount(), 'currency' => 'EUR', 'reference' => $transaction->reference()->value(), 'description' => $transaction->description()->value(), 'status' => $transaction->status()->value, 'created_by' => $transaction->createdBy()->toString(), 'created_at' => $transaction->createdAt(), 'finalized_by' => $transaction->finalizedBy()?->toString(), 'finalized_at' => $transaction->finalizedAt(), 'posted_by' => null, 'posted_at' => null]);
+            throw new \RuntimeException('Forced failure before Other intent persistence.');
+        });
+        $this->app->instance(BankTransactionRepository::class, $failing);
+
+        $result = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('10', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReference('ROW-FAIL'), new TransactionDescription('Row failure'), $this->user(), $identity);
+
+        self::assertSame(PostOtherBankTransactionStatus::PostingFailure, $result->status);
+        self::assertSame(0, DB::table('bank_transactions')->where('id', $identity->toString())->count());
+        self::assertSame(0, DB::table('other_bank_transaction_intents')->where('bank_transaction_id', $identity->toString())->count());
+        self::assertSame(0, DB::table('bank_transaction_postings')->where('bank_transaction_id', $identity->toString())->count());
+        self::assertSame(0, DB::table('journal_entries')->where('reference', 'ROW-FAIL')->count());
+    }
+
+    public function test_corrupt_both_and_no_intent_states_fail_closed_for_repository_and_b3(): void
+    {
+        $this->configure(self::A);
+        $contra = 'b27a0000-0000-4000-8000-000000000010';
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::A, 'code' => '4996', 'name' => 'Other', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $posted = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute($this->admin(self::A), $this->bank(self::A), new LedgerAccountId(new Uuid($contra)), new Money('15', new Currency('EUR')), new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReference('CORRUPT'), new TransactionDescription('Corrupt'), $this->user());
+        $id = $posted->bankTransactionId;
+        self::assertNotNull($id);
+        $beforeJournals = DB::table('journal_entries')->count();
+        DB::table('payments')->insert(['id' => 'b27a0000-0000-4000-8000-000000000011', 'administration_id' => self::A, 'bank_transaction_id' => $id->toString(), 'relation_id' => $this->relation(self::A)->toString(), 'type' => 'customer_receipt', 'amount' => '15', 'currency' => 'EUR']);
+
+        try {
+            $this->repo()->find($this->admin(self::A), $id);
+            self::fail('Repository selected one of two persisted intents.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+        self::assertSame(ReverseBankTransactionStatus::FinancialStateInvalid, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReversalReason('Corrupt both'), $this->user())->status);
+        self::assertSame($beforeJournals, DB::table('journal_entries')->count());
+
+        DB::table('payments')->where('bank_transaction_id', $id->toString())->delete();
+        DB::table('other_bank_transaction_intents')->where('bank_transaction_id', $id->toString())->delete();
+        try {
+            $this->repo()->find($this->admin(self::A), $id);
+            self::fail('Repository reconstituted a transaction without intent.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+        self::assertSame(ReverseBankTransactionStatus::FinancialStateInvalid, $this->reverse()->execute($this->admin(self::A), $id, new PostingDate(new DateTimeImmutable('2026-08-27')), new BankTransactionReversalReason('Corrupt none'), $this->user())->status);
+        self::assertSame($beforeJournals, DB::table('journal_entries')->count());
     }
 
     public function test_supplier_payment_uses_historical_payable_control_account(): void
@@ -768,6 +959,7 @@ final class BankTransactionPersistenceTest extends TestCase
         DB::table('journal_entry_lines')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('payment_allocations')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('payments')->whereIn('administration_id', [self::A, self::B])->delete();
+        DB::table('other_bank_transaction_intents')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('bank_transactions')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('banking_posting_configurations')->whereIn('administration_id', [self::A, self::B])->delete();
         DB::table('open_items')->whereIn('administration_id', [self::A, self::B])->delete();

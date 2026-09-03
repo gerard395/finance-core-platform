@@ -95,7 +95,7 @@ Iedere TaxCode heeft precies één actief TaxRate. Fiscal maakt geen JournalEntr
 
 ### Capability Banking
 
-Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `BankTransaction` is de Aggregate Root en primaire financiële gebeurtenis; het aggregate beheert nul, één of meerdere `Payment` child entities. Iedere Payment verwijst naar precies één `OpenItem` uit Accounting.
+Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `BankTransaction` is de Aggregate Root en primaire financiële gebeurtenis. Het aggregate bezit exact één typed intent: Payment met allocations naar OpenItems, of Other met één contra-LedgerAccount en zonder OpenItem-afwikkeling.
 
 De frameworkonafhankelijke domain service `Matching` telt bestaande Payment-allocaties exact op met `Money` en vergelijkt die som met het absolute BankTransaction-bedrag. Alleen een Imported transactie met minimaal één volledig passende allocatie wordt Matched. Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
 
@@ -855,8 +855,11 @@ immutable tenant-scoped sourcefacts, statementbalancecontrole en idempotente Con
 BIR-003 voegt de afgeleide Unresolved/Ignored-worklist, append-only Ignore/Restore-history en
 deterministische, uitlegbare CustomerReceipt/SupplierPayment/Other-suggestions toe. Prepared
 allocations ondersteunen partial OpenItems en meerdere targets binnen één Relation, maar zijn
-niet durable. Financiële BankTransaction-/Payment-promotie, PostingEngine, Settlements,
-Other-posting en B3-correctie blijven exact BIR-004-scope.
+niet durable. Financiële importpromotie, prepared PaymentAllocation-persistence,
+reconciliationlinkage en source/reversalcoördinatie blijven exact BIR-004-scope. BIR-004A
+levert vooraf de typed Payment/Other-BankTransaction, atomische Other-posting,
+protected-accountpolicy en gegeneraliseerde B3-correctie zonder import- of
+reconciliationkoppeling.
 
 ## Releases
 

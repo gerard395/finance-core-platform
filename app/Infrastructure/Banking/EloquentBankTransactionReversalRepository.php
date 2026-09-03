@@ -73,9 +73,10 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
             return null;
         }
         $reversal = $this->findByOriginal($administrationId, $bankTransactionId, $forUpdate);
-        if ($forUpdate) {
+        $payment = $transaction->paymentOrNull();
+        if ($forUpdate && $payment !== null) {
             DB::table('payments')->where('administration_id', $administrationId->toString())->where('bank_transaction_id', $bankTransactionId->toString())->lockForUpdate()->get();
-            DB::table('payment_allocations')->where('administration_id', $administrationId->toString())->where('payment_id', $transaction->payment()->id()->toString())->orderBy('id')->lockForUpdate()->get();
+            DB::table('payment_allocations')->where('administration_id', $administrationId->toString())->where('payment_id', $payment->id()->toString())->orderBy('id')->lockForUpdate()->get();
         }
         $postingQuery = DB::table('bank_transaction_postings')->where('administration_id', $administrationId->toString())->where('bank_transaction_id', $bankTransactionId->toString());
         if ($forUpdate) {
@@ -86,7 +87,7 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
         $journal = $posting === null ? null : $this->journal($administrationId, $posting->journalEntryId, $forUpdate);
         $settlements = [];
         $coherent = $posting !== null && $journal !== null && $journal->isPosted() && $journal->id()->toString() === $posting->journalEntryId->toString();
-        foreach ($transaction->payment()->allocations() as $allocation) {
+        foreach ($payment?->allocations() ?? [] as $allocation) {
             $query = DB::table('open_item_settlements')->where('administration_id', $administrationId->toString())->where('payment_allocation_id', $allocation->id()->toString());
             $rows = $query->get();
             if ($rows->count() !== 1) {
@@ -103,7 +104,7 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
         }
         if ($reversal !== null) {
             $links = $this->findByReversal($administrationId, $reversal->id, $forUpdate);
-            $coherent = $coherent && count($links) === count($settlements) && count($links) === count($transaction->payment()->allocations());
+            $coherent = $coherent && count($links) === count($settlements) && count($links) === count($payment?->allocations() ?? []);
             $sourceByAllocation = [];
             foreach ($settlements as $source) {
                 $sourceByAllocation[$source->paymentAllocationId->toString()] = $source;
@@ -115,6 +116,21 @@ final readonly class EloquentBankTransactionReversalRepository implements BankTr
                     $coherent = false;
                 }
             }
+        }
+        $other = $transaction->otherIntentOrNull();
+        if ($other !== null && $journal !== null) {
+            $contraLines = array_values(array_filter(
+                $journal->lines(),
+                static fn (JournalEntryLine $line): bool => $line->ledgerAccountId()->equals($other->contraLedgerAccountId()),
+            ));
+            $contraLine = $contraLines[0] ?? null;
+            $expectedAmount = $transaction->amount()->absolute();
+            $contraAmount = $transaction->amount()->isPositive() ? $contraLine?->credit() : $contraLine?->debit();
+            $coherent = $coherent
+                && count($journal->lines()) === 2
+                && count($contraLines) === 1
+                && $contraAmount?->equals($expectedAmount) === true
+                && $settlements === [];
         }
 
         return new BankTransactionReversalSource($transaction, $posting, $journal, $settlements, $reversal, $coherent);
