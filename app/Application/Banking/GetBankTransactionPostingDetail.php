@@ -26,7 +26,7 @@ final readonly class GetBankTransactionPostingDetail
         }
 
         $settlements = [];
-        foreach ($transaction->payment()->allocations() as $allocation) {
+        foreach ($transaction->paymentOrNull()?->allocations() ?? [] as $allocation) {
             $settlementAmount = $this->postings->settlementAmount($administrationId, $allocation->id());
             $openItem = $this->openItems->findForAdministration($administrationId, $allocation->openItemId());
             if ($settlementAmount === null || $openItem === null) {

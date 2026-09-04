@@ -12,10 +12,13 @@ use App\Http\Controllers\AccountingPeriodController;
 use App\Http\Controllers\AdministrationSelectionController;
 use App\Http\Controllers\AdministrationSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
+use App\Http\Controllers\Banking\BankImportController;
 use App\Http\Controllers\Banking\BankPaymentController;
 use App\Http\Controllers\Banking\BankPaymentLifecycleController;
 use App\Http\Controllers\Banking\BankPaymentPostingController;
 use App\Http\Controllers\Banking\BankPaymentReversalController;
+use App\Http\Controllers\Banking\BankReconciliationController;
+use App\Http\Controllers\Banking\ImportedBankEntryReversalController;
 use App\Http\Controllers\BankingSettingsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\Purchasing\PurchaseCreditController;
@@ -111,6 +114,20 @@ Route::post('/banking/payments/{payment}/finalize', [BankPaymentLifecycleControl
 Route::post('/banking/payments/{payment}/post', BankPaymentPostingController::class)->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::PostPayments)])->name('banking.payments.post');
 Route::get('/banking/payments/{payment}/reverse', [BankPaymentReversalController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View), EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.payments.reverse.create');
 Route::post('/banking/payments/{payment}/reverse', [BankPaymentReversalController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.payments.reverse.store');
+
+Route::get('/bank/import', [BankImportController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ImportUpload)])->name('banking.import.create');
+Route::post('/bank/import/preview', [BankImportController::class, 'preview'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ImportUpload)])->name('banking.import.preview');
+Route::post('/bank/import/confirm', [BankImportController::class, 'confirm'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ImportUpload)])->name('banking.import.confirm');
+Route::get('/bank/import/batches', [BankImportController::class, 'batches'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.import.batches.index');
+Route::get('/bank/import/batches/{batch}', [BankImportController::class, 'batch'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.import.batches.show');
+Route::get('/bank/import/statements/{statement}', [BankImportController::class, 'statement'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.import.statements.show');
+Route::get('/bank/reconciliation', [BankReconciliationController::class, 'index'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.reconciliation.index');
+Route::get('/bank/reconciliation/{entry}', [BankReconciliationController::class, 'show'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View)])->name('banking.reconciliation.show');
+Route::post('/bank/reconciliation/{entry}/ignore', [BankReconciliationController::class, 'ignore'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::Reconcile)])->name('banking.reconciliation.ignore');
+Route::post('/bank/reconciliation/{entry}/restore', [BankReconciliationController::class, 'restore'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::Reconcile)])->name('banking.reconciliation.restore');
+Route::post('/bank/reconciliation/{entry}/post', [BankReconciliationController::class, 'post'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::Reconcile), EnsureBankingPermission::using(BankingPermission::ImportPost)])->name('banking.reconciliation.post');
+Route::get('/bank/reconciliation/{entry}/reverse', [ImportedBankEntryReversalController::class, 'create'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::View), EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.reconciliation.reverse.create');
+Route::post('/bank/reconciliation/{entry}/reverse', [ImportedBankEntryReversalController::class, 'store'])->middleware(['auth', 'domain.active', 'administration.active', EnsureBankingPermission::using(BankingPermission::ReversePayments)])->name('banking.reconciliation.reverse.store');
 
 Route::get('/settings/administration', [AdministrationSettingsController::class, 'edit'])
     ->middleware(['auth', 'domain.active', 'administration.active', EnsureAdministrationPermission::using(AdministrationPermission::UpdateSettings)])

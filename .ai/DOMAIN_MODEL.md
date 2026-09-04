@@ -417,7 +417,8 @@ expliciet deferred scope blijft buiten V1.
 | BankAccount | Een financiële rekening identificeren | Een rekening voor het ontvangen, bewaren en uitbetalen van geld. |
 | BankStatement | Een aangeleverd rekeningoverzicht representeren | Een overzicht van bankmutaties over een bepaald tijdvak. |
 | BankTransaction | Eén bankmutatie vastleggen | Een bij- of afschrijving met bedrag, datum en omschrijving. |
-| Payment | Een bankmutatie interpreteren | Exact één positief EUR Payment-child per manual BankTransaction, met meerdere OpenItem-allocations. |
+| Payment | Een bankmutatie interpreteren | Positief EUR Payment-intent met meerdere OpenItem-allocations. |
+| OtherBankTransactionIntent | Een overige bankmutatie interpreteren | Eén positief EUR bedrag en exact één contra-LedgerAccount, zonder OpenItem-afwikkeling. |
 
 ### Banking Capability
 
@@ -425,10 +426,11 @@ expliciet deferred scope blijft buiten V1.
 
 | Aggregate Root | Child Entity | Verantwoordelijkheid |
 | --- | --- | --- |
-| BankTransaction | Payment, PaymentAllocation | Een bankmutatie als primaire financiële gebeurtenis en haar allocatie-intent beheren. |
+| BankTransaction | Payment, PaymentAllocation, OtherBankTransactionIntent | Een bankmutatie als primaire financiële gebeurtenis en exact één financiële intent beheren. |
 
-Een manual BankTransaction bevat exact één Payment. Payment en diens allocations zijn
-children en worden uitsluitend via de BankTransaction Aggregate Root beheerd.
+Een BankTransaction bevat exact één typed intent: Payment of Other. Payment en diens
+allocations of de afzonderlijke Other-intent zijn children en worden uitsluitend via de
+BankTransaction Aggregate Root beheerd.
 
 #### Domain Service
 
@@ -437,14 +439,16 @@ children en worden uitsluitend via de BankTransaction Aggregate Root beheerd.
 #### Businessregels
 
 - BankTransaction is binnen Banking de primaire financiële gebeurtenis.
-- Een manual BankTransaction bevat exact één Payment met nul of meer Draft-allocations.
+- Een Payment-backed BankTransaction bevat exact één Payment met nul of meer Draft-allocations; Other bevat exact één contra-account en geen Payment.
 - Iedere allocation behoort tot precies één OpenItem; targets zijn uniek binnen Payment.
 - Payment- en allocationbedragen zijn strikt positief EUR; het transactionbedrag is signed.
 - Draft is wijzigbaar; Finalized bevriest movement, Payment en allocations.
 - Finalize vereist minimaal één allocation en vergelijkt de exacte som met het absolute BankTransaction-bedrag.
 - Finalize valideert OpenItem-readiness maar maakt geen JournalEntry of Settlement.
 - Alle financiële boekingen verlopen uitsluitend via Accounting en `PostingEngine`.
-- Banking bevat geen UI-, import-, reconciliation- of PSD2-logica.
+- Banking Domain bevat geen UI-, parser-, persistence- of PSD2-logica. Immutable
+  bankimportsources, reconciliationhistory en matchingcontracten blijven van financiële
+  BankTransaction-/Payment-truth gescheiden; Application orkestreert deze grenzen.
 
 #### Architectuurregels
 
@@ -483,6 +487,27 @@ accountheuristiek.
 B2 V1 is EUR-only, vereist volledige allocation van het absolute bankbedrag en kent
 geen unallocated remainder, overpayment/suspense, import, reconciliation of FX.
 TransactionDate en expliciete PostingDate zijn verschillende feiten.
+
+### BIR immutable source en reconciliation worklist
+
+BIR-001/BIR-002 voegen Administration-owned immutable CAMT.053/EUR Batch-, Statement- en
+Entry-sourcefacts toe. Import en preview creëren geen financiële waarheid. BIR-003 leidt
+Unresolved/Ignored af zonder mutable source-status; BIR-004 leidt Reconciled/Reversed
+fail-closed af uit de actuele financiële linkage en B3-reversaltruth. Handmatig Ignore/RestoreFromIgnored
+is append-only met actor, reason, authoritative timestamp, monotone sequence en een
+same-entry predecessorchain.
+
+De worklist berekent uitlegbare CustomerReceipt/SupplierPayment/Other-suggestions uit
+tenant-local source-, Relation- en actuele OpenItemtruth. Prepared allocations zijn
+Application-readmodels met OpenItemId, RelationId, amount, open-balance snapshot en het
+historische control-account; zij zijn geen durable PaymentAllocation. Partial OpenItems en
+meerdere allocations binnen één Relation zijn toegestaan. Cross-Relation of een remainder
+geeft geen payment-ready plan. BIR-004 promoot de locked source atomisch naar de bestaande
+Payment- of Other-financial graph en schrijft een append-only reconciliationattempt plus een
+afzonderlijke unieke active pointer. Reversal verwijdert alleen die pointer en behoudt de
+historische attempt; re-reconciliation vormt via `replaces` een tenant/source-lokale causale
+keten. UUID en timestamp bepalen geen volgorde. Reconciled/Reversed vereisen een complete
+Posted journal-, posting-, intent- en waar relevant SettlementReversal-graph.
 
 B2-001A maakt `OpenItem.controlLedgerAccountId` verplichte immutable Accounting-truth.
 SalesInvoice, SalesCredit en PurchaseInvoice leveren de werkelijk geboekte AR/AP-
@@ -743,7 +768,9 @@ maar berekent of schrijft zelf geen financiële waarheid en biedt geen paymentfl
 
 ## 11. Banking – atomische cash settlement
 
-`BankTransaction` bezit exact één Payment met PaymentAllocation-children. Finalize
+Een Payment-backed `BankTransaction` bezit exact één Payment met
+PaymentAllocation-children. Een Other-backed BankTransaction bezit in plaats daarvan exact
+één contra-account en heeft geen Allocation, Settlement of OpenItem. Finalize
 bevriest allocaties maar reserveert geen OpenItem-saldo. `PostBankTransaction` lockt de
 tenant-scoped transaction en daarna unieke OpenItems deterministisch, herleest actuele
 settlements en matches en valideert EUR, Relation, type/side, open saldo en het
@@ -763,9 +790,9 @@ geen eligibility, controlaccount, saldo of financiële boeking. View, Manage en 
 afzonderlijke effective permissions. Posted blijft immutable en wordt als JournalEntry-
 linkage plus Settlement- en remaining-balance-afleidingen gepresenteerd.
 
-### Bank Payment Reversal
+### BankTransaction Reversal
 
-Een B3 Bank Payment Reversal corrigeert exact één `Posted` handmatige BankTransaction
+Een B3 BankTransaction Reversal corrigeert exact één `Posted` BankTransaction
 volledig en atomisch. De original en al haar Payment-, allocation-, posting-, Journal-
 en Applied Settlement-facts blijven immutable en haar status blijft `Posted`;
 `Teruggedraaid` is uitsluitend afgeleid uit de unieke tenant-scoped
@@ -776,7 +803,9 @@ partieel vooraf gereversede sourcefacts zonder linkage zijn `FinancialStateInval
 
 De ene contra-JournalEntry spiegelt iedere originele line debit/credit op exact de
 historische Journal en LedgerAccountIds. Rename/inactive verandert die identity niet;
-actuele BankingPostingConfiguration wordt niet gebruikt. Omdat de bankposting geen
+actuele BankingPostingConfiguration wordt niet gebruikt. Payment-backed sources reversen
+hun Settlements; Other-backed sources hebben geen Payment of Settlement en reversen alleen
+de historische Journal. Omdat de bankposting geen
 fiscale bron is, ontstaat geen TaxPosting. Iedere originele allocation-identiteit leidt
 naar precies haar Applied Settlement; per fact ontstaat één full-amount append-only
 Reversal. Een Banking-owned reversal-settlementlinkage verbindt reversalbatch,

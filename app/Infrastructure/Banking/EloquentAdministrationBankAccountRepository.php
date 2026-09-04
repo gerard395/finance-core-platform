@@ -33,6 +33,13 @@ final class EloquentAdministrationBankAccountRepository implements Administratio
         return $record === null ? null : $this->hydrate($record);
     }
 
+    public function lock(AdministrationId $administrationId, AdministrationBankAccountId $id): ?AdministrationBankAccount
+    {
+        $record = AdministrationBankAccountRecord::query()->where('administration_id', $administrationId->toString())->whereKey($id->toString())->lockForUpdate()->first();
+
+        return $record === null ? null : $this->hydrate($record);
+    }
+
     public function save(AdministrationBankAccount $account): AdministrationBankAccountWriteResult
     {
         $attributes = ['id' => $account->id()->toString(), 'administration_id' => $account->administrationId()->toString(), 'iban' => $account->iban()->value(), 'bic' => $account->bic()?->value(), 'account_holder' => $account->accountHolder()->value(), 'label' => $account->label()->value(), 'currency' => $account->currency()->code(), 'status' => $account->status()->value];

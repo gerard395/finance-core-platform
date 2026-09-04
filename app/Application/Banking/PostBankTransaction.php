@@ -36,6 +36,8 @@ final readonly class PostBankTransaction
                 $tx = $this->transactionsRepo->find($admin, $id, true);
                 if ($tx === null) {
                     return PostBankTransactionStatus::NotFound;
+                }if ($tx->paymentOrNull() === null) {
+                    return PostBankTransactionStatus::InvalidState;
                 }$linked = $this->linkages->exists($admin, $id);
                 if ($tx->status() === BankTransactionStatus::Posted) {
                     return $linked ? PostBankTransactionStatus::AlreadyPosted : PostBankTransactionStatus::FinancialStateInvalid;

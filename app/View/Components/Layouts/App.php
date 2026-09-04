@@ -30,6 +30,8 @@ final class App extends Component
 
     public readonly bool $canViewAccountingPeriods;
 
+    public readonly bool $canUploadBankImports;
+
     public function __construct(
         public readonly User $domainUser,
         public readonly ActiveAdministrationContext $administrationContext,
@@ -51,6 +53,10 @@ final class App extends Component
         $this->canViewBanking = $permissionAuthorizer->allows(
             $administrationContext->permissionIds,
             BankingPermission::View->id(),
+        );
+        $this->canUploadBankImports = $permissionAuthorizer->allows(
+            $administrationContext->permissionIds,
+            BankingPermission::ImportUpload->id(),
         );
         $this->canViewAccountingPeriods = $permissionAuthorizer->allows(
             $administrationContext->permissionIds,

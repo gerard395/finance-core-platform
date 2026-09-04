@@ -7,11 +7,8 @@ namespace Tests\Integration\Application\Purchasing;
 use App\Application\Accounting\OpenItemMatchAppendResult;
 use App\Application\Accounting\OpenItemMatchPair;
 use App\Application\Accounting\OpenItemMatchRepository;
-use App\Application\Banking\BankTransactionAllocationInput;
-use App\Application\Banking\BankTransactionResult;
-use App\Application\Banking\CreateManualBankTransaction;
-use App\Application\Banking\FinalizeBankTransaction;
-use App\Application\Banking\PostBankTransaction;
+use App\Application\Banking\PreparedPaymentAllocation;
+use App\Application\Banking\ReconcileAndPostBankStatementEntry;
 use App\Application\Purchasing\CancelPurchaseCreditInvoice;
 use App\Application\Purchasing\CreatePurchaseCreditInvoice;
 use App\Application\Purchasing\FinalizePurchaseCreditInvoice;
@@ -26,14 +23,12 @@ use App\Application\Purchasing\PurchaseCreditPostingRepository;
 use App\Application\Purchasing\UpdateDraftPurchaseCreditInvoice;
 use App\Domain\Accounting\Entities\OpenItem;
 use App\Domain\Accounting\Entities\OpenItemMatch;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\ValueObjects\AdministrationId;
-use App\Domain\Banking\ValueObjects\AdministrationBankAccountId;
-use App\Domain\Banking\ValueObjects\BankTransactionReference;
-use App\Domain\Banking\ValueObjects\PaymentAllocationId;
-use App\Domain\Banking\ValueObjects\TransactionDate;
-use App\Domain\Banking\ValueObjects\TransactionDescription;
+use App\Domain\Banking\Enums\BankEntryReconciliationIntent;
+use App\Domain\Banking\ValueObjects\BankStatementEntryId;
 use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Purchasing\Enums\PurchaseCreditInvoiceStatus;
 use App\Domain\Purchasing\ValueObjects\PurchaseCreditInvoiceNumber;
@@ -291,23 +286,24 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         }
         $credit = $this->app->make(CreatePurchaseCreditInvoice::class)->execute($this->admin(), $this->input('PCR-PAY-RACE-'.$paymentAmount), $this->actor());
         $this->app->make(FinalizePurchaseCreditInvoice::class)->execute($this->admin(), $credit->id, $this->actor());
-        [$created, $bankId] = $this->app->make(CreateManualBankTransaction::class)->execute($this->admin(), new AdministrationBankAccountId(new Uuid(self::BANK_ACCOUNT)), new TransactionDate(new DateTimeImmutable('2026-08-26')), new Money('-'.$paymentAmount, new Currency('EUR')), new BankTransactionReference('PAY-RACE-'.$paymentAmount), new TransactionDescription('Supplier payment race'), new RelationId(new Uuid(self::RELATION)), $this->actor(), [new BankTransactionAllocationInput(new PaymentAllocationId(new Uuid($paymentAmount === '121' ? 'a1000000-0000-4000-8000-000000000093' : 'a1000000-0000-4000-8000-000000000094')), new OpenItemId(new Uuid(self::OPEN_ITEM)), new Money($paymentAmount, new Currency('EUR')))]);
-        self::assertSame(BankTransactionResult::Success, $created);
-        self::assertSame(BankTransactionResult::Success, $this->app->make(FinalizeBankTransaction::class)->execute($this->admin(), $bankId, $this->actor()));
+        $sourceId = $this->importedPaymentSource($paymentAmount);
 
         DB::commit();
-        $results = $this->forkResults('pc-payment-race-', function (int $index) use ($credit, $bankId): string {
+        $results = $this->forkResults('pc-payment-race-', function (int $index) use ($credit, $sourceId, $paymentAmount): string {
             if ($index === 0) {
                 return 'credit:'.$this->app->make(PostPurchaseCreditInvoice::class)->execute($this->admin(), $credit->id, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor())->status->name;
             }
 
-            return 'payment:'.$this->app->make(PostBankTransaction::class)->execute($this->admin(), $bankId, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor())->name;
+            $allocation = new PreparedPaymentAllocation(new OpenItemId(new Uuid(self::OPEN_ITEM)), new RelationId(new Uuid(self::RELATION)), new LedgerAccountId(new Uuid(self::AP)), new Money($paymentAmount, new Currency('EUR')), new Money('121', new Currency('EUR')), []);
+
+            return 'payment:'.$this->app->make(ReconcileAndPostBankStatementEntry::class)->execute($this->admin(), new BankStatementEntryId(new Uuid($sourceId)), BankEntryReconciliationIntent::SupplierPayment, new PostingDate(new DateTimeImmutable('2026-08-27')), $this->actor(), [$allocation])->status->name;
         });
         self::assertContains('credit:Success', $results);
         self::assertTrue(in_array('payment:Success', $results, true) || in_array('payment:AllocationExceedsOpenBalance', $results, true));
         $settled = (string) DB::table('open_item_settlements')->where('open_item_id', self::OPEN_ITEM)->sum('amount');
         $matched = (string) DB::table('open_item_matches')->where('credit_open_item_id', self::OPEN_ITEM)->sum('amount');
         self::assertLessThanOrEqual(0, bccomp(bcadd($settled, $matched, 4), '121', 4));
+        self::assertLessThanOrEqual(1, DB::table('bank_entry_active_reconciliations')->count());
         self::assertSame(0, DB::table('open_items')->where('id', self::OPEN_ITEM)->whereRaw('original_amount < 0')->count());
         $this->cleanupCommittedFixtures();
     }
@@ -446,6 +442,11 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
 
     private function cleanupCommittedFixtures(): void
     {
+        DB::table('bank_entry_active_reconciliations')->where('administration_id', self::A)->delete();
+        DB::table('bank_entry_reconciliations')->where('administration_id', self::A)->delete();
+        DB::table('bank_statement_entries')->where('administration_id', self::A)->delete();
+        DB::table('bank_statements')->where('administration_id', self::A)->delete();
+        DB::table('bank_import_batches')->where('administration_id', self::A)->delete();
         DB::table('open_item_matches')->where('administration_id', self::A)->delete();
         DB::table('purchase_credit_source_line_claims')->where('administration_id', self::A)->delete();
         DB::table('purchase_credit_invoice_postings')->where('administration_id', self::A)->delete();
@@ -475,6 +476,19 @@ final class PurchaseCreditApplicationContractsTest extends TestCase
         DB::table('book_years')->where('administration_id', self::A)->delete();
         DB::table('domain_users')->where('id', self::USER)->delete();
         DB::table('administrations')->where('id', self::A)->delete();
+    }
+
+    private function importedPaymentSource(string $amount): string
+    {
+        $suffix = $amount === '121' ? '1' : '2';
+        $batch = 'a1000000-0000-4000-8000-00000000008'.$suffix;
+        $statement = 'a1000000-0000-4000-8000-00000000009'.$suffix;
+        $entry = 'a1000000-0000-4000-8000-00000000010'.$suffix;
+        DB::table('bank_import_batches')->insert(['id' => $batch, 'administration_id' => self::A, 'administration_bank_account_id' => self::BANK_ACCOUNT, 'source_format' => 'camt.053', 'namespace_version' => 'camt.053.001.08', 'original_file_hash' => hash('sha256', 'pc-race-'.$amount), 'parser_version' => 'v1', 'canonicalization_version' => 'bir-canonical-entry-v1', 'actor_id' => self::USER, 'imported_at' => now(), 'artifact_reference' => 'testing/pc-race']);
+        DB::table('bank_statements')->insert(['id' => $statement, 'administration_id' => self::A, 'administration_bank_account_id' => self::BANK_ACCOUNT, 'source_format' => 'camt.053', 'namespace_version' => 'camt.053.001.08', 'bank_import_batch_id' => $batch, 'external_id' => 'PC-RACE-'.$amount, 'electronic_sequence' => null, 'account_identity' => 'NL91ABNA0417164300', 'currency' => 'EUR', 'opening_balance' => '0', 'closing_balance' => '-'.$amount, 'period_from' => null, 'period_to' => null, 'canonical_statement_hash' => hash('sha256', 'pc-statement-'.$amount), 'source_identity_kind' => 'external_id', 'source_identity_value' => 'PC-RACE-'.$amount, 'source_identity_version' => 'bir-canonical-entry-v1', 'source_ordinal' => 1]);
+        DB::table('bank_statement_entries')->insert(['id' => $entry, 'administration_id' => self::A, 'administration_bank_account_id' => self::BANK_ACCOUNT, 'bank_statement_id' => $statement, 'booking_date' => '2026-08-27', 'value_date' => null, 'signed_amount' => '-'.$amount, 'currency' => 'EUR', 'direction' => 'DBIT', 'reversal' => false, 'account_servicer_reference' => 'PC-PAY-'.$amount, 'entry_reference' => null, 'end_to_end_id' => null, 'counterparty_name' => 'Supplier', 'counterparty_account' => null, 'remittance_lines' => json_encode(['PC-PAY-'.$amount]), 'creditor_reference' => null, 'mandate_id' => null, 'bank_transaction_domain' => null, 'bank_transaction_family' => null, 'bank_transaction_subfamily' => null, 'bank_transaction_proprietary_code' => null, 'normalized_metadata' => '{}', 'canonical_entry_hash' => hash('sha256', 'pc-entry-'.$amount), 'deduplication_kind' => 'account_servicer_reference', 'deduplication_value' => 'PC-PAY-'.$amount, 'deduplication_version' => 'bir-canonical-entry-v1', 'source_ordinal' => 1]);
+
+        return $entry;
     }
 
     private function fixtures(): void

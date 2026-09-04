@@ -10,8 +10,10 @@ use App\Domain\Accounting\ValueObjects\LedgerAccountId;
 use App\Domain\Accounting\ValueObjects\OpenItemId;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Banking\Entities\BankTransaction;
+use App\Domain\Banking\Entities\OtherBankTransactionIntent;
 use App\Domain\Banking\Entities\Payment;
 use App\Domain\Banking\Entities\PaymentAllocation;
+use App\Domain\Banking\Enums\BankTransactionIntentType;
 use App\Domain\Banking\Enums\BankTransactionStatus;
 use App\Domain\Banking\Enums\PaymentType;
 use App\Domain\Banking\ValueObjects\AdministrationBankAccountId;
@@ -62,6 +64,25 @@ final class ManualBankTransactionTest extends TestCase
     {
         $this->expectException(DomainException::class);
         new Payment(new PaymentId($this->uuid(4)), PaymentType::CustomerReceipt, $this->relation(), new Money('10', new Currency('EUR')), [$this->allocation(1, '5'), new PaymentAllocation(new PaymentAllocationId($this->uuid(2)), new OpenItemId($this->uuid(31)), new Money('5', new Currency('EUR')))]);
+    }
+
+    public function test_other_intent_is_exclusive_and_amount_coherent(): void
+    {
+        $money = new Money('25', new Currency('EUR'));
+        $transaction = new BankTransaction(new BankTransactionId($this->uuid(10)), new AdministrationBankAccountId($this->uuid(11)), new AdministrationId($this->uuid(12)), new TransactionDate(new DateTimeImmutable('2026-08-26')), $money, new BankTransactionReference('OTHER'), new TransactionDescription('Other'), new OtherBankTransactionIntent($this->ledger(), $money), BankTransactionStatus::Finalized, $this->user(), new DateTimeImmutable('2026-08-26T10:00:00Z'), $this->user(), new DateTimeImmutable('2026-08-26T10:00:00Z'));
+
+        self::assertSame(BankTransactionIntentType::Other, $transaction->intentType());
+        self::assertNull($transaction->paymentOrNull());
+        self::assertSame($this->ledger()->toString(), $transaction->otherIntentOrNull()?->contraLedgerAccountId()->toString());
+        try {
+            $transaction->payment();
+            self::fail('Other intent exposed a Payment.');
+        } catch (DomainException) {
+            self::assertTrue(true);
+        }
+
+        $this->expectException(DomainException::class);
+        new BankTransaction(new BankTransactionId($this->uuid(50)), new AdministrationBankAccountId($this->uuid(11)), new AdministrationId($this->uuid(12)), new TransactionDate(new DateTimeImmutable('2026-08-26')), $money, new BankTransactionReference('OTHER'), new TransactionDescription('Other'), new OtherBankTransactionIntent($this->ledger(), new Money('24', new Currency('EUR'))), BankTransactionStatus::Draft, $this->user(), new DateTimeImmutable('2026-08-26T10:00:00Z'));
     }
 
     private function transaction(string $amount): BankTransaction

@@ -95,7 +95,7 @@ Iedere TaxCode heeft precies één actief TaxRate. Fiscal maakt geen JournalEntr
 
 ### Capability Banking
 
-Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `BankTransaction` is de Aggregate Root en primaire financiële gebeurtenis; het aggregate beheert nul, één of meerdere `Payment` child entities. Iedere Payment verwijst naar precies één `OpenItem` uit Accounting.
+Banking beheert bankmutaties en de koppeling daarvan aan openstaande posten. `BankTransaction` is de Aggregate Root en primaire financiële gebeurtenis. Het aggregate bezit exact één typed intent: Payment met allocations naar OpenItems, of Other met één contra-LedgerAccount en zonder OpenItem-afwikkeling.
 
 De frameworkonafhankelijke domain service `Matching` telt bestaande Payment-allocaties exact op met `Money` en vergelijkt die som met het absolute BankTransaction-bedrag. Alleen een Imported transactie met minimaal één volledig passende allocatie wordt Matched. Mislukte matching wijzigt niets, Matched opnieuw matchen is idempotent en Posted wordt geweigerd.
 
@@ -849,6 +849,33 @@ gekoppeld. B2 PaymentAllocation/Settlement, PostingEngine, AP PostingDate-locks 
 reversal blijven de financiële kern. MT940, CSV-profielen, PSD2/API, FX,
 overpayment/suspense en auto-posting blijven deferred. Import/customs/Artikel 23 blijft
 Purchasing-scope en VAT/ICP filing blijft afzonderlijk geparkeerd.
+
+BIR-001/BIR-002 realiseren inmiddels de secure CAMT.053-parser, private artifactboundary,
+immutable tenant-scoped sourcefacts, statementbalancecontrole en idempotente ConfirmImport.
+BIR-003 voegt de afgeleide Unresolved/Ignored-worklist, append-only Ignore/Restore-history en
+deterministische, uitlegbare CustomerReceipt/SupplierPayment/Other-suggestions toe. Prepared
+allocations ondersteunen partial OpenItems en meerdere targets binnen één Relation, maar zijn
+niet durable. Financiële importpromotie, prepared PaymentAllocation-persistence,
+reconciliationlinkage en source/reversalcoördinatie blijven exact BIR-004-scope. BIR-004A
+levert vooraf de typed Payment/Other-BankTransaction, atomische Other-posting,
+protected-accountpolicy en gegeneraliseerde B3-correctie zonder import- of
+reconciliationkoppeling. BIR-004 realiseert vervolgens de atomische imported-sourcepromotie
+naar CustomerReceipt, SupplierPayment of Other, append-only causale reconciliationhistory,
+één active pointer, B3-reversalcoördinatie en veilige re-reconciliation. Payment hergebruikt
+historische OpenItem-controlaccounts, allocations en Settlements; Other blijft zonder
+OpenItem- of taxtruth. BIR-005 realiseert de Web upload/preview/confirm-flow, tenant-scoped
+worklist, Ignore/Restore, CustomerReceipt/SupplierPayment/Other-promotie, reversal en
+re-reconciliation UX met onafhankelijke canonical permissions. BIR-005R maakt deze
+BankTransaction-Webviews intent-aware, zodat Payment- en Other-backed transacties samen
+veilig zichtbaar en terugdraaibaar zijn zonder de Domain-invariant te verzwakken.
+
+BIR-006 rondt de batch af als **merge-ready**. Handmatige developmentacceptance bevestigt
+CAMT.053 `.02` en `.08`, source-only import, typed duplicate-afwijzing, CustomerReceipt,
+partial SupplierPayment, Other inkomend/uitgaand, historische reversal en causale
+re-reconciliation. Vier acceptance-entries zijn momenteel Reconciled met vier active
+pointers. Bron-, reconciliation-, tenant-, AP- en financiële integriteit zijn groen.
+MT940, CSV, PSD2/API, unmatched remainder, suspense/deposit, internal transfer, partial
+import, automated posting en fuzzy auto-accept blijven deferred.
 
 ## Releases
 

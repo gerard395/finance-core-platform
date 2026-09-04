@@ -18,6 +18,8 @@ final readonly class GetBankTransactionReversalReadiness
             return null;
         }
         $transaction = $source->transaction;
+        $payment = $transaction->paymentOrNull();
+        $other = $transaction->otherIntentOrNull();
 
         $reversedSettlementCount = $source->reversal === null
             ? 0
@@ -26,13 +28,16 @@ final readonly class GetBankTransactionReversalReadiness
         return new BankTransactionReversalReadiness(
             $this->eligibility->forSource($source),
             $transaction->id(),
-            $transaction->payment()->type(),
+            $transaction->intentType(),
+            $payment?->type(),
             $transaction->amount(),
-            $transaction->payment()->relationId(),
+            $payment?->relationId(),
+            $other?->contraLedgerAccountId(),
+            $transaction->description(),
             $transaction->transactionDate()->value(),
             $source->posting?->postingDate,
             $source->posting?->journalEntryId,
-            count($transaction->payment()->allocations()),
+            count($payment?->allocations() ?? []),
             count($source->settlements),
             $reversedSettlementCount,
             $source->reversal?->id,

@@ -4,12 +4,19 @@ declare(strict_types=1);
 
 namespace Tests\Feature\Banking;
 
+use App\Application\Banking\CreateAndPostOtherBankTransaction;
 use App\Application\Identity\ProvisionUserAccount;
+use App\Domain\Accounting\ValueObjects\LedgerAccountId;
+use App\Domain\Accounting\ValueObjects\PostingDate;
 use App\Domain\Administration\Entities\Administration;
 use App\Domain\Administration\ValueObjects\AdministrationCode;
 use App\Domain\Administration\ValueObjects\AdministrationId;
 use App\Domain\Administration\ValueObjects\AdministrationName;
 use App\Domain\Administration\ValueObjects\AdministrationStatus;
+use App\Domain\Banking\ValueObjects\AdministrationBankAccountId;
+use App\Domain\Banking\ValueObjects\BankTransactionId;
+use App\Domain\Banking\ValueObjects\BankTransactionReference;
+use App\Domain\Banking\ValueObjects\TransactionDescription;
 use App\Domain\Identity\Definitions\AdministrationPermission;
 use App\Domain\Identity\Definitions\BankingPermission;
 use App\Domain\Identity\Definitions\PurchasingPermission;
@@ -20,6 +27,7 @@ use App\Domain\Identity\ValueObjects\DisplayName;
 use App\Domain\Identity\ValueObjects\EmailAddress;
 use App\Domain\Identity\ValueObjects\UserId;
 use App\Domain\Shared\Finance\Currency;
+use App\Domain\Shared\Finance\Money;
 use App\Domain\Shared\Identity\Uuid;
 use App\Http\Middleware\EnsureActiveAdministration;
 use App\Infrastructure\Identity\AdministrationAuthorizationProvisioner;
@@ -84,11 +92,43 @@ final class BankPaymentWebTest extends TestCase
         $this->createOpenAccountingPeriodFixture(self::ADMIN);
     }
 
+    public function test_payment_web_views_support_other_intent_and_payment_only_mutations_reject_it(): void
+    {
+        $this->assignAll();
+        $this->login();
+        $contra = 'b4000000-0000-4000-8000-000000000021';
+        DB::table('ledger_accounts')->insert(['id' => $contra, 'administration_id' => self::ADMIN, 'code' => '4400', 'name' => 'Ingekochte diensten', 'type' => 'expense', 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
+        $id = new BankTransactionId(new Uuid('b4000000-0000-4000-8000-000000000022'));
+        $result = $this->app->make(CreateAndPostOtherBankTransaction::class)->execute(
+            $this->admin(),
+            new AdministrationBankAccountId(new Uuid(self::BANK)),
+            new LedgerAccountId(new Uuid($contra)),
+            new Money('-10', new Currency('EUR')),
+            new PostingDate(new DateTimeImmutable('2026-08-26')),
+            new BankTransactionReference('OTHER-WEB'),
+            new TransactionDescription('Synthetic Other'),
+            new UserId(new Uuid(self::USER)),
+            $id,
+        );
+        self::assertSame('success', $result->status->value);
+        $before = [DB::table('bank_transactions')->count(), DB::table('journal_entries')->count(), DB::table('bank_transaction_postings')->count()];
+
+        $this->get('/banking/payments')->assertOk()->assertSee('Overig')->assertSee('4400 Ingekochte diensten');
+        $this->get('/banking/payments/'.$id->toString())->assertOk()->assertSee('Overig')->assertSee('4400 Ingekochte diensten')->assertSee('Synthetic Other')->assertDontSee('Allocaties');
+        $this->get('/banking/payments/'.$id->toString().'/reverse')->assertOk()->assertSee('Overige banktransactie')->assertSee('4400 Ingekochte diensten');
+        $this->get('/banking/payments/'.$id->toString().'/edit')->assertNotFound();
+        $this->put('/banking/payments/'.$id->toString(), $this->payload('supplier_payment', self::SUPPLIER, self::PAYABLE, '10', 'OTHER-UPDATE'))->assertRedirect();
+        $this->post('/banking/payments/'.$id->toString().'/finalize')->assertRedirect();
+        $this->post('/banking/payments/'.$id->toString().'/cancel')->assertRedirect();
+        $this->post('/banking/payments/'.$id->toString().'/post', ['posting_date' => '2026-08-26'])->assertRedirect();
+        self::assertSame($before, [DB::table('bank_transactions')->count(), DB::table('journal_entries')->count(), DB::table('bank_transaction_postings')->count()]);
+    }
+
     public function test_customer_and_supplier_web_flows_are_tenant_safe_escaped_and_idempotent(): void
     {
         $this->assignAll();
         $this->login();
-        $this->get('/banking/payments')->assertOk()->assertSee('Nieuwe betaling')->assertSee('Betalingen');
+        $this->get('/banking/payments')->assertOk()->assertSee('Nieuwe betaling')->assertSee('Banktransacties');
         $this->get('/banking/payments/create')->assertOk()->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Klantontvangst')->assertSee('Leveranciersbetaling')->assertSee('NL91ABNA0417164300');
 
         $payload = $this->payload('customer_receipt', self::CUSTOMER, self::RECEIVABLE, '40', 'RECEIPT');
