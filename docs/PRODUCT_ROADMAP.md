@@ -865,9 +865,17 @@ naar CustomerReceipt, SupplierPayment of Other, append-only causale reconciliati
 historische OpenItem-controlaccounts, allocations en Settlements; Other blijft zonder
 OpenItem- of taxtruth. BIR-005 realiseert de Web upload/preview/confirm-flow, tenant-scoped
 worklist, Ignore/Restore, CustomerReceipt/SupplierPayment/Other-promotie, reversal en
-re-reconciliation UX met onafhankelijke canonical permissions. BIR-006 is de volgende grens
-voor handmatige browseracceptance en batchafronding; BIR-005 creëert geen development-
-acceptancefacts. BIR-006 is nog niet gestart.
+re-reconciliation UX met onafhankelijke canonical permissions. BIR-005R maakt deze
+BankTransaction-Webviews intent-aware, zodat Payment- en Other-backed transacties samen
+veilig zichtbaar en terugdraaibaar zijn zonder de Domain-invariant te verzwakken.
+
+BIR-006 rondt de batch af als **merge-ready**. Handmatige developmentacceptance bevestigt
+CAMT.053 `.02` en `.08`, source-only import, typed duplicate-afwijzing, CustomerReceipt,
+partial SupplierPayment, Other inkomend/uitgaand, historische reversal en causale
+re-reconciliation. Vier acceptance-entries zijn momenteel Reconciled met vier active
+pointers. Bron-, reconciliation-, tenant-, AP- en financiële integriteit zijn groen.
+MT940, CSV, PSD2/API, unmatched remainder, suspense/deposit, internal transfer, partial
+import, automated posting en fuzzy auto-accept blijven deferred.
 
 ## Releases
 
