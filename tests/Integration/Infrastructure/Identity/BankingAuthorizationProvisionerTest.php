@@ -27,10 +27,13 @@ final class BankingAuthorizationProvisionerTest extends TestCase
 
     public function test_contract_is_exact_idempotent_and_does_not_assign_memberships(): void
     {
-        self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE', 'BANKING.PAYMENTS_POST', 'BANKING.PAYMENTS_REVERSE'], array_column(BankingPermission::cases(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE', 'BANKING.PAYMENTS_POST', 'BANKING.PAYMENTS_REVERSE', 'BANKING.IMPORT_UPLOAD', 'BANKING.RECONCILE', 'BANKING.IMPORT_POST'], array_column(BankingPermission::cases(), 'value'));
         self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_MANAGE'], array_column(BankingRole::Manager->permissions(), 'value'));
         self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_POST'], array_column(BankingRole::Poster->permissions(), 'value'));
         self::assertSame(['BANKING.VIEW', 'BANKING.PAYMENTS_REVERSE'], array_column(BankingRole::ReversalOperator->permissions(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.IMPORT_UPLOAD'], array_column(BankingRole::ImportUploader->permissions(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.RECONCILE'], array_column(BankingRole::Reconciler->permissions(), 'value'));
+        self::assertSame(['BANKING.VIEW', 'BANKING.RECONCILE', 'BANKING.IMPORT_POST'], array_column(BankingRole::ImportPoster->permissions(), 'value'));
 
         $provisioner = $this->app->make(BankingAuthorizationProvisioner::class);
         $provisioner->provision();
@@ -38,9 +41,9 @@ final class BankingAuthorizationProvisionerTest extends TestCase
         $provisioner->provision();
 
         self::assertSame($before, [PermissionRecord::all()->toArray(), RoleRecord::all()->toArray(), RolePermissionRecord::all()->toArray()]);
-        self::assertSame(4, PermissionRecord::query()->count());
-        self::assertSame(3, RoleRecord::query()->count());
-        self::assertSame(6, RolePermissionRecord::query()->where('active', true)->count());
+        self::assertSame(7, PermissionRecord::query()->count());
+        self::assertSame(6, RoleRecord::query()->count());
+        self::assertSame(13, RolePermissionRecord::query()->where('active', true)->count());
         self::assertSame(0, AdministrationMembershipRoleRecord::query()->count());
     }
 

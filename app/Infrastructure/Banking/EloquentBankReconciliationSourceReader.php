@@ -53,7 +53,11 @@ final class EloquentBankReconciliationSourceReader implements BankReconciliation
             ->join('bank_statements as s', fn ($join) => $join->on('s.id', '=', 'e.bank_statement_id')->on('s.administration_id', '=', 'e.administration_id'))
             ->join('bank_import_batches as b', fn ($join) => $join->on('b.id', '=', 's.bank_import_batch_id')->on('b.administration_id', '=', 's.administration_id'))
             ->leftJoinSub($latest, 'lh', 'lh.bank_statement_entry_id', '=', 'e.id')
-            ->leftJoin('bank_entry_reconciliation_history as h', 'h.sequence', '=', 'lh.sequence')
+            ->leftJoin('bank_entry_reconciliation_history as h', function ($join): void {
+                $join->on('h.sequence', '=', 'lh.sequence')
+                    ->on('h.bank_statement_entry_id', '=', 'e.id')
+                    ->on('h.administration_id', '=', 'e.administration_id');
+            })
             ->where('e.administration_id', $administrationId->toString())
             ->select(['e.*', 's.external_id as statement_external_id', 's.bank_import_batch_id', 'h.action as latest_action']);
         $this->filters($query, $filter);

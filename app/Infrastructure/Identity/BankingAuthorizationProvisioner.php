@@ -81,6 +81,14 @@ final readonly class BankingAuthorizationProvisioner
             BankingRole::Manager => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000001' : 'b2030000-0000-4000-8000-000000000002',
             BankingRole::Poster => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000003' : 'b2030000-0000-4000-8000-000000000004',
             BankingRole::ReversalOperator => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000005' : 'b2030000-0000-4000-8000-000000000006',
+            BankingRole::ImportUploader => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000007' : 'b2030000-0000-4000-8000-000000000008',
+            BankingRole::Reconciler => $permission === BankingPermission::View ? 'b2030000-0000-4000-8000-000000000009' : 'b2030000-0000-4000-8000-000000000010',
+            BankingRole::ImportPoster => match ($permission) {
+                BankingPermission::View => 'b2030000-0000-4000-8000-000000000011',
+                BankingPermission::Reconcile => 'b2030000-0000-4000-8000-000000000012',
+                BankingPermission::ImportPost => 'b2030000-0000-4000-8000-000000000013',
+                default => throw new LogicException('Unexpected Bank Import Poster permission.'),
+            },
         }));
         if (RolePermissionRecord::query()->find($id->toString()) !== null) {
             throw new LogicException('Stable Banking role-permission identity belongs to another assignment.');

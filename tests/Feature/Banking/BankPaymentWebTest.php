@@ -88,7 +88,7 @@ final class BankPaymentWebTest extends TestCase
     {
         $this->assignAll();
         $this->login();
-        $this->get('/banking/payments')->assertOk()->assertSee('Nieuwe betaling')->assertSee('Betalingen');
+        $this->get('/banking/payments')->assertOk()->assertSee('Nieuwe betaling')->assertSee('Banktransacties');
         $this->get('/banking/payments/create')->assertOk()->assertSee('Customer &lt;script&gt;alert(1)&lt;/script&gt;', false)->assertSee('Klantontvangst')->assertSee('Leveranciersbetaling')->assertSee('NL91ABNA0417164300');
 
         $payload = $this->payload('customer_receipt', self::CUSTOMER, self::RECEIVABLE, '40', 'RECEIPT');

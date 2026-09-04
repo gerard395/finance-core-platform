@@ -134,6 +134,9 @@ voegt een afzonderlijke high-impact reversalpermission toe.
 | `BANKING.PAYMENTS_MANAGE` | `b2010000-0000-4000-8000-000000000002` | Draft manual payments aanmaken/wijzigen, allocations beheren, finaliseren en Draft annuleren; geeft geen postingrecht. |
 | `BANKING.PAYMENTS_POST` | `b2010000-0000-4000-8000-000000000003` | Een immutable Finalized Payment via de transactionele Banking-postingorchestrator posten en de OpenItems settelen. |
 | `BANKING.PAYMENTS_REVERSE` | `b2010000-0000-4000-8000-000000000004` | Eén Posted handmatige BankTransaction volledig, append-only en atomisch corrigeren; geeft geen manage- of algemeen postingrecht. |
+| `BANKING.IMPORT_UPLOAD` | `b2010000-0000-4000-8000-000000000005` | Een private CAMT.053-upload previewen en na authoritative server-side hercontrole als immutable sourcefacts bevestigen; geeft geen reconciliation- of postingrecht. |
+| `BANKING.RECONCILE` | `b2010000-0000-4000-8000-000000000006` | De importworklist raadplegen en entries Ignore/Restore of inhoudelijk voorbereiden; geeft zonder Import Post geen financiële promotiebevoegdheid. |
+| `BANKING.IMPORT_POST` | `b2010000-0000-4000-8000-000000000007` | Een voorbereide imported entry via de bestaande atomische BIR-004-grens financieel promoveren; vereist op de Webroute ook Reconcile. |
 
 De canonieke rollen zijn `BANKING_MANAGER` (`b2020000-0000-4000-8000-000000000001`,
 View + Payments Manage) en `BANKING_POSTER`
@@ -145,6 +148,13 @@ toekenbaar en intrekbaar. Operationele Administration-bankrekeningen en
 BankingPostingConfiguration gebruiken `ADMINISTRATION.SETTINGS_UPDATE`. Import,
 reconciliation en suspense/overpayment blijven buiten scope. Geen van deze rollen wordt
 automatisch aan production-memberships toegekend.
+
+BIR-005 voegt `BANK_IMPORT_UPLOADER` (`b2020000-0000-4000-8000-000000000004`, View +
+Import Upload), `BANK_RECONCILER` (`b2020000-0000-4000-8000-000000000005`, View +
+Reconcile) en `BANK_IMPORT_POSTER` (`b2020000-0000-4000-8000-000000000006`, View +
+Reconcile + Import Post) toe. Deze rollen geven geen reversalrecht; daarvoor blijft een
+afzonderlijke View + Payments Reverse-toekenning nodig. Provisioning maakt alleen canonical
+definitions en mappings aan en kent niets automatisch aan memberships toe.
 
 ## Documents
 

@@ -863,8 +863,11 @@ reconciliationkoppeling. BIR-004 realiseert vervolgens de atomische imported-sou
 naar CustomerReceipt, SupplierPayment of Other, append-only causale reconciliationhistory,
 één active pointer, B3-reversalcoördinatie en veilige re-reconciliation. Payment hergebruikt
 historische OpenItem-controlaccounts, allocations en Settlements; Other blijft zonder
-OpenItem- of taxtruth. BIR-005 is de eerstvolgende grens voor Web/upload/reconciliation UX en
-permissions en is nog niet gestart.
+OpenItem- of taxtruth. BIR-005 realiseert de Web upload/preview/confirm-flow, tenant-scoped
+worklist, Ignore/Restore, CustomerReceipt/SupplierPayment/Other-promotie, reversal en
+re-reconciliation UX met onafhankelijke canonical permissions. BIR-006 is de volgende grens
+voor handmatige browseracceptance en batchafronding; BIR-005 creëert geen development-
+acceptancefacts. BIR-006 is nog niet gestart.
 
 ## Releases
 
