@@ -29,6 +29,8 @@ final readonly class UpdateDraftBankTransaction
             $tx = $this->repository->find($admin, $id, true);
             if ($tx === null) {
                 return BankTransactionResult::NotFound;
+            }if ($tx->paymentOrNull() === null) {
+                return BankTransactionResult::InvalidState;
             }$bank = $this->banks->find($admin, $bankId);
             if ($bank === null || ! $bank->isActive() || $this->relations->findByIdForAdministration($admin, $relationId) === null) {
                 return BankTransactionResult::InvalidReference;

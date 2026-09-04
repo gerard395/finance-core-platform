@@ -25,6 +25,8 @@ final readonly class FinalizeBankTransaction
             $tx = $this->repository->find($admin, $id, true);
             if ($tx === null) {
                 return BankTransactionResult::NotFound;
+            } if ($tx->paymentOrNull() === null) {
+                return BankTransactionResult::InvalidState;
             } if ($tx->status() === BankTransactionStatus::Finalized) {
                 return BankTransactionResult::AlreadyFinalized;
             } if ($tx->status() !== BankTransactionStatus::Draft) {

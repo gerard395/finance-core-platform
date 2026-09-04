@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Application\Banking;
 
+use App\Application\Accounting\LedgerAccountReadRepository;
 use App\Application\Accounting\OpenItemReadRepository;
 use App\Application\Relations\RelationReadRepository;
 use App\Domain\Administration\ValueObjects\AdministrationId;
@@ -11,7 +12,7 @@ use App\Domain\Banking\ValueObjects\BankTransactionId;
 
 final readonly class GetBankTransactionWebDetail
 {
-    public function __construct(private BankTransactionRepository $transactions, private AdministrationBankAccountRepository $banks, private RelationReadRepository $relations, private OpenItemReadRepository $openItems, private GetBankTransactionPostingDetail $postings, private GetBankTransactionReversalReadiness $reversals) {}
+    public function __construct(private BankTransactionRepository $transactions, private AdministrationBankAccountRepository $banks, private RelationReadRepository $relations, private LedgerAccountReadRepository $accounts, private OpenItemReadRepository $openItems, private GetBankTransactionPostingDetail $postings, private GetBankTransactionReversalReadiness $reversals) {}
 
     public function execute(AdministrationId $administrationId, BankTransactionId $id): ?BankTransactionWebDetail
     {
@@ -20,12 +21,18 @@ final readonly class GetBankTransactionWebDetail
             return null;
         }
         $bank = $this->banks->find($administrationId, $transaction->bankAccountId());
-        $relation = $this->relations->findByIdForAdministration($administrationId, $transaction->payment()->relationId());
-        if ($bank === null || $relation === null) {
+        if ($bank === null) {
+            return null;
+        }
+        $payment = $transaction->paymentOrNull();
+        $other = $transaction->otherIntentOrNull();
+        $relation = $payment === null ? null : $this->relations->findByIdForAdministration($administrationId, $payment->relationId());
+        $contraAccount = $other === null ? null : collect($this->accounts->findForAdministration($administrationId))->first(fn ($account) => $account->id()->equals($other->contraLedgerAccountId()));
+        if (($payment !== null && $relation === null) || ($other !== null && $contraAccount === null)) {
             return null;
         }
         $items = [];
-        foreach ($transaction->payment()->allocations() as $allocation) {
+        foreach ($payment?->allocations() ?? [] as $allocation) {
             $item = $this->openItems->findForAdministration($administrationId, $allocation->openItemId());
             if ($item === null) {
                 return null;
@@ -38,6 +45,6 @@ final readonly class GetBankTransactionWebDetail
             return null;
         }
 
-        return new BankTransactionWebDetail($transaction, $bank, $relation, $items, $this->postings->execute($administrationId, $id), $reversal);
+        return new BankTransactionWebDetail($transaction, $bank, $relation, $contraAccount, $items, $this->postings->execute($administrationId, $id), $reversal);
     }
 }

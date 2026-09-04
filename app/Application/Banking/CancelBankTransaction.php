@@ -18,6 +18,8 @@ final readonly class CancelBankTransaction
             $tx = $this->repository->find($admin, $id, true);
             if ($tx === null) {
                 return BankTransactionResult::NotFound;
+            }if ($tx->paymentOrNull() === null) {
+                return BankTransactionResult::InvalidState;
             }try {
                 $tx->cancel();
             } catch (\DomainException) {

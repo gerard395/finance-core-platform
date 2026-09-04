@@ -85,6 +85,7 @@ final class BankPaymentController extends Controller
         $context = $this->context($request);
         $detail = $this->details->execute($context->administration->id(), $this->id($payment));
         abort_if($detail === null, 404);
+        abort_if($detail->transaction->paymentOrNull() === null, 404);
         abort_if($detail->transaction->status() !== BankTransactionStatus::Draft, 409);
 
         return view('banking.payments.edit', $this->viewData($context) + ['detail' => $detail, 'masterData' => $this->masterData->execute($context->administration->id())]);
